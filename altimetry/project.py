@@ -7,7 +7,7 @@
 
 class Project:
 
-    def __init__(self, name: str, config: str = './data') -> None:
+    def __init__(self, name: str, config: str = './data/myconfig.yaml') -> None:
         """Create a new simulator
 
         Parameters
@@ -19,7 +19,7 @@ class Project:
 
         Examples
         --------
-        >>> proj = Project(name="", low=2.0, high=10.0)
+        >>> proj = Project(name="Lower Mekong", './data/lower_mekong.yaml')
         """
         self._name = name
         self._config = config
