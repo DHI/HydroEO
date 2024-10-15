@@ -16,8 +16,8 @@ exclude = ["notebooks", "tests", "images"]
 name = "rk-altimetry"
 version = "0.0.1"
 dependencies = [
-    "numpy"
-    "geopandas"
+    "numpy",
+    "geopandas",
     "icepyx"
 ]
 
