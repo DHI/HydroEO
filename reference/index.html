@@ -281,15 +281,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#altimetry.download.icepyx_query" class="md-nav__link">
-    <span class="md-ellipsis">
-      icepyx_query
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -361,15 +352,6 @@
   <a href="#altimetry.download" class="md-nav__link">
     <span class="md-ellipsis">
       download
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#altimetry.download.icepyx_query" class="md-nav__link">
-    <span class="md-ellipsis">
-      icepyx_query
     </span>
   </a>
   
@@ -547,176 +529,6 @@
 
 
 
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-<div class="doc doc-object doc-function">
-
-
-<h2 id="altimetry.download.icepyx_query" class="doc doc-heading">
-            <code class="highlight language-python"><span class="n">icepyx_query</span><span class="p">(</span><span class="n">aoi_bbox</span><span class="p">,</span> <span class="n">startdate</span><span class="p">,</span> <span class="n">enddate</span><span class="p">,</span> <span class="n">earthdata_credentials</span><span class="p">,</span> <span class="n">download_directory</span><span class="p">,</span> <span class="n">product</span><span class="o">=</span><span class="s1">&#39;ATL13&#39;</span><span class="p">)</span></code>
-
-</h2>
-
-
-    <div class="doc doc-contents ">
-
-        <p>Download through NASA NSIDC DAAC
-Reference: Scheick, J. et al., (2019). icepyx: Python tools for obtaining and working with ICESat-2 data. https://github.com/icesat2py/icepyx.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>aoi_bbox</code>
-            </td>
-            <td>
-                  <code>DataFrame</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>AOI bounding box (from geopandas.geometry.bounds)
-DataFrame with columns minx, miny, maxx, maxy values containing the bounds for the AOI geometry.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>startdate</code>
-            </td>
-            <td>
-                  <code>String</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>YYYY-MM-DD - startdate for download.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>enddate</code>
-            </td>
-            <td>
-                  <code>String</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>YYYY-MM-DD - enddate for download.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>earthdata_credentials</code>
-            </td>
-            <td>
-                  <code>Filename path</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Textfile with username and password for EarthData on two separate lines</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>download_directory</code>
-            </td>
-            <td>
-                  <code>Path</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Directory to save files.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>product</code>
-            </td>
-            <td>
-                  <code>string</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Default is ATL13
-ICESat-2 product to be downloaded.</p>
-              </div>
-            </td>
-            <td>
-                  <code>&#39;ATL13&#39;</code>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code>None.</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-    </div>
-
-</div>
-
-
-
-  </div>
 
     </div>
 
