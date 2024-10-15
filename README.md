@@ -1,16 +1,10 @@
-# rk-altimetry: Template Python repository
+# rk-altimetry: Easy access altimetry for water resource applications
 
-This repository serves as a template for creating a Python library
+Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over rivers and reservoirs for integration into larger water resource projects.
 
-## How do I use this?
+## What is currently included in the library?
 
-1. Create a new repository in GitHub with this repo as a starting point
-    ![](images/new_repo.png)
-
-2. Change all occurences of `rk-altimetry` to match the name of your new library
-
-3. Consider if the [license](LICENSE) should be modified.
-
+## What is to come?
 
 ## Additional resources
 

@@ -7,7 +7,7 @@
 
 class Project:
 
-    def __init__(self, name: str, config: str = 0.0) -> None:
+    def __init__(self, name: str, config: str = './data') -> None:
         """Create a new simulator
 
         Parameters
