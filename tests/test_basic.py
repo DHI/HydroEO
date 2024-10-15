@@ -1,4 +1,4 @@
-import my_library as ml
+import altimetry as ml
 
 
 def test_module_docstring():

@@ -1,4 +1,4 @@
-LIB = my_library
+LIB = altimetry
 
 check: lint typecheck test doctest
 
