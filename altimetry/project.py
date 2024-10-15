@@ -19,7 +19,7 @@ class Project:
 
         Examples
         --------
-        >>> proj = Project(name="Lower Mekong", './data/lower_mekong.yaml')
+        >>> proj = Project(name="Lower Mekong", config='./data/lower_mekong.yaml')
         """
         self._name = name
         self._config = config
