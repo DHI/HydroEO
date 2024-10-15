@@ -135,5 +135,5 @@ dmypy.json
 /doc/_build/
 
 # other additions
-./gis
-./data
+./gis/
+./data/
