@@ -1,10 +1,8 @@
 """The project module"""
 
-import os
-import typing
-import yaml
-
-import numpy as np
+# import os
+# import typing
+# import yaml
 
 
 class Project:
