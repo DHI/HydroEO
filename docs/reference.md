@@ -1,4 +1,6 @@
 # Reference
 
 ::: altimetry.project
-::: altimetry.download
+::: altimetry.icesat2
+::: altimetry.geometry
+::: altimetry.utils

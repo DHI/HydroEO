@@ -79,10 +79,6 @@ def query(aoi: list, startdate: datetime.date, enddate: datetime.date, earthdata
     return region_a.granules.orderIDs
 
 
-
-
-
-
 @dataclass
 class ATL13:
     """
@@ -106,33 +102,46 @@ class ATL13:
             with h5py.File(self.infile, 'r') as src:
 
                 # Segment track heights
-                self.height_seg =       np.asarray(src[self.track_key]['ht_ortho'])
-                self.lat_seg =          np.asarray(src[self.track_key]['segment_lat'])
-                self.lon_seg =          np.asarray(src[self.track_key]['segment_lon'])
+                self.setattr_from_file(src, 'height_seg', 'ht_ortho')
+                self.setattr_from_file(src, 'lat_seg', 'segment_lat')
+                self.setattr_from_file(src, 'lon_seg', 'segment_lon')
                 
                 # Water body information
-                self.wb_id =            np.asarray(src[self.track_key]['inland_water_body_id'])
-                self.wb_size =          np.asarray(src[self.track_key]['inland_water_body_size'])
-                self.wb_type =          np.asarray(src[self.track_key]['inland_water_body_type'])
+                self.setattr_from_file(src, 'wb_id', 'inland_water_body_id')
+                self.setattr_from_file(src, 'wb_size', 'inland_water_body_size')
+                self.setattr_from_file(src, 'wb_type', 'inland_water_body_type')
 
                 # Segment information - error and quality
-                self.wb_slope =         np.asarray(src[self.track_key]['segment_slope_trk_bdy'])
-                self.height_err =       np.asarray(src[self.track_key]['err_ht_water_surf'])
-                self.quality_seg =      np.asarray(src[self.track_key]['segment_quality'])
+                self.setattr_from_file(src, 'wb_slope', 'segment_slope_trk_bdy')
+                self.setattr_from_file(src, 'height_err', 'err_ht_water_surf')
+                self.setattr_from_file(src, 'quality_seg', 'segment_quality')
                                 
                 # Tide/DEM corrections
-                self.geoid_track =      np.asarray(src[self.track_key]['segment_geoid'])
-                self.geoid_corr_track = np.asarray(src[self.track_key]['segment_geoid_free2mean'])
-                self.dem_track =        np.asarray(src[self.track_key]['segment_dem_ht'])
+                self.setattr_from_file(src, 'geoid_track', 'segment_geoid')
+                self.setattr_from_file(src, 'geoid_corr_track', 'segment_geoid_free2mean')
+                self.setattr_from_file(src, 'dem_track', 'segment_dem_ht')
 
                 # Saturation fraction - The fraction of pulses within the short segment determined to be nearly saturated based on ATL03 geosegment rate input.
-                self.sat_frac_track =   np.asarray(src[self.track_key]['segment_near_sat_fract'])
-            
-                # time and date attributes
-                delta_time_seg =        np.asarray(src[self.track_key]['delta_time'], float)
-                atlas_offset =          np.asarray(src['ancillary_data']['atlas_sdp_gps_epoch'])[0]
-                self.date = [(datetime.datetime(1980, 1, 6) + datetime.timedelta(seconds=c2_time+atlas_offset)) for c2_time in delta_time_seg]
+                self.setattr_from_file(src, 'sat_frac_track', 'segment_near_sat_fract')
 
+                # time and date attributes
+                if 'delta_time' in src[self.track_key].keys():
+                    delta_time_seg = np.asarray(src[self.track_key]['delta_time'], float)
+                    atlas_offset   = np.asarray(src['ancillary_data']['atlas_sdp_gps_epoch'])[0]
+                    self.date = [(datetime.datetime(1980, 1, 6) + datetime.timedelta(seconds=c2_time+atlas_offset)) for c2_time in delta_time_seg]
+                else:
+                    self.date=None
+
+    def setattr_from_file(self, src: h5py.File, name: str, attribute:str):
+
+        if attribute in src[self.track_key].keys():
+            self.__setattr__(name, np.asarray(src[self.track_key][attribute]))
+        else:
+            self.__setattr__(name, None)
+
+    def check_height_data(self) -> bool:
+            
+        return self.height_seg is not None
 
     def read(self) -> pd.DataFrame:
         """
