@@ -9,6 +9,7 @@ import yaml
 import pandas as pd
 import geopandas as gpd
 
+from cmcrameri import cm
 import matplotlib.pyplot as plt
 from matplotlib.dates import date2num
 
@@ -191,10 +192,52 @@ class Project:
 
                     if len(data_gdf) > 0:
                         data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
-                        data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap='jet', alpha=0.5)
+                        data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5)
 
         fig.tight_layout()
         plt.show()
+
+    
+    def plot_timeseries_by_grid(self, id):
+
+        # lists to hold plotting data
+        height_list = list()
+        date_list = list()
+        lat_list = list()
+        lon_list = list()
+
+        # load and find average height for all values in river
+        download_directory = os.path.join(self.icesat2_dir, f"{id}")
+        files = list(os.listdir(download_directory))
+        for file in files:
+            infile= os.path.join(download_directory, file)
+            for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
+
+                data = icesat2.ATL13(infile, key)
+
+                if data.check_height_data():
+                    data_df = data.read()
+                    data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+                    data_gdf = data_gdf.loc[data_gdf.within(self.buffered_rivers.unary_union)].reset_index(drop=True)
+
+                    if len(data_gdf) > 0:
+                        
+                        # find average height and date
+                        height_list.append(data_gdf.height.mean())
+                        date_list.append(data_gdf.date.mean())
+                        lat_list.append(data_gdf.lat.mean())
+                        lon_list.append(data_gdf.lon.mean())
+
+        plot_df = pd.DataFrame({'date':date_list , 'height':height_list, 'lat':lat_list, 'lon':lon_list})
+
+        # start figure
+        fig, ax = plt.subplots()
+
+        plot_df.plot(ax=ax, x='date', y='height', kind='scatter', c=plot_df['lon'], cmap=cm.batlow)
+
+        fig.tight_layout()
+        plt.show()
+
 
 
     def find_river_crossings(self):
@@ -237,7 +280,7 @@ class Project:
         # plot river
         self.rivers.plot(ax=ax)
         self.crossings['color'] = [int(date2num(i)) for i in self.crossings["date"].values]
-        self.crossings.plot(ax=ax, column="color", vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap='Spectral')
+        self.crossings.plot(ax=ax, column="color", vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow)
 
         fig.tight_layout()
         plt.show()
