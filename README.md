@@ -15,7 +15,7 @@ The sentinel series can provide more temporally dense inland water observations.
 - (Under development) - Provide shape file of river or rivers of interest to initiate search and dowload of available
 - (Under development) - Get report of all available crossings over river of interest
 - (Under development) - provide similar support for reservoirs
-. (Under development) - provide means of grouping reservoirs and rivers within a project class that can easily process a basin or mike project area to provide usefull data to mike cloud
+- (Under development) - provide means of grouping reservoirs and rivers within a project class that can easily process a basin or mike project area to provide usefull data to mike cloud
 
 ## What could come?
 - (not started) - Allow for near real time updates of water levels along river

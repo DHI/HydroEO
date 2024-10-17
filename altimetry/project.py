@@ -8,6 +8,7 @@ import yaml
 
 import pandas as pd
 import geopandas as gpd
+import shapely
 
 from cmcrameri import cm
 import matplotlib.pyplot as plt
@@ -72,10 +73,8 @@ class Project:
             self.rivers = None
 
         if 'reservoirs' in self.config.keys():
-            #self.reservoirs = gpd.read_file(self.config['reservoirs']['path'])
-            #self.reservoirs = self.reservoirs.to_crs(self.global_crs)
-            self.reservoirs = None
-            warnings.warn("Support for reservoirs is not yet implemented. The reservoir shapefile will not be read into memory")
+            self.reservoirs = gpd.read_file(self.config['reservoirs']['path'])
+            self.reservoirs = self.reservoirs.to_crs(self.global_crs)
         else:
             self.reservoirs = None
 
@@ -138,7 +137,7 @@ class Project:
                 plt.show()
 
         else:
-            warnings.warn("Cannot create grid because not rivers have been loaded.")
+            warnings.warn("Cannot create grid because no rivers have been loaded.")
 
 
     def download_by_grid(self): # TODO: consider option to overwrite data already in folder or to start where download left off
@@ -154,7 +153,7 @@ class Project:
             enddate   = date(*self.icesat2_enddate)
 
             # define and if needed create directory for each river stretch
-            download_directory = os.path.join(self.icesat2_dir, f"{id}")
+            download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
             utils.ifnotmakedirs(download_directory)
 
             # make a simple aoi based on coordinates
@@ -163,7 +162,7 @@ class Project:
 
     def plot_data_by_grid(self, id):
 
-        download_directory = os.path.join(self.icesat2_dir, f"{id}")
+        download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
         files = list(os.listdir(download_directory))
 
         # start figure
@@ -207,7 +206,7 @@ class Project:
         lon_list = list()
 
         # load and find average height for all values in river
-        download_directory = os.path.join(self.icesat2_dir, f"{id}")
+        download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
         files = list(os.listdir(download_directory))
         for file in files:
             infile= os.path.join(download_directory, file)
@@ -247,7 +246,7 @@ class Project:
         for id in self.river_grid.index:
 
 
-            download_directory = os.path.join(self.icesat2_dir, f"{id}")
+            download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
 
             if os.path.exists(download_directory):
 
@@ -265,8 +264,25 @@ class Project:
                             data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
                             data_gdf = data_gdf.loc[data_gdf.within(self.buffered_rivers.unary_union)].reset_index(drop=True)
 
-                            if len(data_gdf) > 0:
-                                center_points.append(data_gdf.loc[[0]])
+                            if len(data_gdf) > 1:
+
+                                # take a line of the crossing and calculate its intersection with the river centerline
+                                representative_line = shapely.LineString([(data_gdf.loc[0, 'geometry'].x, data_gdf.loc[0, 'geometry'].y), (data_gdf.loc[-1, 'geometry'].x, data_gdf.loc[-1, 'geometry'].y)])
+                                crossing_point = shapely.intersection(representative_line, self.rivers.unary_union)
+
+                                # take the mean of the height observations here (TODO: Check if we should do somethign other than take the average)
+                                crossing_height = data.height.mean()
+
+                                # add the center point, and mean height value (and any other desired information) to the list of geodataframes to combine
+                                center_points.append(gpd.GeoDataFrame()]
+
+                            elif len(data_gdf) > 0:
+                                
+                                # if only one valid observation then take this
+                                center_points.append(data_gdf[['height', 'lat', 'lon', 'geometry']].loc[[0]])
+
+                            else:
+
                                 
         center_points = pd.concat(center_points)
         
@@ -281,6 +297,104 @@ class Project:
         self.rivers.plot(ax=ax)
         self.crossings['color'] = [int(date2num(i)) for i in self.crossings["date"].values]
         self.crossings.plot(ax=ax, column="color", vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow)
+
+        fig.tight_layout()
+        plt.show()
+
+
+
+    ##### Functions associated with the reservoirs (the download process is handeled a bit differently, perhaps there is a better way to make an elements class in which rivers and reservoirs inherit from?)
+    def download_by_reservoir(self, start_id=0):
+
+        for id in self.reservoirs.index[start_id:]:
+
+            # grab coordinates of river
+            coords = [(x, y) for x, y in self.reservoirs.loc[id, 'geometry'].envelope.exterior.coords]
+            #id = self.reservoirs.loc[i, 'id']
+
+            # define bounds of data search
+            startdate = date(*self.icesat2_startdate)
+            enddate   = date(*self.icesat2_enddate)
+
+            # define and if needed create directory for each river stretch
+            download_directory = os.path.join(self.icesat2_dir, rf"reservoirs\{id}")
+            utils.ifnotmakedirs(download_directory)
+
+            # make a simple aoi based on coordinates
+            order_ids = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=None, download_directory=download_directory, product='ATL13')
+
+    def plot_data_by_reservoir(self, id):
+
+        download_directory = os.path.join(self.icesat2_dir, rf"reservoirs\{id}")
+        files = list(os.listdir(download_directory))
+
+        # start figure
+        fig, ax = plt.subplots()
+
+        # set boudns
+        xmin, ymin, xmax, ymax = self.reservoirs.loc[id, 'geometry'].bounds
+        ax.set_xlim([xmin-0.1, xmax+0.1])
+        ax.set_ylim([ymin-0.1, ymax+0.1])
+
+        # plot reservoir
+        self.reservoirs.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
+
+        # load and plot all files for all tracks and crossings
+        for file in files:
+            infile= os.path.join(download_directory, file)
+            for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
+
+                data = icesat2.ATL13(infile, key)
+
+                if data.check_height_data():
+                    data_df = data.read()
+                    data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+                    data_gdf = data_gdf.loc[data_gdf.within(self.reservoirs.unary_union)].reset_index(drop=True)
+
+                    if len(data_gdf) > 0:
+                        data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
+                        data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5)
+
+        fig.tight_layout()
+        plt.show()
+
+
+    def plot_timeseries_by_reservoir(self, id):
+
+        # lists to hold plotting data
+        height_list = list()
+        date_list = list()
+        lat_list = list()
+        lon_list = list()
+
+        # load and find average height for all values in river
+        download_directory = os.path.join(self.icesat2_dir, rf"reservoirs\{id}")
+        files = list(os.listdir(download_directory))
+        for file in files:
+            infile= os.path.join(download_directory, file)
+            for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
+
+                data = icesat2.ATL13(infile, key)
+
+                if data.check_height_data():
+                    data_df = data.read()
+                    data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+                    data_gdf = data_gdf.loc[data_gdf.within(self.reservoirs.unary_union)].reset_index(drop=True)
+
+                    if len(data_gdf) > 0:
+                        
+                        # find average height and date
+                        height_list.append(data_gdf.height.mean())
+                        date_list.append(data_gdf.date.mean())
+                        lat_list.append(data_gdf.lat.mean())
+                        lon_list.append(data_gdf.lon.mean())
+
+        plot_df = pd.DataFrame({'date':date_list , 'height':height_list, 'lat':lat_list, 'lon':lon_list})
+
+        # start figure
+        fig, ax = plt.subplots()
+
+        plot_df.plot(ax=ax, x='date', y='height', kind='scatter', c=plot_df['lon'], cmap=cm.batlow)
 
         fig.tight_layout()
         plt.show()
