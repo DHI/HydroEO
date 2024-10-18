@@ -42,12 +42,31 @@ class Project:
         with open(self.config, 'rt') as f:
             self.config = yaml.safe_load(f.read())
 
+        if 'project' in self.config.keys():
+            self.main_dir = self.config['project']["main_dir"]
+            utils.ifnotmakedirs(self.main_dir)
+
+            self.river_dir = os.path.join(self.main_dir, "rivers")
+            utils.ifnotmakedirs(self.river_dir)
+
+            self.reservoir_dir = os.path.join(self.main_dir, "reservoirs")
+            utils.ifnotmakedirs(self.reservoir_dir)
+
+        else:
+            raise Warning("Project directory must be defined within configuration file")
+            
+
         if 'earthdata' in self.config.keys():
             self.earthdata_user = self.config['earthdata']["username"]
             self.earthdata_pass = self.config['earthdata']["password"]
         
         if 'icesat2' in self.config.keys():
-            self.icesat2_dir = self.config['icesat2']["download_dir"]
+
+            if 'download_dir' in self.config['icesat2'].keys():
+                self.icesat2_dir = self.config['icesat2']["download_dir"]
+            else:
+                self.icesat2_dir = os.path.join(self.main_dir, 'icesat2')
+
             self.icesat2_startdate = self.config['icesat2']["startdate"]
             self.icesat2_enddate = self.config['icesat2']["enddate"]
 
@@ -240,29 +259,41 @@ class Project:
 
 
     def find_river_crossings(self):
+        """Method to take all available icesat2 data and find the singular value to use for the river crossing.
+        Currently takes the closest ATL13 value to the river centerline. River crossings are saved as a geopandas geodataframe.
 
+        Raises
+        ------
+        Warning
+            _description_
+        """
+
+        # list to hold the filtered center points and heights
         center_points = list()
 
+        # process crossings by grid id
         for id in self.river_grid.index:
 
+            # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
             download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
-
             if os.path.exists(download_directory):
 
-                # load and plot all files for all tracks and crossings
+                # load date for all tracks and crossings
                 files = list(os.listdir(download_directory))        
                 for file in files:
-                    infile= os.path.join(download_directory, file)
-
                     for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
-
+                        infile= os.path.join(download_directory, file)
                         data = icesat2.ATL13(infile, key)
                         
+                        # make sure we have height data within the icesat file
                         if data.check_height_data():
+
+                            # read data, turn into dataframe and filter by whats in the buffered river region
                             data_df = data.read()
                             data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
                             data_gdf = data_gdf.loc[data_gdf.within(self.buffered_rivers.unary_union)].reset_index(drop=True)
 
+                            # ensure that we have at least two points in the river zone to process and centerline value
                             if len(data_gdf) > 1:
 
                                 # take a line of the crossing and calculate its intersection with the river centerline
@@ -275,11 +306,9 @@ class Project:
                                     pass
 
                                 elif crossing_point.geom_type == 'Point':
-
                                     # proceed as expected, one clear crossing means we can grab the data value at the point closest to the centerline or take the mean of the crossing
                                     index, _, _ = geometry.find_closest_geom(crossing_point, data_gdf.geometry.values)
                                     center_points.append(data_gdf.loc[[index]])
-
 
                                 elif crossing_point.geom_type == 'MultiPoint':
                                     # It is possible that a passing crosses multiple points in a bending rivers so we grab each point clossest to the centerline at each respective crossing
@@ -291,16 +320,19 @@ class Project:
                                     # something is not as expected to raise a warning to be investigated
                                     raise Warning("crossing_point is not a point or multilinestring warrenting investigation")
 
+                            # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
                             elif len(data_gdf) > 0:
-                                
-                                # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
                                 center_points.append(data_gdf.iloc[[0]])
 
-                                
-        center_points = pd.concat(center_points).reset_index(drop=True)
-        
-        self.crossings = center_points
+        # push all of the crossing centerpoints into one geodataframe and reset the index
+        self.crossings = pd.concat(center_points).reset_index(drop=True)
+        self.crossings = self.crossings.set_crs(self.global_crs)
 
+        # save copy of river crossings so we dont have to repeat the process
+        self.crossings.to_file(os.path.join(self.river_dir, rf"icesat2_crossings.shp"))
+
+    def load_river_crossings(self):
+        self.crossings = gpd.read_file(os.path.join(self.river_dir, rf"icesat2_crossings.shp"))
 
     def plot_river_crossings(self):
 
