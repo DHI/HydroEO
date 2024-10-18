@@ -291,21 +291,13 @@ class Project:
                                     # something is not as expected to raise a warning to be investigated
                                     raise Warning("crossing_point is not a point or multilinestring warrenting investigation")
 
-
-                                # take the mean of the height observations here (TODO: Check if we should do something other than take the average)
-                                crossing_height = data_gdf.height.mean()
-                                crossing_date = data_gdf.date.mean()
-
-                                # add the center point, and mean height value (and any other desired information) to the list of geodataframes to combine
-                                center_points.append(gpd.GeoDataFrame({'height':[crossing_height], 'date': [crossing_date]}, geometry=[crossing_point]))
-
                             elif len(data_gdf) > 0:
                                 
                                 # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
-                                center_points.append(data_gdf.loc[[0]])
+                                center_points.append(data_gdf.iloc[[0]])
 
                                 
-        center_points = pd.concat(center_points)
+        center_points = pd.concat(center_points).reset_index(drop=True)
         
         self.crossings = center_points
 
