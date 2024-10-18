@@ -5,8 +5,20 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 ## What altimetry missions are available?
 
 ### ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13)
-![](images/icesat2-hqprint.jpg)
-ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13 - https://nsidc.org/data/atl13/versions/6) can be accessed from 13 October 2018 to 11 November 2020 within [N:90S:-90E:180W:-180]. The satellite is orignially intended to monitor changes in the cryosphere but has proven extremely usefull for inland water applications. The ATL13 product contains along-track water surface heights and descriptive statistics for inland water bodies. Inland water bodies include lakes, reservoirs, rivers, bays, estuaries and a 7km near-shore buffer. Given its intended use, the orbit design for ICESat-2 prioritizes latitudes closer to the poles, meaning that if your area of interest is closer to the equator you can expect a more temporally sparse timeseries for a given crossing. The satellite operates with a repeat cycle of 91 days meaning that you can expect a maximum of 91 days between water surface height observations. This product is a good start for the development of an interal altimetry utility because the product is already processed and provides reliable levels without much expert inspection. The downside being the sparse temporal series making its use for creating virtual stations limited. For more information on this satellite see: https://nsidc.org/data/icesat-2 and https://icesat-2.gsfc.nasa.gov/.
+![https://science.nasa.gov/wp-content/uploads/2023/06/icesat2-hqprint-print.jpg?w=4096&format=jpeg](images/icesat2-hqprint.jpg)
+ICESat-2 is the second of NASA's "Ice, Cloud, and Land Elevation Satellites" carrying a photon-counting laser altimeter called "ATLAS". While the satellite is orignially intended to monitor changes in the cryosphere, it has proven extremely usefull for inland water applications. The ATLAS instrument has six beams organized into 3 pairs. The distance between two beams within a pair is 90 meters and 3.3km between pairs. The 6 beam design increases the chances of capturing waterbodies and allows a user to infer the slope of a river reach from the 6 nearby crossing which proves usefull in 1D hydrodynamic modelling (https://www.nature.com/articles/s41597-023-02215-x). Given its intended use, the orbit design for ICESat-2 prioritizes latitudes closer to the poles, meaning that if your area of interest is closer to the equator you can expect a more temporally sparse timeseries for a given crossing. The satellite operates with a repeat cycle of 91 days meaning that you can expect a maximum of 91 days between water surface height observations, though if two orbits cross nearby the target, you can have more frequent observations. 
+
+The ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13 - https://nsidc.org/data/atl13/versions/6) product provides along-track water surface heights and descriptive statistics for inland water bodies. Inland water bodies include lakes, reservoirs, rivers, bays, estuaries and a 7km near-shore buffer. This product is a good start for the development of an interal altimetry utility because the product is already processed and provides reliable levels without much expert inspection. The downside being the sparse temporal series making its use for creating virtual stations along rivers limited. For more information on this satellite see: https://nsidc.org/data/icesat-2 and https://icesat-2.gsfc.nasa.gov/.
+
+Summary of mission details:
+- Dates: October 2018 to present
+- Spatial bounds: [N:90 S:-90 E:180 W:-180 degrees]
+- Repeat orbit: 91-days
+- 6 beams per pass
+
+Example of ground track and beam setup for ICESat-2:
+![https://icesat-2.gsfc.nasa.gov/science/specs](images/ICESat2BeamPattern.png)
+
 
 ### (Development not begun) Sentinel-3A, 3B, 6
 The sentinel series can provide more temporally dense inland water observations. Currently there is no support for downloading and including this data within virtual stations.

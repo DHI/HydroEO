@@ -245,7 +245,6 @@ class Project:
 
         for id in self.river_grid.index:
 
-
             download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
 
             if os.path.exists(download_directory):
@@ -267,21 +266,43 @@ class Project:
                             if len(data_gdf) > 1:
 
                                 # take a line of the crossing and calculate its intersection with the river centerline
-                                representative_line = shapely.LineString([(data_gdf.loc[0, 'geometry'].x, data_gdf.loc[0, 'geometry'].y), (data_gdf.loc[-1, 'geometry'].x, data_gdf.loc[-1, 'geometry'].y)])
+                                representative_line = shapely.LineString([(data_gdf['geometry'].iloc[0].x, data_gdf['geometry'].iloc[0].y), (data_gdf['geometry'].iloc[-1].x, data_gdf['geometry'].iloc[-1].y)])
                                 crossing_point = shapely.intersection(representative_line, self.rivers.unary_union)
 
-                                # take the mean of the height observations here (TODO: Check if we should do somethign other than take the average)
-                                crossing_height = data.height.mean()
+                                # there are a number of things that can happen when runnign the intersection so try to account for these
+                                if crossing_point.is_empty:
+                                    # then there was not a clean intersection, and we should do nothing with the data
+                                    pass
+
+                                elif crossing_point.geom_type == 'Point':
+
+                                    # proceed as expected, one clear crossing means we can grab the data value at the point closest to the centerline or take the mean of the crossing
+                                    index, _, _ = geometry.find_closest_geom(crossing_point, data_gdf.geometry.values)
+                                    center_points.append(data_gdf.loc[[index]])
+
+
+                                elif crossing_point.geom_type == 'MultiPoint':
+                                    # It is possible that a passing crosses multiple points in a bending rivers so we grab each point clossest to the centerline at each respective crossing
+                                    for point in crossing_point.geoms:
+                                        index, _, _ = geometry.find_closest_geom(point, data_gdf.geometry.values)
+                                        center_points.append(data_gdf.loc[[index]])
+
+                                else:
+                                    # something is not as expected to raise a warning to be investigated
+                                    raise Warning("crossing_point is not a point or multilinestring warrenting investigation")
+
+
+                                # take the mean of the height observations here (TODO: Check if we should do something other than take the average)
+                                crossing_height = data_gdf.height.mean()
+                                crossing_date = data_gdf.date.mean()
 
                                 # add the center point, and mean height value (and any other desired information) to the list of geodataframes to combine
-                                center_points.append(gpd.GeoDataFrame()]
+                                center_points.append(gpd.GeoDataFrame({'height':[crossing_height], 'date': [crossing_date]}, geometry=[crossing_point]))
 
                             elif len(data_gdf) > 0:
                                 
-                                # if only one valid observation then take this
-                                center_points.append(data_gdf[['height', 'lat', 'lon', 'geometry']].loc[[0]])
-
-                            else:
+                                # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
+                                center_points.append(data_gdf.loc[[0]])
 
                                 
         center_points = pd.concat(center_points)
