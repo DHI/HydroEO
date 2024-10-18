@@ -159,9 +159,17 @@ class Project:
         else:
             warnings.warn("Cannot create grid because no rivers have been loaded.")
 
-    def load_river_grid(self):
+    def load_river_grid(self, visualize=False):
 
         self.river_grid = gpd.read_file(os.path.join(self.river_dir, 'river_grid.shp'))
+
+        if visualize:
+            fig, ax = plt.subplots()
+            self.rivers.plot(ax=ax)
+            self.river_grid.plot(ax=ax, edgecolor='black', facecolor='None')
+            ax.set_title('Full River System')
+            fig.tight_layout()
+            plt.show()
 
 
     def download_by_grid(self): # TODO: consider option to overwrite data already in folder or to start where download left off
@@ -184,86 +192,7 @@ class Project:
             order_ids = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=None, download_directory=download_directory, product='ATL13')
 
 
-    def plot_data_by_grid(self, id):
-
-        download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
-        files = list(os.listdir(download_directory))
-
-        # start figure
-        fig, ax = plt.subplots()
-
-        # set boudns
-        xmin, ymin, xmax, ymax = self.river_grid.loc[id, 'geometry'].bounds
-        ax.set_xlim([xmin-0.1, xmax+0.1])
-        ax.set_ylim([ymin-0.1, ymax+0.1])
-
-        # plot rid and river
-        self.river_grid.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
-        self.rivers.plot(ax=ax)
-
-        # load and plot all files for all tracks and crossings
-        for file in files:
-            infile= os.path.join(download_directory, file)
-            for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
-
-                data = icesat2.ATL13(infile, key)
-
-                if data.check_height_data():
-                    data_df = data.read()
-                    data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
-                    data_gdf = data_gdf.loc[data_gdf.within(self.buffered_rivers.unary_union)].reset_index(drop=True)
-
-                    if len(data_gdf) > 0:
-                        data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
-                        data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5)
-
-        fig.tight_layout()
-        plt.show()
-
-    
-    def plot_timeseries_by_grid(self, id):
-
-        # lists to hold plotting data
-        height_list = list()
-        date_list = list()
-        lat_list = list()
-        lon_list = list()
-
-        # load and find average height for all values in river
-        download_directory = os.path.join(self.icesat2_dir, rf"rivers\{id}")
-        files = list(os.listdir(download_directory))
-        for file in files:
-            infile= os.path.join(download_directory, file)
-            for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
-
-                data = icesat2.ATL13(infile, key)
-
-                if data.check_height_data():
-                    data_df = data.read()
-                    data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
-                    data_gdf = data_gdf.loc[data_gdf.within(self.buffered_rivers.unary_union)].reset_index(drop=True)
-
-                    if len(data_gdf) > 0:
-                        
-                        # find average height and date
-                        height_list.append(data_gdf.height.mean())
-                        date_list.append(data_gdf.date.mean())
-                        lat_list.append(data_gdf.lat.mean())
-                        lon_list.append(data_gdf.lon.mean())
-
-        plot_df = pd.DataFrame({'date':date_list , 'height':height_list, 'lat':lat_list, 'lon':lon_list})
-
-        # start figure
-        fig, ax = plt.subplots()
-
-        plot_df.plot(ax=ax, x='date', y='height', kind='scatter', c=plot_df['lon'], cmap=cm.batlow)
-
-        fig.tight_layout()
-        plt.show()
-
-
-
-    def find_river_crossings(self):
+    def extract_river_crossings(self):
         """Method to take all available icesat2 data and find the singular value to use for the river crossing.
         Currently takes the closest ATL13 value to the river centerline. River crossings are saved as a geopandas geodataframe.
 
@@ -297,6 +226,7 @@ class Project:
                             data_df = data.read()
                             data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
                             data_gdf = data_gdf.loc[data_gdf.within(self.buffered_rivers.unary_union)].reset_index(drop=True)
+                            data_gdf['grid_id'] = id
 
                             # ensure that we have at least two points in the river zone to process and centerline value
                             if len(data_gdf) > 1:
@@ -330,14 +260,14 @@ class Project:
                                 center_points.append(data_gdf.iloc[[0]])
 
         # push all of the crossing centerpoints into one geodataframe and reset the index
-        self.crossings = pd.concat(center_points).reset_index(drop=True)
-        self.crossings = self.crossings.set_crs(self.global_crs)
+        self.river_crossings = pd.concat(center_points).reset_index(drop=True)
+        self.river_crossings = self.river_crossings.set_crs(self.global_crs)
 
         # save copy of river crossings so we dont have to repeat the process
-        self.crossings.to_file(os.path.join(self.river_dir, rf"icesat2_crossings.shp"))
+        self.river_crossings.to_file(os.path.join(self.river_dir, rf"icesat2_river_crossings.shp"))
 
     def load_river_crossings(self):
-        self.crossings = gpd.read_file(os.path.join(self.river_dir, rf"icesat2_crossings.shp"))
+        self.river_crossings = gpd.read_file(os.path.join(self.river_dir, rf"icesat2_river_crossings.shp"))
 
     def plot_river_crossings(self):
 
@@ -345,8 +275,47 @@ class Project:
 
         # plot river
         self.rivers.plot(ax=ax)
-        self.crossings['color'] = [int(date2num(i)) for i in self.crossings["date"].values]
-        self.crossings.plot(ax=ax, column="color", vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow)
+        self.river_crossings.plot(ax=ax, column="height", cmap=cm.batlow)
+
+        fig.tight_layout()
+        plt.show()
+
+
+    def plot_river_crossings_by_grid(self, id):
+
+        # start figure
+        fig, ax = plt.subplots()
+
+        # set bounds
+        xmin, ymin, xmax, ymax = self.river_grid.loc[id, 'geometry'].bounds
+        ax.set_xlim([xmin-0.1, xmax+0.1])
+        ax.set_ylim([ymin-0.1, ymax+0.1])
+
+        # plot grid and river
+        self.river_grid.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
+        self.rivers.plot(ax=ax)
+
+        # extract this grids crossings from the main river crossing dataframe
+        data_gdf = self.river_crossings.loc[self.river_crossings.grid_id == id]
+
+        if len(data_gdf) > 0:
+            data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
+            data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5)
+
+        fig.tight_layout()
+        plt.show()
+
+
+    def plot_timeseries_by_grid(self, id):
+
+        # start figure
+        fig, ax = plt.subplots()
+
+        # extract this grids crossings from the main river crossing dataframe
+        data_gdf = self.river_crossings.loc[self.river_crossings.grid_id == id]
+
+        # make a scatter plot with this data
+        data_gdf.plot(ax=ax, x='date', y='height', kind='scatter', c=data_gdf['lon'], cmap=cm.batlow)
 
         fig.tight_layout()
         plt.show()
@@ -360,7 +329,6 @@ class Project:
 
             # grab coordinates of river
             coords = [(x, y) for x, y in self.reservoirs.loc[id, 'geometry'].envelope.exterior.coords]
-            #id = self.reservoirs.loc[i, 'id']
 
             # define bounds of data search
             startdate = date(*self.icesat2_startdate)
@@ -372,6 +340,54 @@ class Project:
 
             # make a simple aoi based on coordinates
             order_ids = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=None, download_directory=download_directory, product='ATL13')
+
+    def extract_reservoir_crossings(self):
+
+        gdf_list = list()
+
+        for id in self.reservoirs.index:
+
+            # load and plot all files for all tracks and crossings
+            download_directory = os.path.join(self.icesat2_dir, rf"reservoirs\{id}")
+            if os.path.exists(download_directory):
+
+                files = list(os.listdir(download_directory))
+                for file in files:
+                    for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
+
+                        infile= os.path.join(download_directory, file)
+                        data = icesat2.ATL13(infile, key)
+
+                        if data.check_height_data():
+                            data_df = data.read()
+                            data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+                            data_gdf = data_gdf.loc[data_gdf.within(self.reservoirs.unary_union)].reset_index(drop=True)
+
+                            if len(data_gdf) > 0:
+
+                                # if we have data for the reservoir add it to the full reservoir dataframe
+                                # add a column keeping track of the reservoir id
+                                data_gdf['id'] = id
+                                gdf_list.append(data_gdf)
+
+        # once all reservoirs are cycled, concatenate them all into a main data frame of valid information
+        self.reservoir_crossings = pd.concat(gdf_list).reset_index(drop=True)
+        self.reservoir_crossings.to_file(os.path.join(self.reservoir_dir, 'icesat2_reservoir_crossings.shp'))
+
+    def load_reservoir_crossings(self):
+        self.reservoir_crossings = gpd.read_file(os.path.join(self.reservoir_dir, rf"icesat2_reservoir_crossings.shp"))
+
+
+    def plot_reservoir_crossings(self):
+
+        fig, ax = plt.subplots()
+
+        # plot river
+        self.reservoirs.plot(ax=ax)
+        self.reservoir_crossings.plot(ax=ax, column="height", cmap=cm.batlow)
+
+        fig.tight_layout()
+        plt.show()
 
     def plot_data_by_reservoir(self, id):
 
@@ -443,8 +459,6 @@ class Project:
 
         # start figure
         fig, ax = plt.subplots()
-
         plot_df.plot(ax=ax, x='date', y='height', kind='scatter', c=plot_df['lon'], cmap=cm.batlow)
-
         fig.tight_layout()
         plt.show()
