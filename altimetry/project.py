@@ -146,6 +146,7 @@ class Project:
             grid_gdf['id'] = grid_gdf.index
 
             self.river_grid = grid_gdf
+            self.river_grid.to_file(os.path.join(self.river_dir, 'river_grid.shp'))
 
             if visualize:
                 fig, ax = plt.subplots()
@@ -157,6 +158,10 @@ class Project:
 
         else:
             warnings.warn("Cannot create grid because no rivers have been loaded.")
+
+    def load_river_grid(self):
+
+        self.river_grid = gpd.read_file(os.path.join(self.river_dir, 'river_grid.shp'))
 
 
     def download_by_grid(self): # TODO: consider option to overwrite data already in folder or to start where download left off
