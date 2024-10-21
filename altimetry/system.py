@@ -73,7 +73,7 @@ class System:
 
         # plot river
         self.gdf.plot(ax=ax)
-        self.crossings.plot(ax=ax, column="height", cmap=cm.batlow)
+        self.crossings.plot(ax=ax, column="height", cmap=cm.batlow, legend=True, legend_kwds={'label': 'Height (m)'})
 
         fig.tight_layout()
         plt.show()
@@ -241,7 +241,7 @@ class Rivers(System):
 
         if len(data_gdf) > 0:
             data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
-            data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5)
+            data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5, legend=True)
 
         fig.tight_layout()
         plt.show()
@@ -364,7 +364,7 @@ class Reservoirs(System):
         
         if len(data_gdf) > 0:
             data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
-            data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5)
+            data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5, legend=True)
 
         fig.tight_layout()
         plt.show()
