@@ -33,7 +33,7 @@ class System:
         print(f"Number of {self.type}: {len(self.gdf)}")
         return self.gdf.head()
     
-    def download_icesat2(self, startdate: tuple, enddate:tuple, grid:bool=False):
+    def download_icesat2(self, startdate: tuple, enddate:tuple, grid:bool=False, start_index=0):
 
         # set grid as download bounds if needed
         if grid:
@@ -49,7 +49,7 @@ class System:
         enddate   = date(*enddate)
 
         # loop through download geometry and download data
-        for i in download_gdf.index:
+        for i in download_gdf.index[start_index:]:
 
             # grab coordinates of geometry
             coords = [(x, y) for x, y in download_gdf.loc[i, 'geometry'].envelope.exterior.coords]
@@ -246,6 +246,61 @@ class Rivers(System):
         fig.tight_layout()
         plt.show()
 
+    
+    def crossings_to_rivers(self, riv_key):
+
+        # add the river name (or id) to the closest crossing point
+        self.crossings = gpd.sjoin_nearest(self.crossings, self.gdf[[riv_key, 'geometry']], how='left')
+
+
+    def plot_river_profile(self, riv_key, name, delta):
+
+        # extract the river associated with the name
+        river = self.gdf.loc[self.gdf[riv_key] == name]
+
+        # extract the crossings matching the river key name
+        crossings = self.crossings.loc[self.crossings[riv_key] == name] # this should be a gdf
+        
+        #### Start the figure
+        # now plot the river profile by distance downriver
+        fig, main_ax = plt.subplots(1, 2, figsize=(10, 5))
+
+        ax = main_ax[0]
+        river.plot(ax=ax)
+        crossings.plot(ax=ax, column='height', cmap=cm.batlow, legend=True, legend_kwds={'label': 'Height (m)'})
+
+        # Now we convert to local crs and do the calculateions for where on the river the crossing is
+        river = river.to_crs(river.estimate_utm_crs())
+        river_line = river.geometry.values[0]
+
+        crossings = crossings.to_crs(crossings.estimate_utm_crs())
+
+        # interpolate the river linestring into points
+        if river_line.geom_type == 'MultiLinesString':
+
+            # TODO: convert to linestring somehow?
+            pass
+
+        # now assume we are dealing with a linestring
+        # use shapely interpolate to get the points at a known interval downstream
+        river_points, point_dist = geometry.line_to_points(river_line, delta)
+
+        # find the nearest linepoint to the crossings and record the distance along the river
+        for i in crossings.index:
+            point = crossings.loc[i, 'geometry']
+            index, _, _ = geometry.find_closest_geom(point, river_points)
+            crossings.loc[i, 'dist'] = point_dist[index]
+
+        # make the 1d profile
+        ax = main_ax[1]
+        plot = ax.scatter(crossings.dist/1000, crossings.height, c=[d.month for d in crossings.date], cmap=cm.brocO)
+        #plot = crossings.plot(ax=ax, x='dist', y='height', kind='scatter', c=[d.month for d in crossings.date], cmap=cm.batlow, legend=True)
+        cbar = fig.colorbar(plot, label='Month')
+        ax.set_xlabel("Distance downriver (km)")
+        ax.set_ylabel("Height (m)")
+
+        fig.tight_layout()
+        plt.show()
 
 
 @dataclass

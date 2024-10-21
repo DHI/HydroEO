@@ -42,3 +42,34 @@ def find_closest_geom(geom: shapely.Geometry , geoms: list) -> tuple :
     index = np.argmin(distance_list)
 
     return (index, geoms[index], distance_list[index])
+
+
+def line_to_points(line: shapely.LineString, delta: float) -> tuple :
+    """returns a list of points and a list of distances at a given interval along the provided linestring.
+    Note that the last point will not be returned unless it lies along a multiple of the interval. This option coudl eb included if needed.
+
+    Parameters
+    ----------
+    line : shapely.LineString
+        the line to get points along
+    delta : float
+        the distance that should be between each point
+
+    Returns
+    -------
+    tuple
+        - list of points along linstring
+        - list of distances associated with the points
+    """
+    points = list()
+    distances = list()
+
+    # calculate the length of the linestring
+    length = line.length
+
+    # loop through possible distances at that interval and record the point and distance
+    for dist in np.arange(0, length+delta, delta):
+        points.append(line.interpolate(dist))
+        distances.append(dist)
+
+    return points, distances
