@@ -80,13 +80,18 @@ class System:
 
 
     
-    def plot_timeseries_by_id(self, id):
+    def plot_timeseries_by_id(self, id, summarize=True):
 
         # start figure
         fig, ax = plt.subplots()
 
         # extract this grids crossings from the main river crossing dataframe
         data_gdf = self.crossings.loc[self.crossings.dl_id == id]
+
+        if summarize:
+            # apply simple mean groupby to make daily estimate (There is no adjustment for bias here just an example of how to get to a single daily value quickly)
+            data_gdf['date'] = data_gdf.date.dt.floor('d')
+            data_gdf = data_gdf[['date', 'height', 'lon']].groupby(by='date').mean().reset_index()
 
         # make a scatter plot with this data
         data_gdf.plot(ax=ax, x='date', y='height', kind='scatter', c=data_gdf['lon'], cmap=cm.batlow)
