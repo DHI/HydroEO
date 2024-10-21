@@ -16,8 +16,10 @@ from matplotlib.dates import date2num
 
 from datetime import date, datetime
 
+
+from altimetry.sat_utils import icesat2, sentinel
 from altimetry.system import Rivers, Reservoirs
-from altimetry import icesat2, geometry, utils
+from altimetry import geometry, utils
 
 @dataclass
 class Project:
@@ -65,6 +67,31 @@ class Project:
 
             self.icesat2_startdate = self.config['icesat2']["startdate"]
             self.icesat2_enddate = self.config['icesat2']["enddate"]
+        
+        ### Parameters associated with Sentinel downloads
+        if 'creodias' in self.config.keys():
+            self.creodias_user = self.config['creodias']["username"]
+            self.creodias_pass = self.config['creodias']["password"]
+        
+        if 'sentinel3' in self.config.keys():
+
+            if 'download_dir' in self.config['sentinel3'].keys():
+                self.sentinel3_dir = self.config['sentinel3']["download_dir"]
+            else:
+                self.sentinel3_dir = os.path.join(self.main_dir, 'sentinel3')
+
+            self.sentinel3_startdate = self.config['sentinel3']["startdate"]
+            self.sentinel3_enddate = self.config['sentinel3']["enddate"]
+
+        if 'sentinel6' in self.config.keys():
+
+            if 'download_dir' in self.config['sentinel6'].keys():
+                self.sentinel6_dir = self.config['sentinel6']["download_dir"]
+            else:
+                self.sentinel6_dir = os.path.join(self.main_dir, 'sentinel6')
+
+            self.sentinel6_startdate = self.config['sentinel6']["startdate"]
+            self.sentinel6_enddate = self.config['sentinel6']["enddate"]
 
 
         ### Set the crs from the congiguration file is possible
@@ -86,6 +113,8 @@ class Project:
 
             self.rivers = Rivers(gdf = gpd.read_file( self.config['rivers']['path']),
                                  icesat2_dir = self.icesat2_dir,
+                                 sentinel3_dir = self.sentinel3_dir,
+                                 sentinel6_dir = self.sentinel6_dir,
                                  output_dir = os.path.join(self.main_dir, "rivers"),
                                  buffer_width = self.config['rivers']['buffer_width'],
                                  grid_res     = self.config['rivers']['grid_res']
@@ -97,6 +126,8 @@ class Project:
 
             self.reservoirs = Reservoirs(gdf = gpd.read_file(self.config['reservoirs']['path']),
                                          icesat2_dir = self.icesat2_dir,
+                                         sentinel3_dir = self.sentinel3_dir,
+                                         sentinel6_dir = self.sentinel6_dir,
                                          output_dir = os.path.join(self.main_dir, "reservoirs")
                                          )
             

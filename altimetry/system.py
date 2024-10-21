@@ -12,7 +12,8 @@ from matplotlib.dates import date2num
 
 from datetime import date, datetime
 
-from altimetry import icesat2, geometry, utils
+from altimetry.sat_utils import icesat2, sentinel
+from altimetry import geometry, utils
 
 from tqdm import tqdm
 
@@ -23,6 +24,8 @@ class System:
 
     gdf: gpd.GeoDataFrame
     icesat2_dir: str
+    sentinel3_dir : str
+    sentinel6_dir : str
     output_dir: str
 
     def __post_init__(self):
@@ -33,7 +36,7 @@ class System:
         print(f"Number of {self.type}: {len(self.gdf)}")
         return self.gdf.head()
     
-    def download_icesat2(self, startdate: tuple, enddate:tuple, grid:bool=False, start_index=0):
+    def download_altimetry(self, product:str, startdate: tuple, enddate:tuple, credentials=None, grid:bool=False, start_index=0):
 
         # set grid as download bounds if needed
         if grid:
@@ -55,12 +58,36 @@ class System:
             coords = [(x, y) for x, y in download_gdf.loc[i, 'geometry'].envelope.exterior.coords]
             id = download_gdf.loc[i, 'dl_id']
 
-            # define and if needed create directory for each download geometry
-            download_dir = os.path.join(self.icesat2_dir, rf"{self.type}\{id}")
-            utils.ifnotmakedirs(download_dir)
+            if product.upper() == 'ATL13':
 
-            # make a simple aoi based on coordinates
-            order_ids = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=None, download_directory=download_dir, product='ATL13')
+                # define and if needed create directory for each download geometry
+                download_dir = os.path.join(self.icesat2_dir, rf"{self.type}\{id}")
+                utils.ifnotmakedirs(download_dir)
+
+                # make a simple aoi based on coordinates
+                _ = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=credentials, download_directory=download_dir, product='ATL13')
+
+            elif product.upper() == 'S3':
+            
+                # define and if needed create directory for each download geometry
+                download_dir = os.path.join(self.sentinel3_dir, rf"{self.type}\{id}")
+                utils.ifnotmakedirs(download_dir)
+
+                # make a simple aoi based on coordinates
+                sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S3')
+
+            elif product.upper() == 'S6':
+            
+                # define and if needed create directory for each download geometry
+                download_dir = os.path.join(self.sentinel6_dir, rf"{self.type}\{id}")
+                utils.ifnotmakedirs(download_dir)
+
+                # make a simple aoi based on coordinates
+                sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S6')
+
+            else:
+
+                raise ValueError(f'"{product}" is not accepted as a valid download product. Please provide a valid product.')
 
 
     def load_crossings(self):

@@ -27,14 +27,14 @@ https://icesat-2.gsfc.nasa.gov/science/specs
 The sentinel series can provide more temporally dense inland water observations. Currently there is no support for downloading and including this data within virtual stations.
 
 ## What is currently included in the library?
-- (Under development) - Provide shape file of river or rivers of interest to initiate search and dowload of available
-- (Under development) - Get report of all available crossings over river of interest
-- (Under development) - provide similar support for reservoirs
-- (Under development) - provide means of grouping reservoirs and rivers within a project class that can easily process a basin or mike project area to provide usefull data to mike cloud
+- (Needs testing) - Provide shape file of river or rivers of interest to initiate search and dowload of available
+- (Needs testing) - Get report of all available crossings over river of interest
+- (Needs testing) - provide similar support for reservoirs
+- (Needs testing) - provide means of grouping reservoirs and rivers within a project class that can easily process a basin or mike project area to provide usefull data to mike cloud
+- (Under development) - Implement S3A, S3B and S6 data downloads
 
 ## What could come?
 - (not started) - Allow for near real time updates of water levels along river
-. (not started) - Implement S3A, S3B and S6 data downloads
 - (not started) - Suggest grouping of crossings into virtual stations along river by reach?
 - (not started) - Group crossings over river of interest into selected virtual stations
 - (not started) - Organize historical observations for virtual stations and provide reports for each virtual station

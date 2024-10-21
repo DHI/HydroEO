@@ -10,23 +10,6 @@ import h5py
 import numpy as np
 import pandas as pd
 
-"""
-# import necessary packages
-
-
-import netCDF4
-
-
-
-import rasterio
-import tables as tb
-
-from datetime import datetime, timedelta
-from typing import List, Tuple
-"""
-
-
-
 
 
 def query(aoi: list, startdate: datetime.date, enddate: datetime.date, earthdata_credentials: tuple, download_directory: str, product: str  ='ATL13') -> object:
