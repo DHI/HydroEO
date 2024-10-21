@@ -318,6 +318,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#altimetry.geometry.line_to_points" class="md-nav__link">
+    <span class="md-ellipsis">
+      line_to_points
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#altimetry.utils" class="md-nav__link">
     <span class="md-ellipsis">
       utils
@@ -433,6 +442,15 @@
   <a href="#altimetry.geometry.find_closest_geom" class="md-nav__link">
     <span class="md-ellipsis">
       find_closest_geom
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#altimetry.geometry.line_to_points" class="md-nav__link">
+    <span class="md-ellipsis">
+      line_to_points
     </span>
   </a>
   
@@ -964,6 +982,97 @@ Your list must contain at least four points, where the first and last are identi
             <td>
               <div class="doc-md-description">
                 <p>tuple containg the index of the point within the list that is closest to the main point, the point object, and the distance</p>
+              </div>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h2 id="altimetry.geometry.line_to_points" class="doc doc-heading">
+            <code class="highlight language-python"><span class="n">line_to_points</span><span class="p">(</span><span class="n">line</span><span class="p">,</span> <span class="n">delta</span><span class="p">)</span></code>
+
+</h2>
+
+
+    <div class="doc doc-contents ">
+
+        <p>returns a list of points and a list of distances at a given interval along the provided linestring.
+Note that the last point will not be returned unless it lies along a multiple of the interval. This option coudl eb included if needed.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>line</code>
+            </td>
+            <td>
+                  <code><span title="shapely.LineString">LineString</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the line to get points along</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>delta</code>
+            </td>
+            <td>
+                  <code>float</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>the distance that should be between each point</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+    <p><span class="doc-section-title">Returns:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code>tuple</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <ul>
+<li>list of points along linstring</li>
+<li>list of distances associated with the points</li>
+</ul>
               </div>
             </td>
           </tr>
