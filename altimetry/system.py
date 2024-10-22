@@ -76,6 +76,10 @@ class System:
                 # make a simple aoi based on coordinates
                 sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S3')
 
+                # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
+                utils.unzip_dir_files(download_dir, download_dir)
+                sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
+
             elif product.upper() == 'S6':
             
                 # define and if needed create directory for each download geometry
@@ -84,6 +88,10 @@ class System:
 
                 # make a simple aoi based on coordinates
                 sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S6')
+
+                # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
+                utils.unzip_dir_files(download_dir, download_dir)
+                sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
             else:
 

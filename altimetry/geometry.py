@@ -73,3 +73,20 @@ def line_to_points(line: shapely.LineString, delta: float) -> tuple :
         distances.append(dist)
 
     return points, distances
+
+
+def format_coord_list(coords : list):
+
+    if not hasattr(coords[0], '__iter__'):
+
+        # make sure we have an even number of elements in the list
+        if len(coords)%2 > 0:
+            raise ValueError("The inputed list of elements is not even. Please retry the query with an even list of coordinates or a list of coordinate pairs")
+
+        # unpack the 1d list into coordinate pairs
+        new_list = list()
+        while (len(coords) > 0):
+            new_list.append((coords.pop[0], coords.pop(0)))
+        coords = new_list
+
+    return coords
