@@ -80,6 +80,9 @@ class System:
                 utils.unzip_dir_files(download_dir, download_dir)
                 sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
+                # clean up zip and unzipped folders keeping only the remaining subsetted data
+                utils.remove_non_exts(download_dir, '.nc')
+
             elif product.upper() == 'S6':
             
                 # define and if needed create directory for each download geometry
@@ -90,11 +93,13 @@ class System:
                 sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S6')
 
                 # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
-                utils.unzip_dir_files(download_dir, download_dir)
+                utils.unzip_dir_files_with_ext(download_dir, download_dir, '.nc')
                 sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
-            else:
+                # clean up zip and unzipped folders keeping only the remaining subsetted data
+                utils.remove_non_exts(download_dir, '.nc')
 
+            else:
                 raise ValueError(f'"{product}" is not accepted as a valid download product. Please provide a valid product.')
 
 

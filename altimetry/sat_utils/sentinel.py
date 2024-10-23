@@ -170,11 +170,11 @@ def subset(aoi: list, download_dir: str, dest_dir: str, file_id: str ='enhanced_
                     lat = 'latitude'
                     lon = 'longitude'
 
-                    lat20 = nc[freq_20]['ku'][lat]
-                    lon20 = nc[freq_20]['ku'][lon]
+                    lat20 = nc[freq_20]['ku'][lat][:]
+                    lon20 = nc[freq_20]['ku'][lon][:]
 
-                    lat01 = nc[freq_01][lat]
-                    lon01 = nc[freq_01][lon]
+                    lat01 = nc[freq_01][lat][:]
+                    lon01 = nc[freq_01][lon][:]
 
 
                 min_index20 = len(lat20)+1
@@ -220,13 +220,27 @@ def subset(aoi: list, download_dir: str, dest_dir: str, file_id: str ='enhanced_
 
                     # Check that everything crucial is there:
                     with netCDF4.Dataset(file) as src, netCDF4.Dataset(nc_cropped, "r") as dst:
-                        for var in VARIABLES[product]:
-                            if var not in src.variables.keys():
-                                print(f"{var} missing from copied file.")
 
-                        for att in ATTRIBUTES[product]:
-                            if att not in src.ncattrs():
-                                print(f"{att} missing from copied file.")
+                        if product == 'S3':
+                            for var in VARIABLES[product]:
+                                if var not in src.variables.keys():
+                                    print(f"{var} missing from copied file.")
+
+                            for att in ATTRIBUTES[product]:
+                                if att not in src.ncattrs():
+                                    print(f"{att} missing from copied file.")
+
+                        if product == 'S6':
+                            for var in VARIABLES[product]:
+                                if var not in src['data_20']['ku'].variables.keys():
+                                    print(f"{var} missing from copied file.")
+
+                            for att in ATTRIBUTES[product]:
+                                if att not in src.ncattrs():
+                                    print(f"{att} missing from copied file.")
+
+                else:
+                    print("No data within bounds, no subsetted file created")
 
 
 
@@ -278,9 +292,14 @@ def __crop_s6(src, dst, index_bounds_20, index_bounds_01):
     # copy global attributes all at once via dictionary
     dst.setncatts(src.__dict__)
 
+    # go through all groups within file
     for gr_name, group in src.groups.items():
+
+        # create a duplicate group in the destination
         dst.createGroup(gr_name)
         dst[gr_name].setncatts(src[gr_name].__dict__)
+
+
         if '_01' in gr_name:
             for name, dimension in src[gr_name].dimensions.items():
                 dst[gr_name].createDimension(
@@ -461,5 +480,89 @@ class Sentinel3:
         date = datetime.datetime(int(str_date[0:4]), int(str_date[4:6]), int(str_date[6:8]), int(str_date[9:11]),
                         int(str_date[11:13]))
         vs['date_acquisition'] = np.repeat(date, len(self.height))
+
+        return vs
+    
+
+
+@dataclass
+class Sentinel6:
+
+    infile : str
+
+    def __post_init__(self):
+
+        self.file_name = os.path.basename(self.infile)
+
+        # TODO: some kind of check to make sure we can open the data
+
+        # proceed with opening the data
+        with netCDF4.Dataset(self.infile, 'r') as src:
+
+            # subset into the file to extract 20 and 1hz data
+            self.data_20 = src['data_20']['ku']
+            self.data_01 = src['data_01']
+            
+            # pull data from the 20Hz TODO: could add a set from file attribute as with sentinel 3 class, this would check if the attribute exists before loading
+            self.lat = self.data_20['latitude'][:].filled()
+            self.lon = self.data_20['longitude'][:].filled()
+            self.sig0 = self.data_20.variables['sig0_ocog'][:].filled()
+            self.peakiness = self.data_20['peakiness'][:].filled()
+            self.tai = self.data_20.variables['time_tai'][:].filled()
+            self.geoid = self.data_20['geoid'][:].filled()
+            self.altitude = self.data_20.variables['altitude'][:].filled()
+            self.range_ocog = self.data_20.variables['range_ocog'][:].filled()
+            self.wet_tropo = self.data_20.variables['model_wet_tropo_cor_measurement_altitude'][:].filled()
+            self.dry_tropo = self.data_20.variables['model_dry_tropo_cor_measurement_altitude'][:].filled() 
+            
+            # calculate the height
+            self.__interpolate_tides()
+            self.height = (self.altitude - self.range_ocog + self.wet_tropo + self.solid_earth_tide + self.pole_tide + self.dry_tropo - self.geoid)
+
+            # set the length of data points
+            self.length = len(self.height)
+
+            # Set some auxiliary data
+            self.first_meas_lat = src.getncattr('first_measurement_latitude')
+            self.last_meas_lat = src.getncattr('last_measurement_latitude')
+            self.pass_number = src.getncattr('pass_number')
+            self.absolute_rev_number = src.getncattr('absolute_rev_number')
+
+
+    def __interpolate_tides(self):
+
+        # temperary variables from 1Hz frequency to use for interpolation
+        lat_01 = self.data_01['latitude'][:].filled()
+        solid = self.data_01['solid_earth_tide'][:].filled() # check if we can open solid variable?
+        pole  = self.data_01['pole_tide'][:].filled()
+
+        ### interpolate tides
+        if len(solid) > 1:
+            self.solid_earth_tide = np.interp(self.lat, lat_01, solid)
+            self.pole_tide = np.interp(self.lat, lat_01, pole)
+
+        # np.interp sorts to ascending values - if descending, this has to be corrected.
+        if lat_01[0] > lat_01[1]:
+            self.solid_earth_tide = np.interp(self.lat, np.flip(lat_01), np.flip(solid))
+            self.pole_tide = np.interp(self.lat, np.flip(lat_01), np.flip(pole))
+
+    
+    def read(self):    
+
+        # create initial dataframe
+        vs = pd.DataFrame({'height': self.height,
+                        'lat': self.lat,
+                        'lon': self.lon,
+                        'date': [(datetime.datetime(2000, 1, 1) + datetime.timedelta(seconds=c2_time)).date()
+                                    for c2_time in self.tai],
+                        'sigma0': self.sig0,
+                        'wf_peakiness': self.peakiness,
+                        'geoid': self.geoid})
+
+        # calculate additional data columns
+        vs['sat_path'] = np.repeat('descending' if self.first_meas_lat - self.last_meas_lat > 0 else 'ascending', self.length)
+        vs['pass'] = np.repeat(self.pass_number, self.length)
+        vs['orbit'] = np.repeat(self.absolute_rev_number, self.length)
+        vs['file_name'] = np.repeat(self.file_name, self.length)
 
         return vs
