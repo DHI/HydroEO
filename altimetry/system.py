@@ -23,14 +23,7 @@ from tqdm import tqdm
 class System:
 
     gdf: gpd.GeoDataFrame
-    icesat2_dir: str
-    sentinel3_dir : str
-    sentinel6_dir : str
-    output_dir: str
-
-    def __post_init__(self):
-
-        utils.ifnotmakedirs(self.output_dir)
+    dirs: dict
 
     def report(self):
         print(f"Number of {self.type}: {len(self.gdf)}")
@@ -61,7 +54,7 @@ class System:
             if product.upper() == 'ATL13':
 
                 # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.icesat2_dir, rf"{self.type}\{id}")
+                download_dir = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
                 utils.ifnotmakedirs(download_dir)
 
                 # make a simple aoi based on coordinates
@@ -70,7 +63,7 @@ class System:
             elif product.upper() == 'S3':
             
                 # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.sentinel3_dir, rf"{self.type}\{id}")
+                download_dir = os.path.join(self.dirs['sentinel3'], rf"{self.type}\{id}")
                 utils.ifnotmakedirs(download_dir)
 
                 # make a simple aoi based on coordinates
@@ -86,7 +79,7 @@ class System:
             elif product.upper() == 'S6':
             
                 # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.sentinel6_dir, rf"{self.type}\{id}")
+                download_dir = os.path.join(self.dirs['sentinel6'], rf"{self.type}\{id}")
                 utils.ifnotmakedirs(download_dir)
 
                 # make a simple aoi based on coordinates
@@ -104,7 +97,7 @@ class System:
 
 
     def load_crossings(self):
-        self.crossings = gpd.read_file(os.path.join(self.output_dir, rf"icesat2_crossings.shp"))
+        self.crossings = gpd.read_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))
 
 
     def map_all_crossings(self):
@@ -151,6 +144,9 @@ class Rivers(System):
 
         self.type = 'rivers'
 
+        self.dirs['output'] = os.path.join(self.dirs['main'], self.type)
+        utils.ifnotmakedirs(self.dirs['output'])
+
     def make_buffer(self, local_crs):
 
         # make a buffered version of the rivers for use later on
@@ -173,13 +169,13 @@ class Rivers(System):
         grid_gdf['dl_id'] = grid_gdf.index # set a grid id based on the remaing grids
 
         # save grid and set attribute
-        grid_gdf.to_file(os.path.join(self.output_dir, f'grid.shp'))
+        grid_gdf.to_file(os.path.join(self.dirs['output'], f'grid.shp'))
         self.grid = grid_gdf
 
 
     def load_grid(self):
 
-        self.grid = gpd.read_file(os.path.join(self.output_dir, f'grid.shp'))
+        self.grid = gpd.read_file(os.path.join(self.dirs['output'], f'grid.shp'))
             
 
     def visualize_grid(self):
@@ -209,7 +205,7 @@ class Rivers(System):
         for id in tqdm(self.grid.index):
 
             # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
-            download_directory = os.path.join(self.icesat2_dir, rf"{self.type}\{id}")
+            download_directory = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
             if os.path.exists(download_directory):
 
                 # load date for all tracks and crossings
@@ -264,7 +260,7 @@ class Rivers(System):
         self.crossings = self.crossings.set_crs(self.gdf.crs)
 
         # save copy of river crossings so we dont have to repeat the process
-        self.crossings.to_file(os.path.join(self.output_dir, rf"icesat2_crossings.shp"))
+        self.crossings.to_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))
 
 
     def map_crossings_by_grid(self, id):
@@ -354,7 +350,39 @@ class Reservoirs(System):
     def __post_init__(self):
 
         self.type = 'reservoirs'
-        self.gdf['dl_id'] = self.gdf.index
+
+        self.dirs['output'] = os.path.join(self.dirs['main'], self.type)
+        utils.ifnotmakedirs(self.dirs['output'])
+
+        self.geom_type = self.gdf.loc[0, 'geometry'].geom_type
+        # self.gdf['dl_id'] = self.gdf.index
+
+
+    def assign_pld_id(self, local_crs, max_distance):
+
+        # load the pld
+        pld = gpd.read_file(self.dirs['pld'])
+
+        # perform the spatial join
+        joined_gdf = gpd.sjoin_nearest(self.gdf.to_crs(local_crs), pld.to_crs(local_crs), how='left', max_distance=max_distance, distance_col='dist_to_pld')
+        joined_gdf = joined_gdf.to_crs(self.gdf.crs)
+
+        # rename the joined columns to keep it clear
+        joined_gdf = joined_gdf.rename(columns={'lake_id':'prior_lake_id', 'res_id':'prior_res_id'})
+
+        # reset the reservoir data frame to include the changes
+        self.gdf = joined_gdf
+
+
+    def flag_missing_priors(self):
+
+        present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
+        missing = self.gdf.loc[self.gdf.prior_lake_id.isnull()].reset_index(drop=True)
+
+        present.to_file(os.path.join(self.dirs['output'], 'present_in_pld.shp'))
+        missing.to_file(os.path.join(self.dirs['output'], 'missing_in_pld.shp'))
+
+        print(f"Out of the {len(self.gdf)} reservoirs, {len(present)} area present and {len(missing)} are missing from the PLD.")
 
 
     def extract_crossings(self):
@@ -364,7 +392,7 @@ class Reservoirs(System):
         for id in tqdm(self.gdf.index):
 
             # load and plot all files for all tracks and crossings
-            download_directory = os.path.join(self.icesat2_dir, rf"{self.type}\{id}")
+            download_directory = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
             if os.path.exists(download_directory):
 
                 files = list(os.listdir(download_directory))
@@ -389,7 +417,7 @@ class Reservoirs(System):
         # once all reservoirs are cycled, concatenate them all into a main data frame of valid information
         self.crossings = pd.concat(gdf_list).reset_index(drop=True)
         self.crossings = self.crossings.set_crs(self.gdf.crs)
-        self.crossings.to_file(os.path.join(self.output_dir, f'icesat2_crossings.shp'))
+        self.crossings.to_file(os.path.join(self.dirs['output'], f'icesat2_crossings.shp'))
 
 
     def map_crossings_by_id(self, id):

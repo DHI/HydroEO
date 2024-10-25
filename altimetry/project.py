@@ -41,23 +41,25 @@ class Project:
 
     def __post_init__(self):
 
+        self.dirs = dict()
+
         ### Load in the config file and extract parameters
         with open(self.config, 'rt') as f:
             self.config = yaml.safe_load(f.read())
 
         ### Define the project directory for saving outputs, etc
         if 'project' in self.config.keys():
-            self.main_dir = self.config['project']["main_dir"]
-            utils.ifnotmakedirs(self.main_dir)
+            self.dirs['main'] = self.config['project']["main_dir"]
+            utils.ifnotmakedirs(self.dirs['main'])
         else:
             raise Warning("Project directory must be defined within configuration file")
 
-
-        ### Parameters associated with icesat2 downloads
+        ### Parameters associated with download of SWOT prior databases
         if 'hydroweb' in self.config.keys():
             if 'api_key' in self.config['hydroweb']:
                 os.environ['EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY'] = self.config['hydroweb']["api_key"]
 
+        ### Parameters associated with icesat2 downloads
         if 'earthdata' in self.config.keys():
             self.earthdata_user = self.config['earthdata']["username"]
             self.earthdata_pass = self.config['earthdata']["password"]
@@ -65,9 +67,9 @@ class Project:
         if 'icesat2' in self.config.keys():
 
             if 'download_dir' in self.config['icesat2'].keys():
-                self.icesat2_dir = self.config['icesat2']["download_dir"]
+                self.dirs['icesat2'] = self.config['icesat2']["download_dir"]
             else:
-                self.icesat2_dir = os.path.join(self.main_dir, 'icesat2')
+                self.dirs['icesat2'] = os.path.join(self.dirs['main'], 'icesat2')
 
             self.icesat2_startdate = self.config['icesat2']["startdate"]
             self.icesat2_enddate = self.config['icesat2']["enddate"]
@@ -80,9 +82,9 @@ class Project:
         if 'sentinel3' in self.config.keys():
 
             if 'download_dir' in self.config['sentinel3'].keys():
-                self.sentinel3_dir = self.config['sentinel3']["download_dir"]
+                self.dirs['sentinel3'] = self.config['sentinel3']["download_dir"]
             else:
-                self.sentinel3_dir = os.path.join(self.main_dir, 'sentinel3')
+                self.dirs['sentinel3'] = os.path.join(self.dirs['main'], 'sentinel3')
 
             self.sentinel3_startdate = self.config['sentinel3']["startdate"]
             self.sentinel3_enddate = self.config['sentinel3']["enddate"]
@@ -90,15 +92,15 @@ class Project:
         if 'sentinel6' in self.config.keys():
 
             if 'download_dir' in self.config['sentinel6'].keys():
-                self.sentinel6_dir = self.config['sentinel6']["download_dir"]
+                self.dirs['sentinel6'] = self.config['sentinel6']["download_dir"]
             else:
-                self.sentinel6_dir = os.path.join(self.main_dir, 'sentinel6')
+                self.dirs['sentinel6'] = os.path.join(self.dirs['main'], 'sentinel6')
 
             self.sentinel6_startdate = self.config['sentinel6']["startdate"]
             self.sentinel6_enddate = self.config['sentinel6']["enddate"]
 
 
-        ### Set the crs from the congiguration file is possible
+        ### Set the crs from the congiguration file if possible
         if 'gis' in self.config.keys():
 
             if 'global_crs' in self.config['gis'].keys():
@@ -116,10 +118,7 @@ class Project:
         if 'rivers' in self.config.keys():
 
             self.rivers = Rivers(gdf = gpd.read_file( self.config['rivers']['path']),
-                                 icesat2_dir = self.icesat2_dir,
-                                 sentinel3_dir = self.sentinel3_dir,
-                                 sentinel6_dir = self.sentinel6_dir,
-                                 output_dir = os.path.join(self.main_dir, "rivers"),
+                                 dirs = self.dirs,
                                  buffer_width = self.config['rivers']['buffer_width'],
                                  grid_res     = self.config['rivers']['grid_res']
                                  )
@@ -128,11 +127,10 @@ class Project:
 
         if 'reservoirs' in self.config.keys():
 
+            self.dirs['pld'] = self.config['reservoirs']['prior_path']
+
             self.reservoirs = Reservoirs(gdf = gpd.read_file(self.config['reservoirs']['path']),
-                                         icesat2_dir = self.icesat2_dir,
-                                         sentinel3_dir = self.sentinel3_dir,
-                                         sentinel6_dir = self.sentinel6_dir,
-                                         output_dir = os.path.join(self.main_dir, "reservoirs")
+                                         dirs = self.dirs
                                          )
             
             self.reservoirs.gdf = self.reservoirs.gdf.to_crs(self.global_crs)
