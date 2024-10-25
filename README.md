@@ -2,6 +2,11 @@
 
 Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over rivers and reservoirs for integration into larger water resource projects.
 
+> [!CAUTION]
+> rk-altimetry is experimental and under development.
+> * The package is expected to be ready for limited use by Janurary 2025
+
+
 ## What altimetry missions are available?
 
 ### ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13)
