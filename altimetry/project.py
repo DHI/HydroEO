@@ -60,9 +60,19 @@ class Project:
                 os.environ['EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY'] = self.config['hydroweb']["api_key"]
 
         ### Parameters associated with icesat2 downloads
-        if 'earthdata' in self.config.keys():
-            self.earthdata_user = self.config['earthdata']["username"]
-            self.earthdata_pass = self.config['earthdata']["password"]
+        if 'earthaccess' in self.config.keys():
+            self.earthdata_user = self.config['earthaccess']["username"]
+            self.earthdata_pass = self.config['earthaccess']["password"]
+
+        if 'swot' in self.config.keys():
+
+            if 'download_dir' in self.config['swot'].keys():
+                self.dirs['swot'] = self.config['swot']["download_dir"]
+            else:
+                self.dirs['swot'] = os.path.join(self.dirs['main'], 'swot')
+
+            self.swot_startdate = self.config['swot']["startdate"]
+            self.swot_enddate = self.config['swot']["enddate"]
         
         if 'icesat2' in self.config.keys():
 

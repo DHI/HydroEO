@@ -78,7 +78,7 @@ def query(aoi: list, startdate: datetime.date, enddate: datetime.date, creodias_
 
     # download single product by product ID
     print(f"Downloading {len(ids)} files.")
-    for i in range(0, 2):#len(ids)): TODO change BACK!!!
+    for i in range(0, len(ids)):
         outfile = os.path.join(download_directory, file_prefix + str(i) + '.zip')
         download_creodias(ids[i], outfile=outfile, username=creodias_credentials[0], password=creodias_credentials[1])
 

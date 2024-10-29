@@ -12,7 +12,7 @@ from matplotlib.dates import date2num
 
 from datetime import date, datetime
 
-from altimetry.sat_utils import icesat2, sentinel
+from altimetry.sat_utils import swot, icesat2, sentinel
 from altimetry import geometry, utils
 
 from tqdm import tqdm
@@ -31,18 +31,62 @@ class System:
     
     def download_altimetry(self, product:str, startdate: tuple, enddate:tuple, credentials=None, grid:bool=False, start_index=0):
 
+        supported_products = ['ATL13', 'S3', 'S6', 'SWOT_LAKE']
+
+        # check if the requested product is supported
+        product = product.upper()
+        if product not in supported_products:
+            raise ValueError(f'"{product}" is not accepted as a valid download product. Please provide a valid product.')
+
+
+        ### Set the download geometry for the search bounds
         # set grid as download bounds if needed
         if grid:
             if hasattr(self, 'grid'):
-                download_gdf = self.grid
+                download_gdf = self.grid.copy()
             else:
                 raise NameError('Object has no atttribute: grid. Make sure to create grid before enabling this option')
         else:
-            download_gdf = self.gdf
+            download_gdf = self.download_gdf.copy()
 
         # unpack and format the download dates
         startdate = date(*startdate)
         enddate   = date(*enddate)
+
+        ########################################################################################################################
+        ##### We have to handle different downloads differently based on the way products are delivered in "granules"
+        ### Swot data is provided in large granuals that likley cover most of the full AOI and downloading per reservoir or grid may be redundant
+        ### Icesat-2 data can be easily subsetted within the product order so an individual download make sense
+        ### Sentinel 3 and 6 data is provided in smaller granules so we can also request per small area and process one at a time
+
+        # First check if it is swot data that should be downloaded for the area
+        if product == 'SWOT_LAKE':
+
+            # define and if needed create directory for each download geometry
+            download_dir = os.path.join(self.dirs['swot'], rf"{self.type}")
+            utils.ifnotmakedirs(download_dir)
+
+            # grab coordinates of full area of interest
+            coords = [(x, y) for x, y in download_gdf.unary_union.envelope.exterior.coords]
+
+            # query all available data
+            results = swot.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=credentials, product='SWOT_L2_HR_LakeSP_2.0')
+
+            # loop through results and check if it is the product we want (right now it must include "Prior"), later we can try and get the observed water bodies and match them
+            for result in results:
+
+                # just based on that we know where to find the long product name and download link, may need to change if naming conventions change!
+                product_pieces = result.data_links()[0].split('/')[-1].split('_')
+                if 'Prior' in product_pieces:
+
+                    # download the individual file
+                    files = swot.download(result, download_directory=download_dir)
+
+                    # we want to subset the downloaded file to only include known waterbodies
+                    swot.subset_by_id(files, download_gdf.dl_id.astype(int).values)
+
+
+
 
         # loop through download geometry and download data
         for i in download_gdf.index[start_index:]:
@@ -57,7 +101,7 @@ class System:
                 download_dir = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
                 utils.ifnotmakedirs(download_dir)
 
-                # make a simple aoi based on coordinates
+                # query and download data
                 _ = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=credentials, download_directory=download_dir, product='ATL13')
 
             elif product.upper() == 'S3':
@@ -66,7 +110,7 @@ class System:
                 download_dir = os.path.join(self.dirs['sentinel3'], rf"{self.type}\{id}")
                 utils.ifnotmakedirs(download_dir)
 
-                # make a simple aoi based on coordinates
+                # query and download data
                 sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S3')
 
                 # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
@@ -82,7 +126,7 @@ class System:
                 download_dir = os.path.join(self.dirs['sentinel6'], rf"{self.type}\{id}")
                 utils.ifnotmakedirs(download_dir)
 
-                # make a simple aoi based on coordinates
+                # query and download data
                 sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S6')
 
                 # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
@@ -92,8 +136,7 @@ class System:
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
                 utils.remove_non_exts(download_dir, '.nc')
 
-            else:
-                raise ValueError(f'"{product}" is not accepted as a valid download product. Please provide a valid product.')
+            
 
 
     def load_crossings(self):
@@ -374,7 +417,7 @@ class Reservoirs(System):
         self.gdf = joined_gdf
 
 
-    def flag_missing_priors(self):
+    def flag_missing_priors(self): # simple function to report what reservoirs do not have PLD shapes
 
         present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
         missing = self.gdf.loc[self.gdf.prior_lake_id.isnull()].reset_index(drop=True)
@@ -383,6 +426,24 @@ class Reservoirs(System):
         missing.to_file(os.path.join(self.dirs['output'], 'missing_in_pld.shp'))
 
         print(f"Out of the {len(self.gdf)} reservoirs, {len(present)} area present and {len(missing)} are missing from the PLD.")
+
+
+    def assign_reservoir_polygons(self): # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
+
+        # load the pld
+        pld = gpd.read_file(self.dirs['pld'])
+
+        download_gdf = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
+
+        geometries = [pld.loc[pld.lake_id == lake_id].geometry.values[0] for lake_id in download_gdf.prior_lake_id]
+
+        download_gdf['geometry'] = geometries
+
+        download_gdf['dl_id'] = download_gdf.prior_lake_id.astype(int)
+
+        self.download_gdf = download_gdf
+
+
 
 
     def extract_crossings(self):
