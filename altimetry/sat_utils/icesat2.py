@@ -9,7 +9,9 @@ import icepyx as ipx
 import h5py
 import numpy as np
 import pandas as pd
+import geopandas as gpd
 
+from tqdm import tqdm
 
 
 def query(aoi: list, startdate: datetime.date, enddate: datetime.date, earthdata_credentials: tuple, download_directory: str, product: str  ='ATL13') -> object:

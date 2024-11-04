@@ -85,58 +85,62 @@ class System:
                     # we want to subset the downloaded file to only include known waterbodies
                     swot.subset_by_id(files, download_gdf.dl_id.astype(int).values)
 
+                    # now we want to combine all observations we have into a single shape file for reference when making crossings
+                    # TODO: consider cleaning everything up after its all in one place?
+                    swot.merge_shps(download_dir, self.dirs['output'])
 
 
+        elif product in ['S3', 'S6', 'ATL13']:
 
-        # loop through download geometry and download data
-        for i in download_gdf.index[start_index:]:
+            # loop through download geometry and download data
+            for i in download_gdf.index[start_index:]:
 
-            # grab coordinates of geometry
-            coords = [(x, y) for x, y in download_gdf.loc[i, 'geometry'].envelope.exterior.coords]
-            id = download_gdf.loc[i, 'dl_id']
+                # grab coordinates of geometry
+                coords = [(x, y) for x, y in download_gdf.loc[i, 'geometry'].envelope.exterior.coords]
+                id = download_gdf.loc[i, 'dl_id']
 
-            if product.upper() == 'ATL13':
+                if product.upper() == 'ATL13':
 
-                # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
-                utils.ifnotmakedirs(download_dir)
+                    # define and if needed create directory for each download geometry
+                    download_dir = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
+                    utils.ifnotmakedirs(download_dir)
 
-                # query and download data
-                _ = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=credentials, download_directory=download_dir, product='ATL13')
+                    # query and download data
+                    _ = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=credentials, download_directory=download_dir, product='ATL13')
 
-            elif product.upper() == 'S3':
-            
-                # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.dirs['sentinel3'], rf"{self.type}\{id}")
-                utils.ifnotmakedirs(download_dir)
+                elif product.upper() == 'S3':
+                
+                    # define and if needed create directory for each download geometry
+                    download_dir = os.path.join(self.dirs['sentinel3'], rf"{self.type}\{id}")
+                    utils.ifnotmakedirs(download_dir)
 
-                # query and download data
-                sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S3')
+                    # query and download data
+                    sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S3')
 
-                # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
-                utils.unzip_dir_files(download_dir, download_dir)
-                sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
+                    # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
+                    utils.unzip_dir_files(download_dir, download_dir)
+                    sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
-                # clean up zip and unzipped folders keeping only the remaining subsetted data
-                utils.remove_non_exts(download_dir, '.nc')
+                    # clean up zip and unzipped folders keeping only the remaining subsetted data
+                    utils.remove_non_exts(download_dir, '.nc')
 
-            elif product.upper() == 'S6':
-            
-                # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.dirs['sentinel6'], rf"{self.type}\{id}")
-                utils.ifnotmakedirs(download_dir)
+                elif product.upper() == 'S6':
+                
+                    # define and if needed create directory for each download geometry
+                    download_dir = os.path.join(self.dirs['sentinel6'], rf"{self.type}\{id}")
+                    utils.ifnotmakedirs(download_dir)
 
-                # query and download data
-                sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S6')
+                    # query and download data
+                    sentinel.query(aoi=coords, startdate=startdate, enddate=enddate, creodias_credentials=credentials, download_directory=download_dir, product='S6')
 
-                # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
-                utils.unzip_dir_files_with_ext(download_dir, download_dir, '.nc')
-                sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
+                    # once we have finished downloading all data for the aoi, we need to unzip everything and then subset it
+                    utils.unzip_dir_files_with_ext(download_dir, download_dir, '.nc')
+                    sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
-                # clean up zip and unzipped folders keeping only the remaining subsetted data
-                utils.remove_non_exts(download_dir, '.nc')
+                    # clean up zip and unzipped folders keeping only the remaining subsetted data
+                    utils.remove_non_exts(download_dir, '.nc')
 
-            
+          
 
 
     def load_crossings(self):
@@ -446,39 +450,54 @@ class Reservoirs(System):
 
 
 
-    def extract_crossings(self):
+    def extract_obs(self, name:str):
 
-        gdf_list = list()
+        # Process for icesat 2
+        if name == 'icesat2':
 
-        for id in tqdm(self.gdf.index):
+            gdf_list = list()
 
-            # load and plot all files for all tracks and crossings
-            download_directory = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
-            if os.path.exists(download_directory):
+            for id in tqdm(self.gdf.index):
 
-                files = list(os.listdir(download_directory))
-                for file in files:
-                    for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
+                # load and plot all files for all tracks and crossings
+                download_directory = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
+                if os.path.exists(download_directory):
 
-                        infile= os.path.join(download_directory, file)
-                        data = icesat2.ATL13(infile, key)
+                    files = list(os.listdir(download_directory))
+                    for file in files:
+                        for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
 
-                        if data.check_height_data():
-                            data_df = data.read()
-                            data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
-                            data_gdf = data_gdf.loc[data_gdf.within(self.gdf.unary_union)].reset_index(drop=True)
+                            infile= os.path.join(download_directory, file)
+                            data = icesat2.ATL13(infile, key)
 
-                            if len(data_gdf) > 0:
+                            if data.check_height_data():
+                                data_df = data.read()
+                                data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+                                data_gdf = data_gdf.loc[data_gdf.within(self.gdf.unary_union)].reset_index(drop=True)
 
-                                # if we have data for the reservoir add it to the full reservoir dataframe
-                                # add a column keeping track of the reservoir id
-                                data_gdf['dl_id'] = id
-                                gdf_list.append(data_gdf)
+                                if len(data_gdf) > 0:
 
-        # once all reservoirs are cycled, concatenate them all into a main data frame of valid information
-        self.crossings = pd.concat(gdf_list).reset_index(drop=True)
-        self.crossings = self.crossings.set_crs(self.gdf.crs)
-        self.crossings.to_file(os.path.join(self.dirs['output'], f'icesat2_crossings.shp'))
+                                    # if we have data for the reservoir add it to the full reservoir dataframe
+                                    # add a column keeping track of the reservoir id
+                                    data_gdf['dl_id'] = id
+                                    gdf_list.append(data_gdf)
+
+            # once all reservoirs are cycled, concatenate them all into a main data frame of valid information
+            self.crossings = pd.concat(gdf_list).reset_index(drop=True)
+            self.crossings = self.crossings.set_crs(self.gdf.crs)
+            self.crossings.to_file(os.path.join(self.dirs['output'], f'icesat2_crossings.shp'))
+
+        if name == 'sentinel3':
+
+            pass
+
+        if name == 'sentinel6':
+
+            pass
+
+        if name == 'swot':
+
+            pass
 
 
     def map_crossings_by_id(self, id):

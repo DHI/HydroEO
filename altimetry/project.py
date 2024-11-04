@@ -41,7 +41,12 @@ class Project:
 
     def __post_init__(self):
 
+        self.to_download = list()
+        self.to_process = list()
+
         self.dirs = dict()
+        self.startdates = dict()
+        self.enddates = dict()
 
         ### Load in the config file and extract parameters
         with open(self.config, 'rt') as f:
@@ -54,61 +59,25 @@ class Project:
         else:
             raise Warning("Project directory must be defined within configuration file")
 
-        ### Parameters associated with download of SWOT prior databases
+        ##### Set credentials and access keys
         if 'hydroweb' in self.config.keys():
             if 'api_key' in self.config['hydroweb']:
                 os.environ['EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY'] = self.config['hydroweb']["api_key"]
 
-        ### Parameters associated with icesat2 downloads
         if 'earthaccess' in self.config.keys():
             self.earthdata_user = self.config['earthaccess']["username"]
             self.earthdata_pass = self.config['earthaccess']["password"]
-
-        if 'swot' in self.config.keys():
-
-            if 'download_dir' in self.config['swot'].keys():
-                self.dirs['swot'] = self.config['swot']["download_dir"]
-            else:
-                self.dirs['swot'] = os.path.join(self.dirs['main'], 'swot')
-
-            self.swot_startdate = self.config['swot']["startdate"]
-            self.swot_enddate = self.config['swot']["enddate"]
         
-        if 'icesat2' in self.config.keys():
-
-            if 'download_dir' in self.config['icesat2'].keys():
-                self.dirs['icesat2'] = self.config['icesat2']["download_dir"]
-            else:
-                self.dirs['icesat2'] = os.path.join(self.dirs['main'], 'icesat2')
-
-            self.icesat2_startdate = self.config['icesat2']["startdate"]
-            self.icesat2_enddate = self.config['icesat2']["enddate"]
-        
-        ### Parameters associated with Sentinel downloads
         if 'creodias' in self.config.keys():
             self.creodias_user = self.config['creodias']["username"]
             self.creodias_pass = self.config['creodias']["password"]
+
+        ##### Set attributes for each satellite to be downloaded or processed
+        self.__sat_init('swot')
+        self.__sat_init('icesat2')
+        self.__sat_init('sentinel3')
+        self.__sat_init('sentinel6')
         
-        if 'sentinel3' in self.config.keys():
-
-            if 'download_dir' in self.config['sentinel3'].keys():
-                self.dirs['sentinel3'] = self.config['sentinel3']["download_dir"]
-            else:
-                self.dirs['sentinel3'] = os.path.join(self.dirs['main'], 'sentinel3')
-
-            self.sentinel3_startdate = self.config['sentinel3']["startdate"]
-            self.sentinel3_enddate = self.config['sentinel3']["enddate"]
-
-        if 'sentinel6' in self.config.keys():
-
-            if 'download_dir' in self.config['sentinel6'].keys():
-                self.dirs['sentinel6'] = self.config['sentinel6']["download_dir"]
-            else:
-                self.dirs['sentinel6'] = os.path.join(self.dirs['main'], 'sentinel6')
-
-            self.sentinel6_startdate = self.config['sentinel6']["startdate"]
-            self.sentinel6_enddate = self.config['sentinel6']["enddate"]
-
 
         ### Set the crs from the congiguration file if possible
         if 'gis' in self.config.keys():
@@ -162,6 +131,24 @@ class Project:
             self.rivers.make_buffer(local_crs=self.local_crs)
 
 
+    # fucntion to set information for satellite downloads
+    def __sat_init(self, name: str):
+
+        if name in self.config.keys():
+
+            if self.config[name]["download"] == True:
+                self.to_download.append('swot')
+
+            if self.config[name]["process"] == True:
+                self.to_process.append('swot')
+
+            if 'download_dir' in self.config[name].keys():
+                self.dirs[name] = self.config[name]["download_dir"]
+            else:
+                self.dirs[name] = os.path.join(self.dirs['main'], name)
+
+            self.startdates[name] = self.config[name]["startdate"]
+            self.enddates[name] = self.config[name]["enddate"]
 
 
     def report(self):

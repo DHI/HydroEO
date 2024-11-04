@@ -73,10 +73,24 @@ def subset_by_id(files:list, ids:list):
         # extract entries that are in id list
         gdf = gdf.loc[np.in1d(gdf.lake_id.astype(int).values, ids)]
 
-        # save file
-        export_file = 'sub_'+shp_file
-        gdf.to_file(os.path.join(file_dir, export_file))
+        if len(gdf) > 0:
+
+            # save file
+            export_file = 'sub_'+shp_file
+            gdf.to_file(os.path.join(file_dir, export_file))
 
         # clean up original file and temp directory
-        os.remove(file)
+        #os.remove(file)
         shutil.rmtree(temp_dir)
+
+def merge_shps(dir, export_dir):
+
+    gdf_list = list()
+    for file in os.listdir(dir):
+        if file.endswith('.shp'):
+            gdf_list.append(gpd.read_file(os.path.join(dir, file)))
+
+    # save the main gdf as one file that we can read later
+    gdf = pd.concat(gdf_list).reset_index(drop=True)
+
+    gdf.to_file(os.path.join(export_dir, 'swot_combined_obs.shp'))
