@@ -154,3 +154,33 @@ class ATL13:
         }, index = np.arange(len(self.height_seg)))
                 
         return track_df
+    
+def extract_observations(src_dir, dst_path, features):
+
+    # read icesat data for each availble option in directory
+    gdf_list = list()
+    files = list(os.listdir(src_dir))
+    for file in files:
+        for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
+            infile= os.path.join(src_dir, file)
+            data = ATL13(infile, key)
+
+            # check if the height data is actually present
+            if data.check_height_data():
+                data_df = data.read()
+                data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+
+                # filter observations to ensure they fall within geometry
+                data_gdf = data_gdf.loc[data_gdf.within(features.unary_union)].reset_index(drop=True)
+                if len(data_gdf) > 0:
+
+                    # if we have data for the reservoir add it to the reservoir specific dataframe
+                    gdf_list.append(data_gdf)
+
+    # once all tracks are processed combine them and save in the destination dir
+    if len(gdf_list) > 0:
+        observations = pd.concat(gdf_list).reset_index(drop=True)
+        observations['platform'] = 'icesat2'
+        observations['product'] = 'ATL13'
+        observations = observations.set_crs(features.crs)
+        observations.to_file(dst_path)

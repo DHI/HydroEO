@@ -85,10 +85,6 @@ class System:
                     # we want to subset the downloaded file to only include known waterbodies
                     swot.subset_by_id(files, download_gdf.dl_id.astype(int).values)
 
-                    # now we want to combine all observations we have into a single shape file for reference when making crossings
-                    # TODO: consider cleaning everything up after its all in one place?
-                    swot.merge_shps(download_dir, self.dirs['output'])
-
 
         elif product in ['S3', 'S6', 'ATL13']:
 
@@ -99,7 +95,7 @@ class System:
                 coords = [(x, y) for x, y in download_gdf.loc[i, 'geometry'].envelope.exterior.coords]
                 id = download_gdf.loc[i, 'dl_id']
 
-                if product.upper() == 'ATL13':
+                if product == 'ATL13':
 
                     # define and if needed create directory for each download geometry
                     download_dir = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
@@ -108,7 +104,7 @@ class System:
                     # query and download data
                     _ = icesat2.query(aoi=coords, startdate=startdate, enddate=enddate, earthdata_credentials=credentials, download_directory=download_dir, product='ATL13')
 
-                elif product.upper() == 'S3':
+                elif product == 'S3':
                 
                     # define and if needed create directory for each download geometry
                     download_dir = os.path.join(self.dirs['sentinel3'], rf"{self.type}\{id}")
@@ -124,7 +120,7 @@ class System:
                     # clean up zip and unzipped folders keeping only the remaining subsetted data
                     utils.remove_non_exts(download_dir, '.nc')
 
-                elif product.upper() == 'S6':
+                elif product == 'S6':
                 
                     # define and if needed create directory for each download geometry
                     download_dir = os.path.join(self.dirs['sentinel6'], rf"{self.type}\{id}")
@@ -140,44 +136,208 @@ class System:
                     # clean up zip and unzipped folders keeping only the remaining subsetted data
                     utils.remove_non_exts(download_dir, '.nc')
 
-          
+    def get_unfiltered_timeseries_by_id(self, id):
+
+        data_dir = os.path.join(self.dirs['output'], f"{id}", "raw_observations")
+
+        # loop through raw directory and load in all raw observations
+        df_list = list()
+        for file in os.listdir(data_dir):
+            if file.endswith('.shp'):
+
+                gdf_path = os.path.join(data_dir, file)
+                gdf = gpd.read_file(gdf_path)
+                df = gdf.drop(columns = ['geometry'])
+                df_list.append(df)
+
+        # concatenate everything into one dataframe for plotting
+        df = pd.concat(df_list)
+
+        return df
 
 
-    def load_crossings(self):
-        self.crossings = gpd.read_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))
+    # def load_crossings(self):
+    #     self.crossings = gpd.read_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))
 
 
-    def map_all_crossings(self):
+    # def map_all_crossings(self):
 
-        fig, ax = plt.subplots()
+    #     fig, ax = plt.subplots()
 
-        # plot river
-        self.gdf.plot(ax=ax)
-        self.crossings.plot(ax=ax, column="height", cmap=cm.batlow, legend=True, legend_kwds={'label': 'Height (m)'})
+    #     # plot river
+    #     self.gdf.plot(ax=ax)
+    #     self.crossings.plot(ax=ax, column="height", cmap=cm.batlow, legend=True, legend_kwds={'label': 'Height (m)'})
 
-        fig.tight_layout()
-        plt.show()
+    #     fig.tight_layout()
+    #     plt.show()
 
 
     
-    def plot_timeseries_by_id(self, id, summarize=True):
+    # def plot_timeseries_by_id(self, id, summarize=True):
 
-        # start figure
-        fig, ax = plt.subplots()
+    #     # start figure
+    #     fig, ax = plt.subplots()
 
-        # extract this grids crossings from the main river crossing dataframe
-        data_gdf = self.crossings.loc[self.crossings.dl_id == id]
+    #     # extract this grids crossings from the main river crossing dataframe
+    #     data_gdf = self.crossings.loc[self.crossings.dl_id == id]
 
-        if summarize:
-            # apply simple mean groupby to make daily estimate (There is no adjustment for bias here just an example of how to get to a single daily value quickly)
-            data_gdf['date'] = data_gdf.date.dt.floor('d')
-            data_gdf = data_gdf[['date', 'height', 'lon']].groupby(by='date').mean().reset_index()
+    #     if summarize:
+    #         # apply simple mean groupby to make daily estimate (There is no adjustment for bias here just an example of how to get to a single daily value quickly)
+    #         data_gdf['date'] = data_gdf.date.dt.floor('d')
+    #         data_gdf = data_gdf[['date', 'height', 'lon']].groupby(by='date').mean().reset_index()
 
-        # make a scatter plot with this data
-        data_gdf.plot(ax=ax, x='date', y='height', kind='scatter', c=data_gdf['lon'], cmap=cm.batlow)
+    #     # make a scatter plot with this data
+    #     data_gdf.plot(ax=ax, x='date', y='height', kind='scatter', c=data_gdf['lon'], cmap=cm.batlow)
 
-        fig.tight_layout()
-        plt.show()
+    #     fig.tight_layout()
+    #     plt.show()
+
+
+
+@dataclass
+class Reservoirs(System):
+
+    def __post_init__(self):
+
+        self.type = 'reservoirs'
+
+        self.dirs['output'] = os.path.join(self.dirs['main'], self.type)
+        utils.ifnotmakedirs(self.dirs['output'])
+
+        self.geom_type = self.gdf.loc[0, 'geometry'].geom_type
+        # self.gdf['dl_id'] = self.gdf.index
+
+
+    def assign_pld_id(self, local_crs, max_distance):
+
+        # load the pld
+        pld = gpd.read_file(self.dirs['pld'])
+
+        # perform the spatial join
+        joined_gdf = gpd.sjoin_nearest(self.gdf.to_crs(local_crs), pld.to_crs(local_crs), how='left', max_distance=max_distance, distance_col='dist_to_pld')
+        joined_gdf = joined_gdf.to_crs(self.gdf.crs)
+
+        # rename the joined columns to keep it clear
+        joined_gdf = joined_gdf.rename(columns={'lake_id':'prior_lake_id', 'res_id':'prior_res_id'})
+
+        # reset the reservoir data frame to include the changes
+        self.gdf = joined_gdf
+
+
+    def flag_missing_priors(self): # simple function to report what reservoirs do not have PLD shapes
+
+        present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
+        missing = self.gdf.loc[self.gdf.prior_lake_id.isnull()].reset_index(drop=True)
+
+        present.to_file(os.path.join(self.dirs['output'], 'present_in_pld.shp'))
+        missing.to_file(os.path.join(self.dirs['output'], 'missing_in_pld.shp'))
+
+        print(f"Out of the {len(self.gdf)} reservoirs, {len(present)} area present and {len(missing)} are missing from the PLD.")
+
+
+    def assign_reservoir_polygons(self): # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
+
+        # load the pld
+        pld = gpd.read_file(self.dirs['pld'])
+
+        download_gdf = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
+
+        geometries = [pld.loc[pld.lake_id == lake_id].geometry.values[0] for lake_id in download_gdf.prior_lake_id]
+
+        download_gdf['geometry'] = geometries
+
+        download_gdf['dl_id'] = download_gdf.prior_lake_id.astype(int)
+
+        self.download_gdf = download_gdf
+
+
+
+    def extract_product_timeseries(self, products: list):
+
+        if 'icesat2' in products:
+
+            for id in tqdm(self.download_gdf.dl_id, desc='Extracting ICESat-2 ATL13 product'):
+
+                # filter gdf to only row with id
+                sub_gdf = self.download_gdf.loc[self.download_gdf.dl_id == id]
+                    
+                # prep export folder and paths
+                download_dir = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
+                if os.path.exists(download_dir):
+
+                    dst_dir = os.path.join(self.dirs['output'], f"{id}", "raw_observations")
+                    utils.ifnotmakedirs(dst_dir)
+                    dst_path = os.path.join(dst_dir, 'icesat2.shp')
+
+                    # extract observations within bounds and save as timeseries csv
+                    icesat2.extract_observations(src_dir=download_dir, dst_path=dst_path, features=sub_gdf)
+
+        if 'sentinel3' in products:
+
+            for id in tqdm(self.download_gdf.dl_id, desc='Extracting Sentinel-3 product'):
+
+                # filter gdf to only row with id
+                sub_gdf = self.download_gdf.loc[self.download_gdf.dl_id == id]
+
+                # prep export folder and paths
+                download_dir = os.path.join(self.dirs['sentinel3'], rf"{self.type}\{id}")
+                if os.path.exists(download_dir):
+
+                    dst_dir = os.path.join(self.dirs['output'], f"{id}", "raw_observations")
+                    utils.ifnotmakedirs(dst_dir)
+                    dst_path = os.path.join(dst_dir, 'sentinel3.shp')
+
+                    # extract observations within bounds and save as timeseries csv
+                    sentinel.extract_observations(src_dir=download_dir, dst_path=dst_path, features=sub_gdf)
+
+        if 'sentinel6' in products:
+
+            for id in tqdm(self.download_gdf.dl_id, desc='Extracting Sentinel-6 product'):
+
+                # filter gdf to only row with id
+                sub_gdf = self.download_gdf.loc[self.download_gdf.dl_id == id]
+
+                # prep export folder and paths
+                download_dir = os.path.join(self.dirs['sentinel6'], rf"{self.type}\{id}")
+                if os.path.exists(download_dir):
+
+                    dst_dir = os.path.join(self.dirs['output'], f"{id}", "raw_observations")
+                    utils.ifnotmakedirs(dst_dir)
+                    dst_path = os.path.join(dst_dir, 'sentinel6.shp')
+
+                    # extract observations within bounds and save as timeseries csv
+                    sentinel.extract_observations(src_dir=download_dir, dst_path=dst_path, features=sub_gdf)
+
+        if 'swot' in products:
+
+            download_dir = os.path.join(self.dirs['swot'], rf"{self.type}")
+
+            # extract observations within bounds and save as timeseries csv, slightly differnt format for downloading here due to the natrure of swot data
+            swot.extract_observations(src_dir=download_dir, dst_dir=self.dirs['output'], dst_file_name='swot.shp', features=self.download_gdf)
+
+
+    # def map_crossings_by_id(self, id):
+
+    #     # start figure
+    #     fig, ax = plt.subplots()
+
+    #     # set boudns
+    #     xmin, ymin, xmax, ymax = self.gdf.loc[id, 'geometry'].bounds
+    #     ax.set_xlim([xmin-0.1, xmax+0.1])
+    #     ax.set_ylim([ymin-0.1, ymax+0.1])
+
+    #     # plot reservoir
+    #     self.gdf.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
+
+    #     data_gdf = self.crossings.loc[self.crossings.dl_id == id]
+        
+    #     if len(data_gdf) > 0:
+    #         data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
+    #         data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5, legend=True)
+
+    #     fig.tight_layout()
+    #     plt.show()
+
 
 
 
@@ -386,138 +546,6 @@ class Rivers(System):
         cbar = fig.colorbar(plot, label='Month')
         ax.set_xlabel("Distance downriver (km)")
         ax.set_ylabel("Height (m)")
-
-        fig.tight_layout()
-        plt.show()
-
-
-@dataclass
-class Reservoirs(System):
-
-    def __post_init__(self):
-
-        self.type = 'reservoirs'
-
-        self.dirs['output'] = os.path.join(self.dirs['main'], self.type)
-        utils.ifnotmakedirs(self.dirs['output'])
-
-        self.geom_type = self.gdf.loc[0, 'geometry'].geom_type
-        # self.gdf['dl_id'] = self.gdf.index
-
-
-    def assign_pld_id(self, local_crs, max_distance):
-
-        # load the pld
-        pld = gpd.read_file(self.dirs['pld'])
-
-        # perform the spatial join
-        joined_gdf = gpd.sjoin_nearest(self.gdf.to_crs(local_crs), pld.to_crs(local_crs), how='left', max_distance=max_distance, distance_col='dist_to_pld')
-        joined_gdf = joined_gdf.to_crs(self.gdf.crs)
-
-        # rename the joined columns to keep it clear
-        joined_gdf = joined_gdf.rename(columns={'lake_id':'prior_lake_id', 'res_id':'prior_res_id'})
-
-        # reset the reservoir data frame to include the changes
-        self.gdf = joined_gdf
-
-
-    def flag_missing_priors(self): # simple function to report what reservoirs do not have PLD shapes
-
-        present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
-        missing = self.gdf.loc[self.gdf.prior_lake_id.isnull()].reset_index(drop=True)
-
-        present.to_file(os.path.join(self.dirs['output'], 'present_in_pld.shp'))
-        missing.to_file(os.path.join(self.dirs['output'], 'missing_in_pld.shp'))
-
-        print(f"Out of the {len(self.gdf)} reservoirs, {len(present)} area present and {len(missing)} are missing from the PLD.")
-
-
-    def assign_reservoir_polygons(self): # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
-
-        # load the pld
-        pld = gpd.read_file(self.dirs['pld'])
-
-        download_gdf = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
-
-        geometries = [pld.loc[pld.lake_id == lake_id].geometry.values[0] for lake_id in download_gdf.prior_lake_id]
-
-        download_gdf['geometry'] = geometries
-
-        download_gdf['dl_id'] = download_gdf.prior_lake_id.astype(int)
-
-        self.download_gdf = download_gdf
-
-
-
-
-    def extract_obs(self, name:str):
-
-        # Process for icesat 2
-        if name == 'icesat2':
-
-            gdf_list = list()
-
-            for id in tqdm(self.gdf.index):
-
-                # load and plot all files for all tracks and crossings
-                download_directory = os.path.join(self.dirs['icesat2'], rf"{self.type}\{id}")
-                if os.path.exists(download_directory):
-
-                    files = list(os.listdir(download_directory))
-                    for file in files:
-                        for key in ['gt1l', 'gt1r', 'gt2l', 'gt2r', 'gt3l', 'gt3r']:
-
-                            infile= os.path.join(download_directory, file)
-                            data = icesat2.ATL13(infile, key)
-
-                            if data.check_height_data():
-                                data_df = data.read()
-                                data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
-                                data_gdf = data_gdf.loc[data_gdf.within(self.gdf.unary_union)].reset_index(drop=True)
-
-                                if len(data_gdf) > 0:
-
-                                    # if we have data for the reservoir add it to the full reservoir dataframe
-                                    # add a column keeping track of the reservoir id
-                                    data_gdf['dl_id'] = id
-                                    gdf_list.append(data_gdf)
-
-            # once all reservoirs are cycled, concatenate them all into a main data frame of valid information
-            self.crossings = pd.concat(gdf_list).reset_index(drop=True)
-            self.crossings = self.crossings.set_crs(self.gdf.crs)
-            self.crossings.to_file(os.path.join(self.dirs['output'], f'icesat2_crossings.shp'))
-
-        if name == 'sentinel3':
-
-            pass
-
-        if name == 'sentinel6':
-
-            pass
-
-        if name == 'swot':
-
-            pass
-
-
-    def map_crossings_by_id(self, id):
-
-        # start figure
-        fig, ax = plt.subplots()
-
-        # set boudns
-        xmin, ymin, xmax, ymax = self.gdf.loc[id, 'geometry'].bounds
-        ax.set_xlim([xmin-0.1, xmax+0.1])
-        ax.set_ylim([ymin-0.1, ymax+0.1])
-
-        # plot reservoir
-        self.gdf.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
-
-        data_gdf = self.crossings.loc[self.crossings.dl_id == id]
-        
-        if len(data_gdf) > 0:
-            data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
-            data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5, legend=True)
 
         fig.tight_layout()
         plt.show()

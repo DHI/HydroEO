@@ -1,18 +1,21 @@
 
 from dataclasses import dataclass
 import warnings
-
 import os
+from tqdm import tqdm
+
+import netCDF4
+
 import datetime
 
 import numpy as np
 import pandas as pd
-
-import netCDF4
+import geopandas as gpd
 import shapely
 
 from creodias_finder.query import query as query_creodias
 from creodias_finder.download import download as download_creodias
+from creodias_finder.download import download_list as download_creodias_list
 
 from altimetry import utils, geometry
 
@@ -78,9 +81,10 @@ def query(aoi: list, startdate: datetime.date, enddate: datetime.date, creodias_
 
     # download single product by product ID
     print(f"Downloading {len(ids)} files.")
-    for i in range(0, len(ids)):
+    for i in tqdm(range(0, len(ids))):
         outfile = os.path.join(download_directory, file_prefix + str(i) + '.zip')
         download_creodias(ids[i], outfile=outfile, username=creodias_credentials[0], password=creodias_credentials[1])
+    # download_creodias_list(ids, outdir=download_directory, username=creodias_credentials[0], password=creodias_credentials[1])
 
 
 
@@ -139,6 +143,7 @@ def subset(aoi: list, download_dir: str, dest_dir: str, file_id: str ='enhanced_
                     if 'STD' in potential.split('_'):
                         if potential.endswith('.nc'):
                             file = os.path.join(download_dir, folder, potential)
+            print(file)
 
             if os.path.isfile(file):
 
@@ -205,6 +210,8 @@ def subset(aoi: list, download_dir: str, dest_dir: str, file_id: str ='enhanced_
 
                     if selected01[-1] > max_index01:
                         max_index01 = selected01[-1]
+
+                nc.close()
 
                 # if we have data within the bounds, start copying all extra data to new file
                 if max_index20 > 0:
@@ -354,10 +361,18 @@ def __crop_s6(src, dst, index_bounds_20, index_bounds_01):
                                         else None))
 
 
+@dataclass
+class Sentinel:
+
+    infile: str
+
+    def check_height_data(self) -> bool:            
+        return hasattr(self, 'height')
+
 
 
 @dataclass
-class Sentinel3:
+class Sentinel3(Sentinel):
 
     infile : str
 
@@ -486,7 +501,7 @@ class Sentinel3:
 
 
 @dataclass
-class Sentinel6:
+class Sentinel6(Sentinel):
 
     infile : str
 
@@ -514,13 +529,16 @@ class Sentinel6:
             self.range_ocog = self.data_20.variables['range_ocog'][:].filled()
             self.wet_tropo = self.data_20.variables['model_wet_tropo_cor_measurement_altitude'][:].filled()
             self.dry_tropo = self.data_20.variables['model_dry_tropo_cor_measurement_altitude'][:].filled() 
-            
-            # calculate the height
-            self.__interpolate_tides()
-            self.height = (self.altitude - self.range_ocog + self.wet_tropo + self.solid_earth_tide + self.pole_tide + self.dry_tropo - self.geoid)
 
             # set the length of data points
-            self.length = len(self.height)
+            self.length = len(self.altitude)
+            
+            # calculate the height
+            try:
+                self.__interpolate_tides()
+                self.height = (self.altitude - self.range_ocog + self.wet_tropo + self.solid_earth_tide + self.pole_tide + self.dry_tropo - self.geoid)
+            except IndexError:
+                warnings.warn(f'No height data found within file: {self.file_name}')
 
             # Set some auxiliary data
             self.first_meas_lat = src.getncattr('first_measurement_latitude')
@@ -536,6 +554,7 @@ class Sentinel6:
         solid = self.data_01['solid_earth_tide'][:].filled() # check if we can open solid variable?
         pole  = self.data_01['pole_tide'][:].filled()
 
+
         ### interpolate tides
         if len(solid) > 1:
             self.solid_earth_tide = np.interp(self.lat, lat_01, solid)
@@ -545,6 +564,7 @@ class Sentinel6:
         if lat_01[0] > lat_01[1]:
             self.solid_earth_tide = np.interp(self.lat, np.flip(lat_01), np.flip(solid))
             self.pole_tide = np.interp(self.lat, np.flip(lat_01), np.flip(pole))
+
 
     
     def read(self):    
@@ -566,3 +586,52 @@ class Sentinel6:
         vs['file_name'] = np.repeat(self.file_name, self.length)
 
         return vs
+    
+
+
+def extract_observations(src_dir, dst_path, features):
+
+    # read data for each availble option in directory
+    gdf_list = list()
+    files = list(os.listdir(src_dir))
+
+    for file in files:
+
+        file_split = file.split('_')
+        if file_split[0] == 'sub': # assume that we have subsetted the data already
+
+            # use differnt read funciton base don which sentinel we use
+            if 'S3' in file_split[1]:
+                infile= os.path.join(src_dir, file)
+                data = Sentinel3(infile)
+                platform = 'sentinel3'
+                product = 'S3'
+
+            elif 'S6' in file_split[1]:
+                infile= os.path.join(src_dir, file)
+                data = Sentinel6(infile)
+                platform = 'sentinel6'
+                product = 'S6'
+
+            else:
+                raise Exception("unsure which satellite product file is associated with")
+
+            # read the data, if we have height data
+            if data.check_height_data():
+                data_df = data.read()
+                data_gdf = gpd.GeoDataFrame(data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat))
+
+                # filter observations to ensure they fall within geometry
+                data_gdf = data_gdf.loc[data_gdf.within(features.unary_union)].reset_index(drop=True)
+                if len(data_gdf) > 0:
+
+                    # if we have data for the reservoir add it to the reservoir specific dataframe
+                    gdf_list.append(data_gdf)
+
+    # once all tracks are processed combine them and save in the destination dir
+    if len(gdf_list) > 0:
+        observations = pd.concat(gdf_list).reset_index(drop=True)
+        observations['platform'] = platform
+        observations['product'] = product
+        observations = observations.set_crs(features.crs)
+        observations.to_file(dst_path)

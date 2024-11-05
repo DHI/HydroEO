@@ -9,6 +9,8 @@ import shutil
 import zipfile
 import earthaccess
 
+from tqdm import tqdm
+
 import datetime
 
 from altimetry import geometry, utils
@@ -83,14 +85,43 @@ def subset_by_id(files:list, ids:list):
         #os.remove(file)
         shutil.rmtree(temp_dir)
 
-def merge_shps(dir, export_dir):
+def merge_shps(dir):
 
     gdf_list = list()
     for file in os.listdir(dir):
         if file.endswith('.shp'):
             gdf_list.append(gpd.read_file(os.path.join(dir, file)))
 
-    # save the main gdf as one file that we can read later
+    # return the combined gdf
     gdf = pd.concat(gdf_list).reset_index(drop=True)
 
-    gdf.to_file(os.path.join(export_dir, 'swot_combined_obs.shp'))
+    return gdf
+
+
+def extract_observations(src_dir, dst_dir, dst_file_name, features):
+
+    # load in combined observations from individual files in download directory
+    data_gdf = merge_shps(src_dir)
+
+    # now loop through the ids in the features gdf to extract the observations from the main one
+    for i in tqdm(features.index, desc='Extracting SWOT Lake SP product'):
+
+        dl_id = str(int(features.loc[i, 'dl_id']))
+        lake_id = str(int(features.loc[i, 'prior_lake_id']))
+
+        # filter observations to keep only the ones associated with this lake/reservoir
+        observations = data_gdf.loc[data_gdf.lake_id.astype(int).astype(str) == lake_id].reset_index(drop=True).sort_values(by='time')
+
+        # if we have observations for this reservoir export it
+        if len(observations) > 0:
+
+            observations['platform'] = 'swot'
+            observations['product'] = 'swot_lake_sp'
+            observations['height'] = observations.wse
+            observations['date'] = pd.to_datetime(observations.time_str)
+
+            dst_sub_dir = os.path.join(dst_dir, f"{dl_id}", "raw_observations")
+            utils.ifnotmakedirs(dst_sub_dir)
+            dst_path = os.path.join(dst_sub_dir, dst_file_name)
+
+            observations.to_file(dst_path)

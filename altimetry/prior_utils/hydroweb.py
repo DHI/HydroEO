@@ -96,4 +96,4 @@ def download_PLD(download_dir : str, file_name : str, bounds : list):
     # save the concatenated dataframe in the output folder
     export_path = os.path.join(download_dir, file_name)
     gdf.to_file(export_path)
-    print("Merged data saved to: {export_path}")
+    print(f"Merged data saved to: {export_path}")

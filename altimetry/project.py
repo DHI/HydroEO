@@ -137,10 +137,10 @@ class Project:
         if name in self.config.keys():
 
             if self.config[name]["download"] == True:
-                self.to_download.append('swot')
+                self.to_download.append(name)
 
             if self.config[name]["process"] == True:
-                self.to_process.append('swot')
+                self.to_process.append(name)
 
             if 'download_dir' in self.config[name].keys():
                 self.dirs[name] = self.config[name]["download_dir"]

@@ -15,7 +15,7 @@ def unzip_dir_files(dir : str, dest_dir:str):
 
     # walk throught the files in the directory and check for zips
     for file in os.listdir(dir):
-        if file.split('.')[-1] == 'zip':
+        if file.endswith('.zip'):
 
             # unzip and save to a temporary folder in the main dir
             with zipfile.ZipFile(os.path.join(dir, file), 'r') as zip_ref:
@@ -28,7 +28,7 @@ def unzip_dir_files_with_ext(dir : str, dest_dir:str, ext:str):
 
     # walk throught the files in the directory and check for zips
     for file in os.listdir(dir):
-        if file.split('.')[-1] == 'zip':
+        if file.endswith('.zip'):
 
             # unzip and save to a temporary folder in the main dir
             with zipfile.ZipFile(os.path.join(dir, file), 'r') as zip_ref:
