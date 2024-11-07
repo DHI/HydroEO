@@ -57,6 +57,8 @@ def query(aoi: list, startdate: datetime.date, enddate: datetime.date, earthdata
         un, pw = earthdata_credentials
         region_a.earthdata_login(un, pw)
 
+    # TODO: add in some kind of log to not redownload data?
+
     # order granules
     region_a.order_granules()
     region_a.download_granules(download_directory)

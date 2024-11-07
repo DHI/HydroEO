@@ -3,6 +3,7 @@
 import os
 import shutil
 import zipfile
+from typing import Union
 
 def ifnotmakedirs(dir : str):
     if not os.path.exists(dir):
@@ -23,6 +24,10 @@ def unzip_dir_files(dir : str, dest_dir:str):
 
 def unzip_dir_files_with_ext(dir : str, dest_dir:str, ext:str):
 
+    # push all ext inputs to a list of inputs
+    if isinstance(ext, str):
+        ext = [ext]
+
     # ensure the destination exists
     ifnotmakedirs(dest_dir)
 
@@ -36,15 +41,27 @@ def unzip_dir_files_with_ext(dir : str, dest_dir:str, ext:str):
                 # list files in archive
                 members = zip_ref.namelist()
                 for member in members:
-                    if member.endswith(ext):
+
+                    # see if the file is not in the list of extentions to keep, and delete if not
+                    member_ext = '.'+member.split('.')[-1] 
+                    if member_ext not in ext:
                         zip_ref.extract(member, dest_dir)
 
 
-def remove_non_exts(dir:str, ext:str):
+def remove_non_exts(dir:str, ext:Union[str, list]):
 
+    # push all inputs to a list of inputs
+    if isinstance(ext, str):
+        ext = [ext]
+
+    # cycle through all files in directory
     for name in os.listdir(dir):
-        if not name.endswith(ext):
 
+        # check if file extention is not in list
+        name_ext = '.'+name.split('.')[-1] 
+        if name_ext not in ext:
+
+            # determine if its a file or directory and delete accordingly
             item = os.path.join(dir, name)
 
             if os.path.isdir(item):

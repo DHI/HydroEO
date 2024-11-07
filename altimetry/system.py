@@ -95,6 +95,8 @@ class System:
                 coords = [(x, y) for x, y in download_gdf.loc[i, 'geometry'].envelope.exterior.coords]
                 id = download_gdf.loc[i, 'dl_id']
 
+                print(id)
+
                 if product == 'ATL13':
 
                     # define and if needed create directory for each download geometry
@@ -118,7 +120,7 @@ class System:
                     sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
                     # clean up zip and unzipped folders keeping only the remaining subsetted data
-                    utils.remove_non_exts(download_dir, '.nc')
+                    utils.remove_non_exts(download_dir, ['.nc', '.log'])
 
                 elif product == 'S6':
                 
@@ -134,7 +136,7 @@ class System:
                     sentinel.subset(aoi = coords, download_dir = download_dir, dest_dir = download_dir, product = product)
 
                     # clean up zip and unzipped folders keeping only the remaining subsetted data
-                    utils.remove_non_exts(download_dir, '.nc')
+                    utils.remove_non_exts(download_dir, ['.nc', '.log'])
 
     def get_unfiltered_timeseries_by_id(self, id):
 

@@ -28,8 +28,14 @@ Example of ground track and beam setup for ICESat-2:
 https://icesat-2.gsfc.nasa.gov/science/specs
 
 
-### (Development not begun) Sentinel-3A, 3B, 6
+### Sentinel-3A, 3B
 The sentinel series can provide more temporally dense inland water observations. Currently there is no support for downloading and including this data within virtual stations.
+
+
+### Sentinel-6
+
+
+### Surface Water Ocean and Topography (SWOT) mission
 
 ## What is currently included in the library?
 - (Needs testing) - Provide shape file of river or rivers of interest to initiate search and dowload of available

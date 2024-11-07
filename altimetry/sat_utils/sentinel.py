@@ -79,12 +79,26 @@ def query(aoi: list, startdate: datetime.date, enddate: datetime.date, creodias_
     results = query_creodias(**params)
     ids = [result['id'] for result in results.values()]
 
-    # download single product by product ID
-    print(f"Downloading {len(ids)} files.")
-    for i in tqdm(range(0, len(ids))):
-        outfile = os.path.join(download_directory, file_prefix + str(i) + '.zip')
-        download_creodias(ids[i], outfile=outfile, username=creodias_credentials[0], password=creodias_credentials[1])
-    # download_creodias_list(ids, outdir=download_directory, username=creodias_credentials[0], password=creodias_credentials[1])
+    # Check if we have a progress log file in this directory, if not make it
+    log_path = os.path.join(download_directory, 'downloaded.log')
+    if not os.path.exists(log_path):
+        with open(log_path, "w") as log:
+            pass
+
+    # open the log file with reading and writing access
+    with open(log_path, "r+") as log:
+
+        # first read all of the downloaded ids
+        downloaded_ids = [line.rstrip() for line in log]
+
+        # download single product by product ID, if not already downloaded
+        print(f"Downloading {len(ids)} files.")
+        for i in tqdm(range(0, len(ids))):
+            if ids[i] not in downloaded_ids:
+                outfile = os.path.join(download_directory, file_prefix + str(i) + '.zip')
+                download_creodias(ids[i], outfile=outfile, username=creodias_credentials[0], password=creodias_credentials[1])
+
+                log.write(f'{ids[i]}\n') #add the id to the downloaded log
 
 
 
