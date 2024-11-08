@@ -17,8 +17,6 @@ from altimetry.utils import utils, geometry
 
 from tqdm import tqdm
 
-import time
-
 
 @dataclass
 class System:
