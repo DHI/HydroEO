@@ -12,8 +12,8 @@ from matplotlib.dates import date2num
 
 from datetime import date, datetime
 
-from altimetry.sat_utils import swot, icesat2, sentinel
-from altimetry import geometry, utils
+from altimetry.utils.satellites import swot, icesat2, sentinel
+from altimetry.utils import utils, geometry
 
 from tqdm import tqdm
 

@@ -1,7 +1,7 @@
 import os
 
 from altimetry.project import Project
-from altimetry.download_utils import hydroweb
+from altimetry.utils.downloads import hydroweb
 
 
 ##### Initialize project and reservoir system from config file

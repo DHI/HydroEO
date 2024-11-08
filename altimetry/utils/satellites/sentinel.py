@@ -13,8 +13,8 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 
-from altimetry.download_utils import creodias
-from altimetry import geometry
+from altimetry.utils.downloads import creodias
+from altimetry.utils import geometry
 
 
 def query(
