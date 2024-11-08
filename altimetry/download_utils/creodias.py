@@ -212,10 +212,10 @@ def _download_raw_data(url, outfile, show_progress):
                                 progress.update(len(chunk))
                                 downloaded_bytes += len(chunk)
 
-            else:
-                print(req.status_code)
+                shutil.move(outfile_temp, outfile)
 
-        shutil.move(outfile_temp, outfile)
+            else:
+                print(f"Download failed: response was {req.status_code}")
 
     finally:
         try:
