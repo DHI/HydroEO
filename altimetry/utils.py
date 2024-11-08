@@ -20,6 +20,7 @@ def unzip_dir_files(dir: str, dest_dir: str, show_progress=False):
     for file in tqdm(
         os.listdir(dir),
         desc=f"Unzipping files in {os.path.basename(dir)}",
+        unit="file",
         disable=not show_progress,
     ):
         if file.endswith(".zip"):
@@ -40,6 +41,7 @@ def unzip_dir_files_with_ext(dir: str, dest_dir: str, ext: str, show_progress=Fa
     for file in tqdm(
         os.listdir(dir),
         desc=f"Unzipping files in {os.path.basename(dir)}",
+        unit="file",
         disable=not show_progress,
     ):
         if file.endswith(".zip"):

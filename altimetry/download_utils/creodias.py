@@ -10,7 +10,8 @@ from six import string_types
 import dateutil.parser
 from shapely.geometry import shape
 import re
-
+import time
+import os
 
 ##### Global variables
 API_URL = (
@@ -179,7 +180,7 @@ def _parse_argvalue(value):
 
 
 ##### Functions associated with downloads
-def get_token(username, password):
+def _get_token(username, password):
     token_data = {
         "client_id": "cdse-public",
         "username": username,
@@ -242,7 +243,17 @@ def download(uid, token, outfile, show_progress=True):
     _download_raw_data(url, outfile, show_progress)
 
 
-def download_list(uids, token, outdir, threads=1, show_progress=True, log_file=False):
+def download_list(
+    uids,
+    username,
+    password,
+    token,
+    session_start_time,
+    outdir,
+    threads=1,
+    show_progress=True,
+    log_file=False,
+):
     """Downloads a list of UIDS
 
     Parameters
@@ -255,34 +266,49 @@ def download_list(uids, token, outdir, threads=1, show_progress=True, log_file=F
         Password
     outdir:
         Output direcotry
-    threads:
-        Number of simultaneous downloads
+
 
     Returns
     -------
     dict
         mapping uids to paths to downloaded files
     """
-    if show_progress:
-        pbar = tqdm(total=len(uids), unit="files")
 
-    def _download(uid):
+    def _token_age(session_start_time):
+        return (time.time() - session_start_time) / 60
+
+    if token is None:
+        print("Generating session token")
+        token = _get_token(username, password)
+        session_start_time = time.time()
+    print(f"Session token age: {_token_age(session_start_time):.2f} minutes")
+
+    if show_progress:
+        if len(uids) > 0:
+            pbar = tqdm(
+                total=len(uids),
+                desc=f"Downloading files to {os.path.basename(outdir)}",
+                unit="file",
+            )
+
+    for uid in uids:
+        # assess age of token, (Expires every ten minutes so we refresh every 9 minutes)
+        if _token_age(session_start_time) > 9:
+            print(
+                f"\nSession token age: {_token_age(session_start_time):.2f} minutes. Refreshing session token now."
+            )
+            session_start_time = time.time()
+            token = _get_token(username, password)
+
+        # download file
         outfile = Path(outdir) / f"{uid}.zip"
-        download(
-            uid,
-            token=token,
-            outfile=outfile,
-            show_progress=False,
-        )
+        download(uid, token=token, outfile=outfile, show_progress=False)
+
         if log_file:
             with open(log_file, "a") as log:
                 log.write(uid + "\n")  # add the id to the downloaded log
 
         if show_progress:
             pbar.update(1)
-        return uid, outfile
 
-    with concurrent.futures.ThreadPoolExecutor(threads) as executor:
-        paths = dict(executor.map(_download, uids))
-
-    return paths
+    return token, session_start_time

@@ -17,6 +17,8 @@ from altimetry import geometry, utils
 
 from tqdm import tqdm
 
+import time
+
 
 @dataclass
 class System:
@@ -129,8 +131,9 @@ class System:
                     )
 
         elif product in ["S3", "S6"]:
-            # start a session for downloading sentinel data
-            session_token = sentinel.start_session(creodias_credentials=credentials)
+            # set empty variables because no session has been started yet, this will occur at the first download and sessions will refresh automatically
+            session_token = None
+            session_start_time = None
 
             # loop through download geometry
             for i in download_gdf.index[start_index:]:
@@ -164,8 +167,12 @@ class System:
                 )
 
                 # download granules that havent already been logged as downloaded
-                sentinel.download(
-                    ids, download_directory=download_dir, token=session_token
+                session_token, session_start_time = sentinel.download(
+                    ids,
+                    download_directory=download_dir,
+                    creodias_credentials=credentials,
+                    token=session_token,
+                    session_start_time=session_start_time,
                 )
 
                 # once we have finished downloading all data for the aoi, we need to unzip the files keeping only .nc files
@@ -282,9 +289,8 @@ class Reservoirs(System):
             f"Out of the {len(self.gdf)} reservoirs, {len(present)} area present and {len(missing)} are missing from the PLD."
         )
 
-    def assign_reservoir_polygons(
-        self,
-    ):  # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
+    def assign_reservoir_polygons(self):
+        # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
         # load the pld
         pld = gpd.read_file(self.dirs["pld"])
 

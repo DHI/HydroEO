@@ -5,6 +5,7 @@ from tqdm import tqdm
 
 import netCDF4
 
+import time
 import datetime
 
 import numpy as np
@@ -80,14 +81,13 @@ def query(
     return ids
 
 
-def start_session(creodias_credentials):
-    username = creodias_credentials[0]
-    password = creodias_credentials[1]
-
-    return creodias.get_token(username, password)
-
-
-def download(ids: list, download_directory: str, token: str):
+def download(
+    ids: list,
+    download_directory: str,
+    creodias_credentials: tuple,
+    token: str = None,
+    session_start_time: str = None,
+):
     # Check if we have a progress log file in this directory, if not make it
     log_path = os.path.join(download_directory, "downloaded.log")
     if not os.path.exists(log_path):
@@ -107,9 +107,12 @@ def download(ids: list, download_directory: str, token: str):
     print(f"Downloading {len(ids_to_download)} files.")
 
     # Download ids that are not listed as downloaded already in the logfile
-    creodias.download_list(
+    return creodias.download_list(
         ids_to_download,
+        username=creodias_credentials[0],
+        password=creodias_credentials[1],
         token=token,
+        session_start_time=session_start_time,
         outdir=download_directory,
         log_file=log_path,
         threads=1,
@@ -207,12 +210,15 @@ def subset(
     }
 
     # loop through the downloads folder and subset any products with the right extention
-    for folder in tqdm(
-        os.listdir(download_dir),
+    pbar = tqdm(
+        total=int(len(os.listdir(download_dir)) / 2),
         desc=f"Subsetting data in {os.path.basename(download_dir)}",
+        unit="file",
         disable=not show_progress,
-    ):
+    )
+    for folder in os.listdir(download_dir):
         if folder.endswith(EXTENSION[product]):
+            pbar.update(1)
             # within the sentinel file, select the correct type of mearurements with the file_id key
             if product == "S3":
                 file = os.path.join(download_dir, folder, file_id)
