@@ -13,7 +13,7 @@ from matplotlib.dates import date2num
 from datetime import date, datetime
 
 from altimetry.utils.satellites import swot, icesat2, sentinel
-from altimetry.utils import utils, geometry
+from altimetry.utils import utils, geometry, timeseries
 
 from tqdm import tqdm
 
@@ -190,22 +190,76 @@ class System:
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
                 utils.remove_non_exts(download_dir, [".nc", ".log"])
 
-    def get_unfiltered_timeseries_by_id(self, id):
+    def get_unfiltered_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
 
         # loop through raw directory and load in all raw observations
         df_list = list()
         for file in os.listdir(data_dir):
             if file.endswith(".shp"):
-                gdf_path = os.path.join(data_dir, file)
-                gdf = gpd.read_file(gdf_path)
-                df = gdf.drop(columns=["geometry"])
-                df_list.append(df)
+                # check if we process all products or only what is specified in the product list
+                if (len(products) == 0) or (file.split(".")[0] in products):
+                    gdf_path = os.path.join(data_dir, file)
+                    gdf = gpd.read_file(gdf_path)
+                    df = gdf.drop(columns=["geometry"])
+                    df_list.append(df)
 
-        # concatenate everything into one dataframe for plotting
-        df = pd.concat(df_list)
+        # concatenate everything into one dataframe
+        if len(df_list) > 0:
+            df = pd.concat(df_list)
+        else:
+            df = None  # TODO: maybe raise an error instead?
 
         return df
+
+    def clean_product_timeseries(self, products: list, filters: list):
+        for id in self.download_gdf.dl_id:
+            for product in products:
+                # get timeseries for id and each product to clean individually
+                df = self.get_unfiltered_product_timeseries(id, [product])
+                if df is not None:
+                    # create a timeseries object
+                    ts = timeseries.Timeseries(df, date_key="date", height_key="height")
+
+                    # run all filters on timeseries
+                    ts.clean(filters)
+
+                    # save filtered timeseries
+                    export_dir = os.path.join(
+                        self.dirs["output"], f"{id}", "cleaned_observations"
+                    )
+                    utils.ifnotmakedirs(export_dir)
+                    ts.export_csv(os.path.join(export_dir, f"{product}.csv"))
+
+    def get_cleaned_product_timeseries(self, id, products: list = []):
+        data_dir = os.path.join(self.dirs["output"], f"{id}", "cleaned_observations")
+
+        # loop through raw directory and load in all raw observations
+        df_list = list()
+        for file in os.listdir(data_dir):
+            if file.endswith(".csv"):
+                # check if we process all products or only what is specified in the product list
+                if (len(products) == 0) or (file.split(".")[0] in products):
+                    df_path = os.path.join(data_dir, file)
+                    df = pd.read_csv(df_path)
+                    df_list.append(df)
+
+        # concatenate everything into one dataframe
+        if len(df_list) > 0:
+            df = pd.concat(df_list)
+            df = df.sort_values(by="date")
+        else:
+            df = None  # TODO: maybe raise an error instead?
+
+        return df
+
+    def merge_product_timeseries(self, products: list):
+        for id in self.download_gdf.dl_id:
+            for product in products:
+                # get timeseries for id and each product to clean individually
+                df = self.get_cleaned_product_timeseries(id, [product])
+                if df is not None:
+                    ts = timeseries.Timeseries(df, date_key="date", height_key="height")
 
     # def load_crossings(self):
     #     self.crossings = gpd.read_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))

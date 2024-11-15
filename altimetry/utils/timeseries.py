@@ -2,8 +2,8 @@ from dataclasses import dataclass
 import warnings
 import pandas as pd
 
-from altimetry.utils.filters.basic_filters import sanity
-from altimetry.utils.filters.kalman import kalman
+from altimetry.utils.filters.basic_filters import elevation_filter, daily_mean_filter
+# from altimetry.utils.filters.kalman import kalman
 
 
 @dataclass
@@ -30,9 +30,9 @@ class Timeseries:
                 )
                 return
 
-    def filter(self, filters: list):
-        # Ensure that provided filters are supported
-        supported_filters = ["sanity", "kalman"]
+    def clean(self, filters: list):
+        ##### Ensure that provided filters are supported
+        supported_filters = ["elevation", "daily_mean"]
 
         for filter in filters:
             if filter not in supported_filters:
@@ -41,5 +41,21 @@ class Timeseries:
                 )
         filters = [filter for filter in filters if filter in supported_filters]
 
-        if "sanity" in filters:
-            df = fltrs.basic_filters.sanity()
+        ##### Apply filters
+        if "elevation" in filters:
+            # edits timeseries object in place
+            elevation_filter(self, height_range=(0, 8000))
+
+        if "daily_mean" in filters:
+            daily_mean_filter(self)
+
+    def export_csv(self, path):
+        self.df.to_csv(path)
+
+
+# def merge(timeseries :list = []):
+
+#     df_list = []
+
+#     # create a single timeseries object from the multiple timeseries
+#     for ts in timeseries:

@@ -18,8 +18,7 @@ from matplotlib.dates import date2num
 from datetime import date, datetime
 
 from altimetry.system import Rivers, Reservoirs
-from altimetry.utils.satellite import icesat2, sentinel
-from altimetry.utils import utils, geometry
+from altimetry.utils import utils
 
 
 @dataclass

@@ -32,7 +32,7 @@ reservoirs.assign_reservoir_polygons()  # set the download polygons from the swo
 ##### Download data
 print("Downloading data")
 
-download = ["S3"]
+download = ["S3", "S6"]
 
 # reservoirs.download_altimetry(product='SWOT_Lake', startdate=mekong.swot_startdate, enddate=mekong.swot_enddate)
 # reservoirs.download_altimetry(product='ATL13', startdate=mekong.startdates['icesat2'], enddate=mekong.enddates['icesat2'], start_index=0)
