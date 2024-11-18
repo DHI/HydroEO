@@ -51,7 +51,7 @@ def query(
     """
 
     # define query object
-    region_a = ipx.Query(
+    query = ipx.Query(
         product=product,
         spatial_extent=aoi,
         date_range=[startdate.strftime("%Y-%m-%d"), enddate.strftime("%Y-%m-%d")],
@@ -62,15 +62,17 @@ def query(
     # provide credentials
     if earthdata_credentials is not None:
         un, pw = earthdata_credentials
-        region_a.earthdata_login(un, pw)
+        query.earthdata_login(un, pw)
 
     # TODO: add in some kind of log to not redownload data?
+    # This is difficult to do because as of now there is no way with icepyx to select sprcific granuals returned from a query,
+    # so even if we were to log the downloaded granules, there is no way to ensure that we dont download them again later if
+    # the same granuale appears in a new set of search parameters. Thus we may be downloading a granule with no actual crossing
+    # over a reservoir many times over.
 
     # order granules
-    region_a.order_granules()
-    region_a.download_granules(download_directory)
-
-    return region_a.granules.orderIDs
+    query.order_granules()
+    query.download_granules(download_directory)
 
 
 @dataclass
@@ -207,3 +209,7 @@ def extract_observations(src_dir, dst_path, features):
         observations["product"] = "ATL13"
         observations = observations.set_crs(features.crs)
         observations.to_file(dst_path)
+
+
+def get_latest_obs_date(data_dir):
+    pass

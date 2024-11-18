@@ -39,19 +39,41 @@ def query(
     # make the search
     results = earthaccess.search_data(**params)
 
-    # make list of file names for later reference
-    # result_files = list()
-    # for result in results:
-    #     with (earthaccess.open([result])[0] as file):
-    #         result_files.append(file)
-
     return results
 
 
-def download(result, download_directory: str):
-    files = earthaccess.download(result, download_directory)
+def download(results, download_directory: str):
+    # Check if we have a progress log file in this directory, if not make it
+    log_path = os.path.join(download_directory, "downloaded.log")
+    if not os.path.exists(log_path):
+        with open(log_path, "w") as log:
+            pass
 
-    return files
+    # open the log file with reading and writing access
+    with open(log_path, "r") as log:
+        # first read all of the downloaded ids
+        downloaded_ids = [line.rstrip() for line in log]
+
+    to_download = list()
+    for result in results:
+        # check file name to see if its downloaded and download if needed
+        file_name = result.data_links()[0].split("/")[-1].split(".")[0]
+        if file_name not in downloaded_ids:
+            to_download.append(result)
+
+    print(f"{len(results)-len(to_download)} files shown as downloaded in log")
+    print(f"{len(to_download)} will be downloaded")
+    if to_download:
+        files = earthaccess.download(to_download, download_directory)
+
+        with open(log_path, "a") as log:
+            for file in files:
+                log.write(file.split("\\")[-1].split(".zip")[0] + "\n")
+
+        return files
+
+    else:
+        return []
 
 
 def subset_by_id(files: list, ids: list):
@@ -84,7 +106,7 @@ def subset_by_id(files: list, ids: list):
             gdf.to_file(os.path.join(file_dir, export_file))
 
         # clean up original file and temp directory
-        # os.remove(file)
+        os.remove(file)
         shutil.rmtree(temp_dir)
 
 
@@ -128,3 +150,16 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features):
             dst_path = os.path.join(dst_sub_dir, dst_file_name)
 
             observations.to_file(dst_path)
+
+
+def get_latest_obs_date(data_dir):
+    dates = list()
+
+    for dir in os.listdir(data_dir):
+        shp_path = os.path.join(data_dir, dir, "raw_observations", "swot.shp")
+
+        if os.path.exists(shp_path):
+            gdf = gpd.read_file(shp_path)
+            dates.append(max(gdf.date.values).astype(datetime.date))
+
+    return max(dates)

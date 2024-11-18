@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import warnings
 import pandas as pd
 
-from altimetry.utils.filters.basic_filters import elevation_filter, daily_mean_filter
+import altimetry.utils.filters.basic_filters as fltrs
 # from altimetry.utils.filters.kalman import kalman
 
 
@@ -32,7 +32,13 @@ class Timeseries:
 
     def clean(self, filters: list):
         ##### Ensure that provided filters are supported
-        supported_filters = ["elevation", "daily_mean"]
+        supported_filters = [
+            "elevation",
+            "MAD",
+            "daily_mean",
+            "hampel",
+            "rolling_median",
+        ]
 
         for filter in filters:
             if filter not in supported_filters:
@@ -44,18 +50,40 @@ class Timeseries:
         ##### Apply filters
         if "elevation" in filters:
             # edits timeseries object in place
-            elevation_filter(self, height_range=(0, 8000))
+            fltrs.elevation_filter(self, height_range=(0, 8000))
 
         if "daily_mean" in filters:
-            daily_mean_filter(self)
+            fltrs.daily_mean_merge(self)
+
+        if "MAD" in filters:
+            fltrs.mad_filter(self, threshold=4)
+
+        if "hampel" in filters:
+            fltrs.hampel(self)
+
+        if "rolling_median" in filters:
+            fltrs.rolling_median(self)
 
     def export_csv(self, path):
         self.df.to_csv(path)
 
 
-# def merge(timeseries :list = []):
+def merge(timeseries: list = []):
+    df_list = []
 
-#     df_list = []
+    # create a single timeseries object from the multiple timeseries
+    for ts in timeseries:
+        df = ts.df[[ts.date_key, ts.height_key]]
+        df = df.rename(columns={ts.date_key: "date", ts.height_key: "height"})
 
-#     # create a single timeseries object from the multiple timeseries
-#     for ts in timeseries:
+        df_list.append(df)
+
+    # concatenate dfs
+    df = pd.concat(df_list)
+
+    # turn this combined df into a timeseries object and clean
+    ts = Timeseries(df, date_key="date", height_key="height")
+    ts.clean(["elevation", "daily_mean", "MAD", "rolling_median"])
+
+    # return the merged timeseries
+    return ts

@@ -2,15 +2,19 @@ from dataclasses import dataclass
 import warnings
 
 import os
+import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
 
 from cmcrameri import cm
+import seaborn as sns
+
+
 import matplotlib.pyplot as plt
 from matplotlib.dates import date2num
 
-from datetime import date, datetime
+import datetime
 
 from altimetry.utils.satellites import swot, icesat2, sentinel
 from altimetry.utils import utils, geometry, timeseries
@@ -34,7 +38,7 @@ class System:
         enddate: tuple,
         credentials=None,
         grid: bool = False,
-        start_index=0,
+        update_existing: bool = False,
     ):
         supported_products = ["ATL13", "S3", "S6", "SWOT_LAKE"]
 
@@ -58,8 +62,8 @@ class System:
             download_gdf = self.download_gdf.copy()
 
         # unpack and format the download dates
-        startdate = date(*startdate)
-        enddate = date(*enddate)
+        startdate = datetime.date(*startdate)
+        enddate = datetime.date(*enddate)
 
         ########################################################################################################################
         ##### We have to handle different downloads differently based on the way products are delivered in "granules"
@@ -74,12 +78,25 @@ class System:
             download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
             utils.ifnotmakedirs(download_dir)
 
+            # check if we need to update the start time for the download
+            if update_existing:
+                lastest_obs = swot.get_latest_obs_date(self.dirs["output"])
+                lastest_obs = (
+                    lastest_obs.year,
+                    lastest_obs.month,
+                    lastest_obs.day,
+                )  # put back into list because download_altimetry expects this
+                startdate = datetime.date(*lastest_obs)
+
             # grab coordinates of full area of interest
             coords = [
                 (x, y) for x, y in download_gdf.unary_union.envelope.exterior.coords
             ]
 
             # query all available data
+            print(
+                f"Searching for SWOT_L2_HR_LakeSP_2.0 for aoi from {startdate} to {enddate}"
+            )
             results = swot.query(
                 aoi=coords,
                 startdate=startdate,
@@ -89,19 +106,35 @@ class System:
             )
 
             # loop through results and check if it is the product we want (right now it must include "Prior"), later we can try and get the observed water bodies and match them
+            print(f"{len(results)} products returned from query")
+            to_download = list()
             for result in results:
                 # just based on that we know where to find the long product name and download link, may need to change if naming conventions change!
                 product_pieces = result.data_links()[0].split("/")[-1].split("_")
-                if "Prior" in product_pieces:
-                    # download the individual file
-                    files = swot.download(result, download_directory=download_dir)
 
-                    # we want to subset the downloaded file to only include known waterbodies
-                    swot.subset_by_id(files, download_gdf.dl_id.astype(int).values)
+                if "Prior" in product_pieces:
+                    to_download.append(result)
+            print(f"{len(to_download)} products of 'Prior' type")
+
+            # download the individual file
+            files = swot.download(to_download, download_directory=download_dir)
+
+            # we want to subset the downloaded file to only include known waterbodies TODO: add functionality to skip subsetting if the subsetted file exists
+            swot.subset_by_id(files, download_gdf.dl_id.astype(int).values)
 
         elif product in ["ATL13"]:
             # loop through download geometry and download data
-            for i in download_gdf.index[start_index:]:
+            for i in download_gdf.index:
+                # check if we need to update the start time for the download
+                if update_existing:
+                    lastest_obs = icesat2.get_latest_obs_date(self.dirs["output"])
+                    lastest_obs = (
+                        lastest_obs.year,
+                        lastest_obs.month,
+                        lastest_obs.day,
+                    )  # put back into list because download_altimetry expects this
+                    startdate = datetime.date(*lastest_obs)
+
                 # grab coordinates of geometry
                 coords = [
                     (x, y)
@@ -128,13 +161,15 @@ class System:
                         product="ATL13",
                     )
 
+                    return _
+
         elif product in ["S3", "S6"]:
             # set empty variables because no session has been started yet, this will occur at the first download and sessions will refresh automatically
             session_token = None
             session_start_time = None
 
             # loop through download geometry
-            for i in download_gdf.index[start_index:]:
+            for i in download_gdf.index:
                 # extract id for saving data
                 id = download_gdf.loc[i, "dl_id"]
                 print(f"\nDowloading data for id {id}:")
@@ -247,6 +282,7 @@ class System:
         # concatenate everything into one dataframe
         if len(df_list) > 0:
             df = pd.concat(df_list)
+            df["date"] = pd.to_datetime(df.date)
             df = df.sort_values(by="date")
         else:
             df = None  # TODO: maybe raise an error instead?
@@ -255,11 +291,100 @@ class System:
 
     def merge_product_timeseries(self, products: list):
         for id in self.download_gdf.dl_id:
+            ts_list = list()
             for product in products:
                 # get timeseries for id and each product to clean individually
                 df = self.get_cleaned_product_timeseries(id, [product])
                 if df is not None:
-                    ts = timeseries.Timeseries(df, date_key="date", height_key="height")
+                    ts_list.append(
+                        timeseries.Timeseries(df, date_key="date", height_key="height")
+                    )
+
+            # run the merge function TODO: include satellite bias and run kalman filter, right now just takes mean, if overlapping observations, and simple cleaning with MAD
+            merged_ts = timeseries.merge(ts_list)
+
+            # save the merged timeseries
+            data_dir = os.path.join(self.dirs["output"], f"{id}")
+            utils.ifnotmakedirs(data_dir)
+            merged_ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
+
+    def get_merged_timeseries(self, id):
+        data_path = os.path.join(self.dirs["output"], f"{id}", "merged_timeseries.csv")
+
+        if os.path.exists(data_path):
+            df = pd.read_csv(data_path)
+            df["date"] = pd.to_datetime(df.date)
+            df = df.sort_values(by="date")
+            return df
+        else:
+            warnings.warn(
+                f"{data_path} does not exist, be sure to merge product timeseries first!"
+            )
+            return None
+
+    def summarize_cleaning_by_id(self, id):
+        sns.set()
+        cmap = cm.batlow.resampled(4)
+        colors = {
+            "icesat2": cmap(0),
+            "sentinel3": cmap(1),
+            "sentinel6": cmap(2),
+            "swot": cmap(3),
+        }
+
+        fig, main_ax = plt.subplots(3, 1, figsize=(10, 10))
+
+        # plot unfiltered timeseries
+        df = self.get_unfiltered_product_timeseries(id)
+        df = df[["date", "height", "platform", "product"]]
+
+        ax = main_ax[0]
+        ax.set_title("Unfiltered Products")
+        for platform in df.platform.unique():
+            df.loc[df.platform == platform].plot(
+                ax=ax,
+                x="date",
+                y="height",
+                c=colors[platform],
+                kind="scatter",
+                label=platform,
+            )
+
+        ax.legend()
+        ax.tick_params(axis="x", rotation=45)
+
+        # now plot cleaned timeseries
+        df = self.get_cleaned_product_timeseries(id)
+        df = df[["date", "height", "platform", "product"]]
+
+        ax = main_ax[1]
+        ax.set_title("Cleaned Products")
+        for platform in df.platform.unique():
+            df.loc[df.platform == platform].plot(
+                ax=ax,
+                x="date",
+                y="height",
+                c=colors[platform],
+                kind="scatter",
+                label=platform,
+            )
+
+        ax.legend()
+        ax.tick_params(axis="x", rotation=45)
+
+        # now plot merged timeseries
+        df = self.get_merged_timeseries(id)
+        df = df[["date", "height"]]
+
+        ax = main_ax[2]
+        ax.set_title("Merged Timeseries")
+        df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
+
+        ax.legend()
+        ax.tick_params(axis="x", rotation=45)
+
+        fig.tight_layout()
+        plt.show()
 
     # def load_crossings(self):
     #     self.crossings = gpd.read_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))
@@ -630,8 +755,8 @@ class Rivers(System):
             data_gdf.plot(
                 ax=ax,
                 column="color",
-                vmin=int(date2num(datetime(2019, 1, 1))),
-                vmax=int(date2num(datetime(2024, 12, 31))),
+                vmin=int(date2num(datetime.datetime(2019, 1, 1))),
+                vmax=int(date2num(datetime.datetime(2024, 12, 31))),
                 cmap=cm.batlow,
                 alpha=0.5,
                 legend=True,
