@@ -572,15 +572,15 @@ class Sentinel3(Sentinel):
         # Create a Data Frame with coordinates, OCOG height, date
         vs = pd.DataFrame(
             data={
+                "height": self.height,
+                "error": self.sig0,
                 "lat": self.lat,
                 "lon": self.lon,
                 "date": self.date,
-                "sigma0": self.sig0,
                 "alt": self.alt,
                 "geoid": self.geoid,
                 "tracker_range": self.tracker_range,
                 "range_OCOG": self.range_OCOG,
-                "height": self.height,
                 "epoch_OCOG": self.epoch_OCOG,
             },
             index=np.arange(len(self.height)),
@@ -716,13 +716,14 @@ class Sentinel6(Sentinel):
         vs = pd.DataFrame(
             {
                 "height": self.height,
+                "error": self.sig0,
                 "lat": self.lat,
                 "lon": self.lon,
                 "date": [
                     (
                         datetime.datetime(2000, 1, 1)
                         + datetime.timedelta(seconds=c2_time)
-                    ).date()
+                    )  # .date()
                     for c2_time in self.tai
                 ],
                 "sigma0": self.sig0,
@@ -793,3 +794,15 @@ def extract_observations(src_dir, dst_path, features):
         observations["product"] = product
         observations = observations.set_crs(features.crs)
         observations.to_file(dst_path)
+
+
+def get_latest_obs_date(data_dir, product):
+    if product.upper() == "S3":
+        shp_path = os.path.join(data_dir, "sentinel3.shp")
+    elif product.upper() == "S6":
+        shp_path = os.path.join(data_dir, "sentinel6.shp")
+
+    if os.path.exists(shp_path):
+        gdf = gpd.read_file(shp_path)
+        last_obs_date = max(gdf.date.values).astype(datetime.date)
+        return last_obs_date

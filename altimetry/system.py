@@ -25,13 +25,14 @@ from tqdm import tqdm
 @dataclass
 class System:
     gdf: gpd.GeoDataFrame
+    id_key: str
     dirs: dict
 
     def report(self):
         print(f"Number of {self.type}: {len(self.gdf)}")
         return self.gdf.head()
 
-    def download_altimetry(
+    def download_altimetry(  # TODO: this function has gotten a bit complex and should maybe be refacotred and broken down
         self,
         product: str,
         startdate: tuple,
@@ -50,19 +51,20 @@ class System:
             )
 
         ### Set the download geometry for the search bounds
-        # set grid as download bounds if needed
-        if grid:
-            if hasattr(self, "grid"):
-                download_gdf = self.grid.copy()
-            else:
-                raise NameError(
-                    "Object has no atttribute: grid. Make sure to create grid before enabling this option"
-                )
-        else:
-            download_gdf = self.download_gdf.copy()
+        # set grid as download bounds if needed TODO: add the setting of the download geometries outside of download function
+        # if grid:
+        #     if hasattr(self, "grid"):
+        #         download_gdf = self.grid.copy()
+        #     else:
+        #         raise NameError(
+        #             "Object has no atttribute: grid. Make sure to create grid before enabling this option"
+        #         )
+        # else:
+        #     self.download_gdf = self.gdf
 
         # unpack and format the download dates
         startdate = datetime.date(*startdate)
+        provided_start_date = startdate
         enddate = datetime.date(*enddate)
 
         ########################################################################################################################
@@ -90,7 +92,8 @@ class System:
 
             # grab coordinates of full area of interest
             coords = [
-                (x, y) for x, y in download_gdf.unary_union.envelope.exterior.coords
+                (x, y)
+                for x, y in self.download_gdf.unary_union.envelope.exterior.coords
             ]
 
             # query all available data
@@ -120,48 +123,56 @@ class System:
             files = swot.download(to_download, download_directory=download_dir)
 
             # we want to subset the downloaded file to only include known waterbodies TODO: add functionality to skip subsetting if the subsetted file exists
-            swot.subset_by_id(files, download_gdf.dl_id.astype(int).values)
+            swot.subset_by_id(
+                files, self.download_gdf["prior_lake_id"].astype(int).values
+            )
 
         elif product in ["ATL13"]:
             # loop through download geometry and download data
-            for i in download_gdf.index:
+            for i in self.download_gdf.index:
+                id = self.download_gdf.loc[i, self.id_key]
+                print(f"\nDowloading data for id {id}:")
+
+                ##### Check if we should edit search date parameters
+                startdate = provided_start_date  # keep track of provided start date so we can refresh with each reservoir query
                 # check if we need to update the start time for the download
                 if update_existing:
-                    lastest_obs = icesat2.get_latest_obs_date(self.dirs["output"])
-                    lastest_obs = (
-                        lastest_obs.year,
-                        lastest_obs.month,
-                        lastest_obs.day,
-                    )  # put back into list because download_altimetry expects this
-                    startdate = datetime.date(*lastest_obs)
+                    raw_data_dir = os.path.join(
+                        self.dirs["output"], str(id), "raw_observations"
+                    )
+                    latest_obs = icesat2.get_latest_obs_date(raw_data_dir)
+                    if latest_obs is not None:
+                        latest_obs = (
+                            latest_obs.year,
+                            latest_obs.month,
+                            latest_obs.day,
+                        )  # put back into list because download_altimetry expects this
+                        startdate = datetime.date(*latest_obs)
 
                 # grab coordinates of geometry
                 coords = [
                     (x, y)
-                    for x, y in download_gdf.loc[i, "geometry"].envelope.exterior.coords
+                    for x, y in self.download_gdf.loc[
+                        i, "geometry"
+                    ].envelope.exterior.coords
                 ]
-                id = download_gdf.loc[i, "dl_id"]
 
-                print(f"\nDowloading data for id {id}:")
+                # define and if needed create directory for each download geometry
+                download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
+                utils.ifnotmakedirs(download_dir)
 
-                if product == "ATL13":
-                    # define and if needed create directory for each download geometry
-                    download_dir = os.path.join(
-                        self.dirs["icesat2"], rf"{self.type}\{id}"
-                    )
-                    utils.ifnotmakedirs(download_dir)
-
-                    # query and download data
-                    _ = icesat2.query(
-                        aoi=coords,
-                        startdate=startdate,
-                        enddate=enddate,
-                        earthdata_credentials=credentials,
-                        download_directory=download_dir,
-                        product="ATL13",
-                    )
-
-                    return _
+                # query and download data
+                print(
+                    f"Searching for Icesat2 ATL13 for aoi from {startdate} to {enddate}"
+                )
+                _ = icesat2.query(
+                    aoi=coords,
+                    startdate=startdate,
+                    enddate=enddate,
+                    earthdata_credentials=credentials,
+                    download_directory=download_dir,
+                    product="ATL13",
+                )
 
         elif product in ["S3", "S6"]:
             # set empty variables because no session has been started yet, this will occur at the first download and sessions will refresh automatically
@@ -169,15 +180,33 @@ class System:
             session_start_time = None
 
             # loop through download geometry
-            for i in download_gdf.index:
+            for i in self.download_gdf.index:
                 # extract id for saving data
-                id = download_gdf.loc[i, "dl_id"]
+                id = self.download_gdf.loc[i, self.id_key]
                 print(f"\nDowloading data for id {id}:")
+
+                ##### Check if we should edit search date parameters
+                startdate = provided_start_date  # keep track of provided start date so we can refresh with each reservoir query
+                # check if we need to update the start time for the download
+                if update_existing:
+                    raw_data_dir = os.path.join(
+                        self.dirs["output"], str(id), "raw_observations"
+                    )
+                    latest_obs = sentinel.get_latest_obs_date(raw_data_dir, product)
+                    if latest_obs is not None:
+                        latest_obs = (
+                            latest_obs.year,
+                            latest_obs.month,
+                            latest_obs.day,
+                        )  # put back into list because download_altimetry expects this
+                        startdate = datetime.date(*latest_obs)
 
                 # grab coordinates of geometry
                 coords = [
                     (x, y)
-                    for x, y in download_gdf.loc[i, "geometry"].envelope.exterior.coords
+                    for x, y in self.download_gdf.loc[
+                        i, "geometry"
+                    ].envelope.exterior.coords
                 ]
 
                 # make directiories for download, if needed
@@ -192,6 +221,9 @@ class System:
                 utils.ifnotmakedirs(download_dir)
 
                 # query copernicus for download ids
+                print(
+                    f"Searching for Sentinel-{product} for aoi from {startdate} to {enddate}"
+                )
                 ids = sentinel.query(
                     aoi=coords,
                     startdate=startdate,
@@ -248,7 +280,7 @@ class System:
         return df
 
     def clean_product_timeseries(self, products: list, filters: list):
-        for id in self.download_gdf.dl_id:
+        for id in self.download_gdf[self.id_key]:
             for product in products:
                 # get timeseries for id and each product to clean individually
                 df = self.get_unfiltered_product_timeseries(id, [product])
@@ -290,7 +322,7 @@ class System:
         return df
 
     def merge_product_timeseries(self, products: list):
-        for id in self.download_gdf.dl_id:
+        for id in self.download_gdf[self.id_key]:
             ts_list = list()
             for product in products:
                 # get timeseries for id and each product to clean individually
@@ -333,6 +365,7 @@ class System:
         }
 
         fig, main_ax = plt.subplots(3, 1, figsize=(10, 10))
+        fig.suptitle(f"{self.type}: {id}")
 
         # plot unfiltered timeseries
         df = self.get_unfiltered_product_timeseries(id)
@@ -406,7 +439,7 @@ class System:
     #     fig, ax = plt.subplots()
 
     #     # extract this grids crossings from the main river crossing dataframe
-    #     data_gdf = self.crossings.loc[self.crossings.dl_id == id]
+    #     data_gdf = self.crossings.loc[self.crossings[self.id_key] == id]
 
     #     if summarize:
     #         # apply simple mean groupby to make daily estimate (There is no adjustment for bias here just an example of how to get to a single daily value quickly)
@@ -429,7 +462,6 @@ class Reservoirs(System):
         utils.ifnotmakedirs(self.dirs["output"])
 
         self.geom_type = self.gdf.loc[0, "geometry"].geom_type
-        # self.gdf['dl_id'] = self.gdf.index
 
     def assign_pld_id(self, local_crs, max_distance):
         # load the pld
@@ -463,34 +495,34 @@ class Reservoirs(System):
         missing.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
 
         print(
-            f"Out of the {len(self.gdf)} reservoirs, {len(present)} area present and {len(missing)} are missing from the PLD."
+            f"Out of the {len(self.gdf)} reservoirs, {len(present)} are present and {len(missing)} are missing from the PLD."
         )
 
-    def assign_reservoir_polygons(self):
-        # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
-        # load the pld
-        pld = gpd.read_file(self.dirs["pld"])
+    # def assign_reservoir_polygons(self):
+    #     # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
+    #     # load the pld
+    #     pld = gpd.read_file(self.dirs["pld"])
 
-        download_gdf = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
+    #     download_gdf = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
 
-        geometries = [
-            pld.loc[pld.lake_id == lake_id].geometry.values[0]
-            for lake_id in download_gdf.prior_lake_id
-        ]
+    #     geometries = [
+    #         pld.loc[pld.lake_id == lake_id].geometry.values[0]
+    #         for lake_id in download_gdf.prior_lake_id
+    #     ]
 
-        download_gdf["geometry"] = geometries
+    #     download_gdf["geometry"] = geometries
 
-        download_gdf["dl_id"] = download_gdf.prior_lake_id.astype(int)
+    #     download_gdf[prior_lake_id] = download_gdf.prior_lake_id.astype(int)
 
-        self.download_gdf = download_gdf
+    #     self.download_gdf = download_gdf
 
     def extract_product_timeseries(self, products: list):
         if "icesat2" in products:
             for id in tqdm(
-                self.download_gdf.dl_id, desc="Extracting ICESat-2 ATL13 product"
+                self.download_gdf[self.id_key], desc="Extracting ICESat-2 ATL13 product"
             ):
                 # filter gdf to only row with id
-                sub_gdf = self.download_gdf.loc[self.download_gdf.dl_id == id]
+                sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
 
                 # prep export folder and paths
                 download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
@@ -508,10 +540,10 @@ class Reservoirs(System):
 
         if "sentinel3" in products:
             for id in tqdm(
-                self.download_gdf.dl_id, desc="Extracting Sentinel-3 product"
+                self.download_gdf[self.id_key], desc="Extracting Sentinel-3 product"
             ):
                 # filter gdf to only row with id
-                sub_gdf = self.download_gdf.loc[self.download_gdf.dl_id == id]
+                sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
 
                 # prep export folder and paths
                 download_dir = os.path.join(
@@ -531,10 +563,10 @@ class Reservoirs(System):
 
         if "sentinel6" in products:
             for id in tqdm(
-                self.download_gdf.dl_id, desc="Extracting Sentinel-6 product"
+                self.download_gdf[self.id_key], desc="Extracting Sentinel-6 product"
             ):
                 # filter gdf to only row with id
-                sub_gdf = self.download_gdf.loc[self.download_gdf.dl_id == id]
+                sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
 
                 # prep export folder and paths
                 download_dir = os.path.join(
@@ -561,6 +593,7 @@ class Reservoirs(System):
                 dst_dir=self.dirs["output"],
                 dst_file_name="swot.shp",
                 features=self.download_gdf,
+                id_key=self.id_key,
             )
 
     # def map_crossings_by_id(self, id):
@@ -576,7 +609,7 @@ class Reservoirs(System):
     #     # plot reservoir
     #     self.gdf.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
 
-    #     data_gdf = self.crossings.loc[self.crossings.dl_id == id]
+    #     data_gdf = self.crossings.loc[self.crossings[self.id_key] == id]
 
     #     if len(data_gdf) > 0:
     #         data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
@@ -619,14 +652,16 @@ class Rivers(System):
         grid_gdf = grid_gdf.loc[
             grid_gdf.intersects(self.buffered_gdf.unary_union)
         ].reset_index(drop=True)
-        grid_gdf["dl_id"] = grid_gdf.index  # set a grid id based on the remaing grids
+        grid_gdf["dl_id"] = (
+            grid_gdf.index
+        )  # set a grid id based on the remaing grids TODO: consider how to handle the download ids when using river, perhaps can use SWORD id
 
         # save grid and set attribute
-        grid_gdf.to_file(os.path.join(self.dirs["output"], f"grid.shp"))
+        grid_gdf.to_file(os.path.join(self.dirs["output"], "grid.shp"))
         self.grid = grid_gdf
 
     def load_grid(self):
-        self.grid = gpd.read_file(os.path.join(self.dirs["output"], f"grid.shp"))
+        self.grid = gpd.read_file(os.path.join(self.dirs["output"], "grid.shp"))
 
     def visualize_grid(self):
         fig, ax = plt.subplots()

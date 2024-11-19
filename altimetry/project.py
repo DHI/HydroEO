@@ -106,7 +106,9 @@ class Project:
             self.dirs["pld"] = self.config["reservoirs"]["prior_path"]
 
             self.reservoirs = Reservoirs(
-                gdf=gpd.read_file(self.config["reservoirs"]["path"]), dirs=self.dirs
+                gdf=gpd.read_file(self.config["reservoirs"]["path"]),
+                id_key=self.config["reservoirs"]["id_key"],
+                dirs=self.dirs,
             )
 
             self.reservoirs.gdf = self.reservoirs.gdf.to_crs(self.global_crs)

@@ -68,7 +68,7 @@ def query(
     # This is difficult to do because as of now there is no way with icepyx to select sprcific granuals returned from a query,
     # so even if we were to log the downloaded granules, there is no way to ensure that we dont download them again later if
     # the same granuale appears in a new set of search parameters. Thus we may be downloading a granule with no actual crossing
-    # over a reservoir many times over.
+    # over a reservoir many times over. Consider pull request to be able to add this functionality later
 
     # order granules
     query.order_granules()
@@ -161,6 +161,8 @@ class ATL13:
         track_df = pd.DataFrame(
             data={
                 "height": self.height_seg,
+                "error": self.height_err,
+                # "quality": self.quality_seg,
                 "lat": self.lat_seg,
                 "lon": self.lon_seg,
                 "date": self.date,
@@ -212,4 +214,8 @@ def extract_observations(src_dir, dst_path, features):
 
 
 def get_latest_obs_date(data_dir):
-    pass
+    shp_path = os.path.join(data_dir, "icesat2.shp")
+    if os.path.exists(shp_path):
+        gdf = gpd.read_file(shp_path)
+        last_obs_date = max(gdf.date.values).astype(datetime.date)
+        return last_obs_date

@@ -77,7 +77,7 @@ def download(results, download_directory: str):
 
 
 def subset_by_id(files: list, ids: list):
-    for file in files:
+    for file in tqdm(files, desc="Subsetting files"):
         # extract file properties
         file_dir = os.path.dirname(file)
         file_name = os.path.basename(file)
@@ -122,13 +122,13 @@ def merge_shps(dir):
     return gdf
 
 
-def extract_observations(src_dir, dst_dir, dst_file_name, features):
+def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
     # load in combined observations from individual files in download directory
     data_gdf = merge_shps(src_dir)
 
     # now loop through the ids in the features gdf to extract the observations from the main one
     for i in tqdm(features.index, desc="Extracting SWOT Lake SP product"):
-        dl_id = str(int(features.loc[i, "dl_id"]))
+        dl_id = str(features.loc[i, id_key])
         lake_id = str(int(features.loc[i, "prior_lake_id"]))
 
         # filter observations to keep only the ones associated with this lake/reservoir
