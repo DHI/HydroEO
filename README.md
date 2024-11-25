@@ -23,67 +23,104 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 - (not started) - Implementation of downloads for virtual stations along a provided river shapefile
 
 ## How to get started
-1) Familiarize yourself with the config file
-The altimetry project is initialized entirely from information within the provided config file. The configuration file includes information on the project directory, reservoir shape file location, gis info as well as credentials for downloading data from various locations. Importantly, this is also where you will specify which satellite products you wish to download and process and for which dates to download.
+The altimetry project is initialized entirely from information within the provided config file. The configuration file includes information on the project directory, reservoir shape file location, gis info as well as credentials for downloading data from various locations. Importantly, this is also where you will specify which satellite products you wish to download and process and for which dates to download. The following will walk you through the different components of the configuration file and explain what is needed when specifying each aspect
 
-Project information within the config file:
+
+
+1) General project information
+Each project must be initialized with a main directory which is where the processed data and timeseries will be stored. This allows for a previously initialited project to be loaded and updated with new data
 ```
 project :
   main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
 
 gis :
   global_crs : 'EPSG:4326'
+```
 
+2) Reservoir polygon shapefile
+Reservoir information must be provided within a single shapefile that specified within the config file. A column must be specified in which a waterbodies unique id is provided. The project will automatically process data for all provided polygons.
+```
 reservoirs :
   path : "C:\\Users\\username\\altimetry_project\\reservoirs.shp" # path to the shapefile holding one or more resevoirs per feature
   id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
 ```
 
+3) Login credentials for data providers
+In order to download data, an account must be made with the appropriate providers. Here you can find information on which providers are needed for each satellite product and how to specify your credentials either in the configuration file or your environment
 
-Example of how to provide credentials for ICESat-2 download
+### SWOT and ICESat-2
+- Data provided by NASA (SWOT and ICESat-2) is accessed through the earthaccess python package which allows for easy downloads using your Earth Data Login credentials. You can register for a free Earth Data Login account at https://urs.earthdata.nasa.gov/. By default, earthaccess will look for your Earth Data Login credentials in a .netrc file, or in environment variables EARTHDATA_USERNAME and EARTHDATA_PASSWORD. If you do not set one of these before running, your credentials must be provided within the config file, which will set the environment variables for you. 
 ```
-earthaccess: # create an Earth Data account at https://urs.earthdata.nasa.gov/ 
+earthaccess:
   username : ""
   password : ""
 ```
 
-Example of specifying download criteria for ICESat-2
+- If wishing to download SWOT data, reference to the Prior Lake Database (PLD) must be made. If you do not already have a downloaded version, a subset of the PLD will be downloaded from Hydroweb. If you do not have an account already, you should create an account here: https://hydroweb.next.theia-land.fr/. Once your account is made, navigate to the User settings and create an API key. Copy this key and add it to the corresponding spot within the config file.
 ```
+hydroweb:
+  api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
+  PLD_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp" # path to which the downloaded SWOT PLD file will be saved or loaded from if it already exists
+```
+
+### Sentinel-3 and Sentinel-6
+- Data provided by ESA (Sentinel 3 and Sentinel 6) is accessed through the copernicus data space. Create a free account here: https://dataspace.copernicus.eu/. Credentials must be provided in the config file directly.
+```
+creodias:
+  username : ""
+  password : ""
+```
+
+4) Specifying which date and product information
+You can choose which products you wish to download and provide specific dates for individual products. You may wish to set a specific location for where to save the raw data. When running the typical workflow, the raw data will be deleted after subsetting to the reservoir boundary. The configuration file for downloading all data would be completed as follows:
+
+```
+swot:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\swot"
+  startdate : [2023, 1, 1] # [year, month, day] format
+  enddate   : [2025, 01, 01]
+
 icesat2:
   download : True
   process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
-  startdate : [2024, 1, 1] # [year, month, day] format
-  enddate   : [2024, 11, 01]
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2"
+  startdate : [2019, 1, 1] # [year, month, day] format
+  enddate   : [2025, 01, 01]
+
+sentinel3:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel3"
+  startdate : [2016, 1, 1] # [year, month, day] format
+  enddate   : [2025, 01, 01]
+
+sentinel6:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel6"
+  startdate : [2021, 1, 1] # [year, month, day] format
+  enddate   : [2025, 01, 01]
 ```
 
 Please see the example configuration file in the notebooks folder for a complete example to download all support products
 
-2) Create free accounts for data downloads
-- Data provided by NASA (SWOT and ICESat-2) is accessed through the earthaccess python package which allows for easy downloads using your Earth Data Login credentials. You can register for a free Earth Data Login account at https://urs.earthdata.nasa.gov/. By default, earthaccess will look for your Earth Data Login credentials in a .netrc file, or in environment variables EARTHDATA_USERNAME and EARTHDATA_PASSWORD. If you do not set one of these before running, your credentials must be provided within the config file. 
-
-- If wishing to download SWOT data, reference to the Prior Lake Database must be made. If you do not already have a downloaded version, a subset of the PLD will be downloaded from Hydroweb. If you do not have an account already, you should create an account here: https://hydroweb.next.theia-land.fr/. Once your account is made, navigate to the User settings and create an API key. Copy this key and add it to the corresponding spot within the config file.
-
-- Data provided by ESA (Sentinel 3 and Sentinel 6) is accessed through the copernicus data space. Create a free account here: https://dataspace.copernicus.eu/. Credentials must be provided in the config file directly.
-
-3) Gather waterbody polygons within a single shapefile
-- reservoir information must be provided within a single shapefile in which the path is specified within the config file. A column must be specified in which a waterbodies unique id is provided. The project will automatically process data for all provided polygons.
 
 4) Make your first downloads
-- Write your config file
-- Import the package
-- Initialize your project
-- Run your downloads
-- See the example notebook for a complete example
+Downloading, cleaning and viewing data for your reservoirs can be as simple as a couple lines. See the example notebook for more options and a complete overview.
 
 ```
 from altimetry.project import Project
 altimetry_project = Project(name="my_altimetry_project", config="config.yaml")
 altimetry_project.initialize()
 altimetry_project.download()
+altimetry_project.create_timeseries()
+altimetry_project.timeseries_report()
 ```
 
 ## More details into available satellite products
+You can find an overview of the different satellites and products support here. It may be helpful to familiarize yourself with ission details an repeat orbits to understand the benefits and shortcommings of each product. Typically it will be beneficial to download data from all available satellites as this will provide the best temporal coverage.
 
 ### Surface Water Ocean and Topography (SWOT) mission
 
