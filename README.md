@@ -28,6 +28,7 @@ The altimetry project is initialized entirely from information within the provid
 
 
 1) General project information
+
 Each project must be initialized with a main directory which is where the processed data and timeseries will be stored. This allows for a previously initialited project to be loaded and updated with new data
 ```
 project :
@@ -38,6 +39,7 @@ gis :
 ```
 
 2) Reservoir polygon shapefile
+
 Reservoir information must be provided within a single shapefile that specified within the config file. A column must be specified in which a waterbodies unique id is provided. The project will automatically process data for all provided polygons.
 ```
 reservoirs :
@@ -46,25 +48,26 @@ reservoirs :
 ```
 
 3) Login credentials for data providers
+
 In order to download data, an account must be made with the appropriate providers. Here you can find information on which providers are needed for each satellite product and how to specify your credentials either in the configuration file or your environment
 
-### SWOT and ICESat-2
-- Data provided by NASA (SWOT and ICESat-2) is accessed through the earthaccess python package which allows for easy downloads using your Earth Data Login credentials. You can register for a free Earth Data Login account at https://urs.earthdata.nasa.gov/. By default, earthaccess will look for your Earth Data Login credentials in a .netrc file, or in environment variables EARTHDATA_USERNAME and EARTHDATA_PASSWORD. If you do not set one of these before running, your credentials must be provided within the config file, which will set the environment variables for you. 
+##### SWOT and ICESat-2
+Data provided by NASA (SWOT and ICESat-2) is accessed through the earthaccess python package which allows for easy downloads using your Earth Data Login credentials. You can register for a free Earth Data Login account at https://urs.earthdata.nasa.gov/. By default, earthaccess will look for your Earth Data Login credentials in a .netrc file, or in environment variables EARTHDATA_USERNAME and EARTHDATA_PASSWORD. If you do not set one of these before running, your credentials must be provided within the config file, which will set the environment variables for you. 
 ```
 earthaccess:
   username : ""
   password : ""
 ```
 
-- If wishing to download SWOT data, reference to the Prior Lake Database (PLD) must be made. If you do not already have a downloaded version, a subset of the PLD will be downloaded from Hydroweb. If you do not have an account already, you should create an account here: https://hydroweb.next.theia-land.fr/. Once your account is made, navigate to the User settings and create an API key. Copy this key and add it to the corresponding spot within the config file.
+If wishing to download SWOT data, reference to the Prior Lake Database (PLD) must be made. If you do not already have a downloaded version, a subset of the PLD will be downloaded from Hydroweb. If you do not have an account already, you should create an account here: https://hydroweb.next.theia-land.fr/. Once your account is made, navigate to the User settings and create an API key. Copy this key and add it to the corresponding spot within the config file.
 ```
 hydroweb:
   api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
   PLD_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp" # path to which the downloaded SWOT PLD file will be saved or loaded from if it already exists
 ```
 
-### Sentinel-3 and Sentinel-6
-- Data provided by ESA (Sentinel 3 and Sentinel 6) is accessed through the copernicus data space. Create a free account here: https://dataspace.copernicus.eu/. Credentials must be provided in the config file directly.
+##### Sentinel-3 and Sentinel-6
+Data provided by ESA (Sentinel 3 and Sentinel 6) is accessed through the copernicus data space. Create a free account here: https://dataspace.copernicus.eu/. Credentials must be provided in the config file directly.
 ```
 creodias:
   username : ""
@@ -72,6 +75,7 @@ creodias:
 ```
 
 4) Specifying which date and product information
+
 You can choose which products you wish to download and provide specific dates for individual products. You may wish to set a specific location for where to save the raw data. When running the typical workflow, the raw data will be deleted after subsetting to the reservoir boundary. The configuration file for downloading all data would be completed as follows:
 
 ```
@@ -107,7 +111,8 @@ sentinel6:
 Please see the example configuration file in the notebooks folder for a complete example to download all support products
 
 
-4) Make your first downloads
+5) Make your first downloads
+
 Downloading, cleaning and viewing data for your reservoirs can be as simple as a couple lines. See the example notebook for more options and a complete overview.
 
 ```

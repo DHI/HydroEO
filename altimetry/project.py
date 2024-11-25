@@ -57,7 +57,7 @@ class Project:
                     self.config["hydroweb"]["api_key"]
                 )
 
-            if "PLD_path" in self.config["hydroweb"]
+            if "PLD_path" in self.config["hydroweb"]:
                 self.dirs["pld"] = self.config["hydroweb"]["PLD_path"]
 
         if "earthaccess" in self.config.keys():
