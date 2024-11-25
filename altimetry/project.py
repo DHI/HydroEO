@@ -4,10 +4,11 @@ from dataclasses import dataclass
 
 import os
 import yaml
+import warnings
 
 import geopandas as gpd
 
-from altimetry.system import Rivers, Reservoirs
+from altimetry.system import Reservoirs
 from altimetry.utils import utils
 
 
@@ -84,13 +85,14 @@ class Project:
 
         ### load in elements for download and processing
         if "rivers" in self.config.keys():
-            self.rivers = Rivers(
-                gdf=gpd.read_file(self.config["rivers"]["path"]),
-                dirs=self.dirs,
-                buffer_width=self.config["rivers"]["buffer_width"],
-                grid_res=self.config["rivers"]["grid_res"],
-            )
-            self.rivers.gdf = self.rivers.gdf.to_crs(self.global_crs)
+            warnings.warn("RIvers system is not yet implemented, input will be ignored")
+            # self.rivers = Rivers(
+            #     gdf=gpd.read_file(self.config["rivers"]["path"]),
+            #     dirs=self.dirs,
+            #     buffer_width=self.config["rivers"]["buffer_width"],
+            #     grid_res=self.config["rivers"]["grid_res"],
+            # )
+            # self.rivers.gdf = self.rivers.gdf.to_crs(self.global_crs)
 
         if "reservoirs" in self.config.keys():
             self.dirs["pld"] = self.config["reservoirs"]["prior_path"]

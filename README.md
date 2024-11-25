@@ -19,6 +19,7 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 - (Needs testing) - Allow for near real time updates of water levels of alreadey initialized reservoirs
 
 ## What could come?
+- (not started) - Report of data gaps or questionable timeseries
 - (not started) - Implementation of downloads for virtual stations along a provided river shapefile
 
 ## How to get started

@@ -1,0 +1,51 @@
+project :
+  main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
+
+gis :
+  global_crs : 'EPSG:4326'
+
+reservoirs :
+  path : "C:\\Users\\username\\altimetry_project\\reservoirs.shp" # path to the shapefile holding one or more resevoirs per feature
+  id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
+  prior_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp" # path to already downloaded SWOT PLD file or a previously downloaded PLD for the area of interest
+
+hydroweb:
+  api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
+
+##### A earthaccess username and password may not be needed if your machine is already authenticated
+earthaccess:
+  username : ""
+  password : ""
+
+swot:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\swot" # directory in which to store raw SWOT files (if not provided, a directory will be made within the project directory)
+  startdate : [2024, 1, 1] # [year, month, day] format
+  enddate   : [2024, 11, 01]
+
+icesat2:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
+  startdate : [2024, 1, 1] # [year, month, day] format
+  enddate   : [2024, 11, 01]
+
+##### A creodias username and password must be provided if downloading Sentinel data
+creodias:
+  username : ""
+  password : ""
+
+sentinel3:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel3" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
+  startdate : [2024, 1, 1] # [year, month, day] format
+  enddate   : [2024, 11, 01]
+
+sentinel6:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel6"
+  startdate : [2024, 1, 1] # [year, month, day] format
+  enddate   : [2024, 11, 01]

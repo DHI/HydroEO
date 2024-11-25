@@ -277,7 +277,7 @@ class System:
         return df
 
     def clean_product_timeseries(self, products: list, filters: list):
-        for id in self.download_gdf[self.id_key]:
+        for id in tqdm(self.download_gdf[self.id_key]):
             for product in products:
                 # get timeseries for id and each product to clean individually
                 df = self.get_unfiltered_product_timeseries(id, [product])
@@ -318,11 +318,8 @@ class System:
 
         return df
 
-    def bias_correct_product_timeseries(self, products: list):
-        return
-
     def merge_product_timeseries(self, products: list):
-        for id in self.download_gdf[self.id_key]:
+        for id in tqdm(self.download_gdf[self.id_key]):
             ts_list = list()
             for product in products:
                 # get timeseries for id and each product to clean individually
@@ -332,13 +329,19 @@ class System:
                         timeseries.Timeseries(df, date_key="date", height_key="height")
                     )
 
+            # create a timeseries object of all available timeseries for id object
+            ts = timeseries.concat(ts_list)
+
+            # bias correct the timeseries
+            ts.bias_correct()  # perhaps save intermediate step?
+
             # run the merge function TODO: include satellite bias and run kalman filter, right now just takes mean, if overlapping observations, and simple cleaning with MAD
-            merged_ts = timeseries.merge(ts_list)
+            ts_merged = ts.merge()
 
             # save the merged timeseries
             data_dir = os.path.join(self.dirs["output"], f"{id}")
             utils.ifnotmakedirs(data_dir)
-            merged_ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
+            ts_merged.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
 
     def get_merged_timeseries(self, id):
         data_path = os.path.join(self.dirs["output"], f"{id}", "merged_timeseries.csv")
@@ -361,7 +364,7 @@ class System:
             "icesat2": cmap(0),
             "S3A": cmap(1),
             "S3B": cmap(2),
-            "sentinel6": cmap(3),
+            "S6A": cmap(3),
             "swot": cmap(4),
         }
 

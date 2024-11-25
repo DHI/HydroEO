@@ -137,7 +137,5 @@ dmypy.json
 # other additions
 /gis/*
 /data/*
-/notebooks/download.py
-/notebooks/project_test_initial.ipynb
-/notebooks/reservoir_id_allocation_development.ipynb
-/notebooks/river_development.ipynb
+./notebooks/project_test_initial.ipynb
+./notebooks/river_development.ipynb
