@@ -27,7 +27,7 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 The altimetry project is initialized entirely from information within the provided config file. The configuration file includes information on the project directory, reservoir shape file location, gis info as well as credentials for downloading data from various locations. Importantly, this is also where you will specify which satellite products you wish to download and process and for which dates to download.
 
 Project information within the config file:
-'''
+```
 project :
   main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
 
@@ -37,24 +37,25 @@ gis :
 reservoirs :
   path : "C:\\Users\\username\\altimetry_project\\reservoirs.shp" # path to the shapefile holding one or more resevoirs per feature
   id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
-'''
+```
+
 
 Example of how to provide credentials for ICESat-2 download
-'''
+```
 earthaccess: # create an Earth Data account at https://urs.earthdata.nasa.gov/ 
   username : ""
   password : ""
-'''
+```
 
 Example of specifying download criteria for ICESat-2
-'''
+```
 icesat2:
   download : True
   process : True
   download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
   startdate : [2024, 1, 1] # [year, month, day] format
   enddate   : [2024, 11, 01]
-'''
+```
 
 Please see the example configuration file in the notebooks folder for a complete example to download all support products
 
@@ -75,12 +76,12 @@ Please see the example configuration file in the notebooks folder for a complete
 - Run your downloads
 - See the example notebook for a complete example
 
-'''
+```
 from altimetry.project import Project
 altimetry_project = Project(name="my_altimetry_project", config="config.yaml")
 altimetry_project.initialize()
 altimetry_project.download()
-'''
+```
 
 ## More details into available satellite products
 
