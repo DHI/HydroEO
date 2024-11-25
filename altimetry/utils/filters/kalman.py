@@ -1,7 +1,6 @@
 """Kalman filter for estimating state of reservoir from noisy timeseries"""
 
 import numpy as np
-import pandas as pd
 
 
 def _update(obs, xk, cov_xx, height="height", error="ADM", n=1):

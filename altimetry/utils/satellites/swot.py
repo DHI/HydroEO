@@ -26,7 +26,7 @@ def query(
     aoi = geometry.format_coord_list(aoi)
 
     # login and authenticate earthacess
-    auth = earthaccess.login()
+    earthaccess.login()
 
     # define query parameters
     params = {

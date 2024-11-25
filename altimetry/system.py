@@ -4,19 +4,17 @@ import warnings
 import os
 import pandas as pd
 import geopandas as gpd
-import shapely
 
 from cmcrameri import cm
 import seaborn as sns
 
 
 import matplotlib.pyplot as plt
-from matplotlib.dates import date2num
 
 import datetime
 
 from altimetry.utils.satellites import swot, icesat2, sentinel
-from altimetry.utils import utils, geometry, timeseries
+from altimetry.utils import utils, timeseries
 
 from tqdm import tqdm
 
