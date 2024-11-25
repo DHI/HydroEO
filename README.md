@@ -1,13 +1,35 @@
 # rk-altimetry: Easy access altimetry for water resource applications
 
-Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over rivers and reservoirs for integration into larger water resource projects.
+Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over reservoirs and lakes for integration into larger water resource projects.
 
 > [!CAUTION]
 > rk-altimetry is experimental and under development.
 > * The package is expected to be ready for limited use by Janurary 2025
 
+## What is currently included in the library?
+- (Needs testing) - Provide shape file of reservoir or reservoirs of interest to initiate search and dowload of available data
+- (Needs testing) - Supported Satellite products include
+    - SWOT Lake SP product
+    - ICESat-2 ATL13 inland water product
+    - Sentinel 3A and 3B inland hydrology product
+    - Sentinel 6 inland hydrology product
+- (Needs testing) - Get report of all available crossings over reservoir(s) of interest
+- (Under development) - Bias correct between satellite orbits and simple cleaning per product timeseries
+- (Under development) - Estimation of reservoir state based on kalman filter for multi product timeseries over individual reservoirs
+- (Needs testing) - Allow for near real time updates of water levels of alreadey initialized reservoirs
 
-## What altimetry missions are available?
+## What could come?
+- (not started) - Implementation of downloads for virtual stations along a provided river shapefile
+
+## How to get started
+Information on what accounts must be created to dowload what products.
+Include link to example notebook
+Inlcue short example of simplist way to get started
+
+
+## More details into available satellite products
+
+### Surface Water Ocean and Topography (SWOT) mission
 
 ### ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13)
 ![](images/icesat2-hqprint.jpg)
@@ -34,21 +56,6 @@ The sentinel series can provide more temporally dense inland water observations.
 
 ### Sentinel-6
 
-
-### Surface Water Ocean and Topography (SWOT) mission
-
-## What is currently included in the library?
-- (Needs testing) - Provide shape file of river or rivers of interest to initiate search and dowload of available
-- (Needs testing) - Get report of all available crossings over river of interest
-- (Needs testing) - provide similar support for reservoirs
-- (Needs testing) - provide means of grouping reservoirs and rivers within a project class that can easily process a basin or mike project area to provide usefull data to mike cloud
-- (Under development) - Implement S3A, S3B and S6 data downloads
-
-## What could come?
-- (not started) - Allow for near real time updates of water levels along river
-- (not started) - Suggest grouping of crossings into virtual stations along river by reach?
-- (not started) - Group crossings over river of interest into selected virtual stations
-- (not started) - Organize historical observations for virtual stations and provide reports for each virtual station
 
 ## Python development resources
 If you're interested in learning more about best practices for developing Python packages, check out the following resources:
