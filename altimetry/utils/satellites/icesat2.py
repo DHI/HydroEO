@@ -56,7 +56,7 @@ def query(
         end_time="23:59:59",
     )
 
-    # provide credentials
+    # provide credentials TODO: assess if we can remove this authentification step now that the environment variables are set
     if earthdata_credentials is not None:
         un, pw = earthdata_credentials
         query.earthdata_login(un, pw)

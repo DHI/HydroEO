@@ -57,9 +57,15 @@ class Project:
                     self.config["hydroweb"]["api_key"]
                 )
 
+            if "PLD_path" in self.config["hydroweb"]
+                self.dirs["pld"] = self.config["hydroweb"]["PLD_path"]
+
         if "earthaccess" in self.config.keys():
             self.earthdata_user = self.config["earthaccess"]["username"]
             self.earthdata_pass = self.config["earthaccess"]["password"]
+
+            os.environ["EARTHDATA_USERNAME"] = self.earthdata_user
+            os.environ["EARTHDATA_PASSWORD"] = self.earthdata_pass
 
         if "creodias" in self.config.keys():
             self.creodias_user = self.config["creodias"]["username"]
@@ -95,8 +101,6 @@ class Project:
             # self.rivers.gdf = self.rivers.gdf.to_crs(self.global_crs)
 
         if "reservoirs" in self.config.keys():
-            self.dirs["pld"] = self.config["reservoirs"]["prior_path"]
-
             self.reservoirs = Reservoirs(
                 gdf=gpd.read_file(self.config["reservoirs"]["path"]),
                 id_key=self.config["reservoirs"]["id_key"],

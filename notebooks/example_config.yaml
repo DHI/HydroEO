@@ -7,15 +7,15 @@ gis :
 reservoirs :
   path : "C:\\Users\\username\\altimetry_project\\reservoirs.shp" # path to the shapefile holding one or more resevoirs per feature
   id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
-  prior_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp" # path to already downloaded SWOT PLD file or a previously downloaded PLD for the area of interest
-
-hydroweb:
-  api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
 
 ##### A earthaccess username and password may not be needed if your machine is already authenticated
-earthaccess:
+earthaccess: # create an Earth Data account at https://urs.earthdata.nasa.gov/ 
   username : ""
   password : ""
+
+hydroweb: # create an account and api key at https://hydroweb.next.theia-land.fr/
+  api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
+  PLD_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp" # path to which the downloaded SWOT PLD file will be saved or loaded from if it already exists
 
 swot:
   download : True
