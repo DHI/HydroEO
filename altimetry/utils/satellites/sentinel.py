@@ -573,7 +573,7 @@ class Sentinel3(Sentinel):
         vs = pd.DataFrame(
             data={
                 "height": self.height,
-                "error": self.sig0,
+                "sigma0": self.sig0,
                 "lat": self.lat,
                 "lon": self.lon,
                 "date": self.date,
@@ -716,7 +716,7 @@ class Sentinel6(Sentinel):
         vs = pd.DataFrame(
             {
                 "height": self.height,
-                "error": self.sig0,
+                "sigma0": self.sig0,
                 "lat": self.lat,
                 "lon": self.lon,
                 "date": [
@@ -726,7 +726,6 @@ class Sentinel6(Sentinel):
                     )  # .date()
                     for c2_time in self.tai
                 ],
-                "sigma0": self.sig0,
                 "wf_peakiness": self.peakiness,
                 "geoid": self.geoid,
             }
@@ -755,17 +754,18 @@ def extract_observations(src_dir, dst_path, features):
         file_split = file.split("_")
         if file_split[0] == "sub":  # assume that we have subsetted the data already
             # use differnt read funciton base don which sentinel we use
-            if "S3" in file_split[1]:
+            platform = file_split[1]
+            if "S3" in platform:
                 infile = os.path.join(src_dir, file)
                 data = Sentinel3(infile)
-                platform = "sentinel3"
-                product = "S3"
+                # hard code product name, will need to change if incorperating other products in future
+                product = "SR_2_LAN_HY"
 
-            elif "S6" in file_split[1]:
+            elif "S6" in platform:
                 infile = os.path.join(src_dir, file)
                 data = Sentinel6(infile)
-                platform = "sentinel6"
-                product = "S6"
+                # hard code product name, will need to change if incorperating other products in future
+                product = "P4_2__LR_____"
 
             else:
                 raise Exception(
@@ -784,14 +784,21 @@ def extract_observations(src_dir, dst_path, features):
                     data_gdf.within(features.unary_union)
                 ].reset_index(drop=True)
                 if len(data_gdf) > 0:
+                    # filter by sigma0
+                    data_gdf = data_gdf.loc[data_gdf.sigma0 < 1e5].reset_index(
+                        drop=True
+                    )
+
+                    # add platform by satellite type
+                    data_gdf["platform"] = platform
+                    data_gdf["product"] = product
+
                     # if we have data for the reservoir add it to the reservoir specific dataframe
                     gdf_list.append(data_gdf)
 
     # once all tracks are processed combine them and save in the destination dir
     if len(gdf_list) > 0:
         observations = pd.concat(gdf_list).reset_index(drop=True)
-        observations["platform"] = platform
-        observations["product"] = product
         observations = observations.set_crs(features.crs)
         observations.to_file(dst_path)
 

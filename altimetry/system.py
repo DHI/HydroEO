@@ -321,6 +321,9 @@ class System:
 
         return df
 
+    def bias_correct_product_timeseries(self, products: list):
+        return
+
     def merge_product_timeseries(self, products: list):
         for id in self.download_gdf[self.id_key]:
             ts_list = list()
@@ -356,12 +359,13 @@ class System:
 
     def summarize_cleaning_by_id(self, id):
         sns.set()
-        cmap = cm.batlow.resampled(4)
+        cmap = cm.batlow.resampled(5)
         colors = {
             "icesat2": cmap(0),
-            "sentinel3": cmap(1),
-            "sentinel6": cmap(2),
-            "swot": cmap(3),
+            "S3A": cmap(1),
+            "S3B": cmap(2),
+            "sentinel6": cmap(3),
+            "swot": cmap(4),
         }
 
         fig, main_ax = plt.subplots(3, 1, figsize=(10, 10))

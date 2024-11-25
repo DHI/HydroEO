@@ -161,8 +161,6 @@ class ATL13:
         track_df = pd.DataFrame(
             data={
                 "height": self.height_seg,
-                "error": self.height_err,
-                # "quality": self.quality_seg,
                 "lat": self.lat_seg,
                 "lon": self.lon_seg,
                 "date": self.date,
@@ -200,8 +198,9 @@ def extract_observations(src_dir, dst_path, features):
                 data_gdf = data_gdf.loc[
                     data_gdf.within(features.unary_union)
                 ].reset_index(drop=True)
+
+                # if we have data for the reservoir add it to the reservoir specific dataframe
                 if len(data_gdf) > 0:
-                    # if we have data for the reservoir add it to the reservoir specific dataframe
                     gdf_list.append(data_gdf)
 
     # once all tracks are processed combine them and save in the destination dir

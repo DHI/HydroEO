@@ -16,9 +16,18 @@ exclude = ["notebooks", "tests", "images"]
 name = "rk-altimetry"
 version = "0.0.1"
 dependencies = [
+    "tqdm",
     "numpy",
+    "pandas",
     "geopandas",
-    "icepyx"
+    "shapely",
+    "matplotlib",
+    "seaborn"
+    "cmcrameri",
+    "icepyx",
+    "eodag",
+    "sqlite3"
+
 ]
 
 authors = [

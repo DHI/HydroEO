@@ -141,7 +141,7 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
         # if we have observations for this reservoir export it
         if len(observations) > 0:
             observations["platform"] = "swot"
-            observations["product"] = "swot_lake_sp"
+            observations["product"] = "SWOT_L2_HR_LakeSP_2.0"
             observations["height"] = observations.wse
             observations["date"] = pd.to_datetime(observations.time_str)
 
