@@ -1,21 +1,11 @@
 """The project module"""
 
 from dataclasses import dataclass
-import warnings
-import typing
 
 import os
 import yaml
 
-import pandas as pd
 import geopandas as gpd
-import shapely
-
-from cmcrameri import cm
-import matplotlib.pyplot as plt
-from matplotlib.dates import date2num
-
-from datetime import date, datetime
 
 from altimetry.system import Rivers, Reservoirs
 from altimetry.utils import utils

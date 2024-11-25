@@ -2,7 +2,6 @@ from dataclasses import dataclass
 import warnings
 
 import os
-import numpy as np
 import pandas as pd
 import geopandas as gpd
 import shapely
@@ -623,249 +622,250 @@ class Reservoirs(System):
     #     plt.show()
 
 
-@dataclass
-class Rivers(System):
-    buffer_width: float
-    grid_res: float
+# Rivers are not yet implemented
+# @dataclass
+# class Rivers(System):
+#     buffer_width: float
+#     grid_res: float
 
-    def __post_init__(self):
-        self.type = "rivers"
+#     def __post_init__(self):
+#         self.type = "rivers"
 
-        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
-        utils.ifnotmakedirs(self.dirs["output"])
+#         self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
+#         utils.ifnotmakedirs(self.dirs["output"])
 
-    def make_buffer(self, local_crs):
-        # make a buffered version of the rivers for use later on
-        self.buffered_gdf = self.gdf.copy()
-        self.buffered_gdf.geometry = self.buffered_gdf.to_crs(local_crs).buffer(
-            self.buffer_width
-        )
-        self.buffered_gdf = self.buffered_gdf.to_crs(
-            self.gdf.crs
-        )  # return the crs to that of the rivers file
+#     def make_buffer(self, local_crs):
+#         # make a buffered version of the rivers for use later on
+#         self.buffered_gdf = self.gdf.copy()
+#         self.buffered_gdf.geometry = self.buffered_gdf.to_crs(local_crs).buffer(
+#             self.buffer_width
+#         )
+#         self.buffered_gdf = self.buffered_gdf.to_crs(
+#             self.gdf.crs
+#         )  # return the crs to that of the rivers file
 
-    def make_grid(self):
-        # break down large river system into grid for download and search
-        area_bounds = self.buffered_gdf.unary_union.bounds
+#     def make_grid(self):
+#         # break down large river system into grid for download and search
+#         area_bounds = self.buffered_gdf.unary_union.bounds
 
-        # make a dataframe from a list of grid polygons
-        grids = geometry.grid_bounds(area_bounds, self.grid_res)
-        grid_gdf = gpd.GeoDataFrame(geometry=grids, crs=self.buffered_gdf.crs)
+#         # make a dataframe from a list of grid polygons
+#         grids = geometry.grid_bounds(area_bounds, self.grid_res)
+#         grid_gdf = gpd.GeoDataFrame(geometry=grids, crs=self.buffered_gdf.crs)
 
-        # keep only the grids that intersect with the river line
-        grid_gdf = grid_gdf.loc[
-            grid_gdf.intersects(self.buffered_gdf.unary_union)
-        ].reset_index(drop=True)
-        grid_gdf["dl_id"] = (
-            grid_gdf.index
-        )  # set a grid id based on the remaing grids TODO: consider how to handle the download ids when using river, perhaps can use SWORD id
+#         # keep only the grids that intersect with the river line
+#         grid_gdf = grid_gdf.loc[
+#             grid_gdf.intersects(self.buffered_gdf.unary_union)
+#         ].reset_index(drop=True)
+#         grid_gdf["dl_id"] = (
+#             grid_gdf.index
+#         )  # set a grid id based on the remaing grids TODO: consider how to handle the download ids when using river, perhaps can use SWORD id
 
-        # save grid and set attribute
-        grid_gdf.to_file(os.path.join(self.dirs["output"], "grid.shp"))
-        self.grid = grid_gdf
+#         # save grid and set attribute
+#         grid_gdf.to_file(os.path.join(self.dirs["output"], "grid.shp"))
+#         self.grid = grid_gdf
 
-    def load_grid(self):
-        self.grid = gpd.read_file(os.path.join(self.dirs["output"], "grid.shp"))
+#     def load_grid(self):
+#         self.grid = gpd.read_file(os.path.join(self.dirs["output"], "grid.shp"))
 
-    def visualize_grid(self):
-        fig, ax = plt.subplots()
-        self.gdf.plot(ax=ax)
-        self.grid.plot(ax=ax, edgecolor="black", facecolor="None")
-        ax.set_title("Full River System")
-        fig.tight_layout()
-        plt.show()
+#     def visualize_grid(self):
+#         fig, ax = plt.subplots()
+#         self.gdf.plot(ax=ax)
+#         self.grid.plot(ax=ax, edgecolor="black", facecolor="None")
+#         ax.set_title("Full River System")
+#         fig.tight_layout()
+#         plt.show()
 
-    def extract_crossings(self):
-        """Method to take all available icesat2 data and find the singular value to use for the river crossing.
-        Currently takes the closest ATL13 value to the river centerline. River crossings are saved as a geopandas geodataframe.
+#     def extract_crossings(self):
+#         """Method to take all available icesat2 data and find the singular value to use for the river crossing.
+#         Currently takes the closest ATL13 value to the river centerline. River crossings are saved as a geopandas geodataframe.
 
-        Raises
-        ------
-        Warning
-            _description_
-        """
+#         Raises
+#         ------
+#         Warning
+#             _description_
+#         """
 
-        # list to hold the filtered center points and heights
-        center_points = list()
+#         # list to hold the filtered center points and heights
+#         center_points = list()
 
-        # process crossings by grid id
-        for id in tqdm(self.grid.index):
-            # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
-            download_directory = os.path.join(
-                self.dirs["icesat2"], rf"{self.type}\{id}"
-            )
-            if os.path.exists(download_directory):
-                # load date for all tracks and crossings
-                files = list(os.listdir(download_directory))
-                for file in files:
-                    for key in ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]:
-                        infile = os.path.join(download_directory, file)
-                        data = icesat2.ATL13(infile, key)
+#         # process crossings by grid id
+#         for id in tqdm(self.grid.index):
+#             # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
+#             download_directory = os.path.join(
+#                 self.dirs["icesat2"], rf"{self.type}\{id}"
+#             )
+#             if os.path.exists(download_directory):
+#                 # load date for all tracks and crossings
+#                 files = list(os.listdir(download_directory))
+#                 for file in files:
+#                     for key in ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]:
+#                         infile = os.path.join(download_directory, file)
+#                         data = icesat2.ATL13(infile, key)
 
-                        # make sure we have height data within the icesat file
-                        if data.check_height_data():
-                            # read data, turn into dataframe and filter by whats in the buffered river region
-                            data_df = data.read()
-                            data_gdf = gpd.GeoDataFrame(
-                                data_df,
-                                geometry=gpd.points_from_xy(data_df.lon, data_df.lat),
-                            )
-                            data_gdf = data_gdf.loc[
-                                data_gdf.within(self.buffered_gdf.unary_union)
-                            ].reset_index(drop=True)
-                            data_gdf["dl_id"] = id
+#                         # make sure we have height data within the icesat file
+#                         if data.check_height_data():
+#                             # read data, turn into dataframe and filter by whats in the buffered river region
+#                             data_df = data.read()
+#                             data_gdf = gpd.GeoDataFrame(
+#                                 data_df,
+#                                 geometry=gpd.points_from_xy(data_df.lon, data_df.lat),
+#                             )
+#                             data_gdf = data_gdf.loc[
+#                                 data_gdf.within(self.buffered_gdf.unary_union)
+#                             ].reset_index(drop=True)
+#                             data_gdf["dl_id"] = id
 
-                            # ensure that we have at least two points in the river zone to process and centerline value
-                            if len(data_gdf) > 1:
-                                # take a line of the crossing and calculate its intersection with the river centerline
-                                representative_line = shapely.LineString(
-                                    [
-                                        (
-                                            data_gdf["geometry"].iloc[0].x,
-                                            data_gdf["geometry"].iloc[0].y,
-                                        ),
-                                        (
-                                            data_gdf["geometry"].iloc[-1].x,
-                                            data_gdf["geometry"].iloc[-1].y,
-                                        ),
-                                    ]
-                                )
-                                crossing_point = shapely.intersection(
-                                    representative_line, self.gdf.unary_union
-                                )
+#                             # ensure that we have at least two points in the river zone to process and centerline value
+#                             if len(data_gdf) > 1:
+#                                 # take a line of the crossing and calculate its intersection with the river centerline
+#                                 representative_line = shapely.LineString(
+#                                     [
+#                                         (
+#                                             data_gdf["geometry"].iloc[0].x,
+#                                             data_gdf["geometry"].iloc[0].y,
+#                                         ),
+#                                         (
+#                                             data_gdf["geometry"].iloc[-1].x,
+#                                             data_gdf["geometry"].iloc[-1].y,
+#                                         ),
+#                                     ]
+#                                 )
+#                                 crossing_point = shapely.intersection(
+#                                     representative_line, self.gdf.unary_union
+#                                 )
 
-                                # there are a number of things that can happen when runnign the intersection so try to account for these
-                                if crossing_point.is_empty:
-                                    # then there was not a clean intersection, and we should do nothing with the data
-                                    pass
+#                                 # there are a number of things that can happen when runnign the intersection so try to account for these
+#                                 if crossing_point.is_empty:
+#                                     # then there was not a clean intersection, and we should do nothing with the data
+#                                     pass
 
-                                elif crossing_point.geom_type == "Point":
-                                    # proceed as expected, one clear crossing means we can grab the data value at the point closest to the centerline or take the mean of the crossing
-                                    index, _, _ = geometry.find_closest_geom(
-                                        crossing_point, data_gdf.geometry.values
-                                    )
-                                    center_points.append(data_gdf.loc[[index]])
+#                                 elif crossing_point.geom_type == "Point":
+#                                     # proceed as expected, one clear crossing means we can grab the data value at the point closest to the centerline or take the mean of the crossing
+#                                     index, _, _ = geometry.find_closest_geom(
+#                                         crossing_point, data_gdf.geometry.values
+#                                     )
+#                                     center_points.append(data_gdf.loc[[index]])
 
-                                elif crossing_point.geom_type == "MultiPoint":
-                                    # It is possible that a passing crosses multiple points in a bending rivers so we grab each point clossest to the centerline at each respective crossing
-                                    for point in crossing_point.geoms:
-                                        index, _, _ = geometry.find_closest_geom(
-                                            point, data_gdf.geometry.values
-                                        )
-                                        center_points.append(data_gdf.loc[[index]])
+#                                 elif crossing_point.geom_type == "MultiPoint":
+#                                     # It is possible that a passing crosses multiple points in a bending rivers so we grab each point clossest to the centerline at each respective crossing
+#                                     for point in crossing_point.geoms:
+#                                         index, _, _ = geometry.find_closest_geom(
+#                                             point, data_gdf.geometry.values
+#                                         )
+#                                         center_points.append(data_gdf.loc[[index]])
 
-                                else:
-                                    # something is not as expected to raise a warning to be investigated
-                                    raise Warning(
-                                        "crossing_point is not a point or multilinestring warrenting investigation"
-                                    )
+#                                 else:
+#                                     # something is not as expected to raise a warning to be investigated
+#                                     raise Warning(
+#                                         "crossing_point is not a point or multilinestring warrenting investigation"
+#                                     )
 
-                            # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
-                            elif len(data_gdf) > 0:
-                                center_points.append(data_gdf.iloc[[0]])
+#                             # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
+#                             elif len(data_gdf) > 0:
+#                                 center_points.append(data_gdf.iloc[[0]])
 
-        # push all of the crossing centerpoints into one geodataframe and reset the index
-        self.crossings = pd.concat(center_points).reset_index(drop=True)
-        self.crossings = self.crossings.set_crs(self.gdf.crs)
+#         # push all of the crossing centerpoints into one geodataframe and reset the index
+#         self.crossings = pd.concat(center_points).reset_index(drop=True)
+#         self.crossings = self.crossings.set_crs(self.gdf.crs)
 
-        # save copy of river crossings so we dont have to repeat the process
-        self.crossings.to_file(
-            os.path.join(self.dirs["output"], rf"icesat2_crossings.shp")
-        )
+#         # save copy of river crossings so we dont have to repeat the process
+#         self.crossings.to_file(
+#             os.path.join(self.dirs["output"], rf"icesat2_crossings.shp")
+#         )
 
-    def map_crossings_by_grid(self, id):
-        # start figure
-        fig, ax = plt.subplots()
+#     def map_crossings_by_grid(self, id):
+#         # start figure
+#         fig, ax = plt.subplots()
 
-        # set bounds
-        xmin, ymin, xmax, ymax = self.grid.loc[id, "geometry"].bounds
-        ax.set_xlim([xmin - 0.1, xmax + 0.1])
-        ax.set_ylim([ymin - 0.1, ymax + 0.1])
+#         # set bounds
+#         xmin, ymin, xmax, ymax = self.grid.loc[id, "geometry"].bounds
+#         ax.set_xlim([xmin - 0.1, xmax + 0.1])
+#         ax.set_ylim([ymin - 0.1, ymax + 0.1])
 
-        # plot grid and river
-        self.grid.loc[[id]].plot(ax=ax, edgecolor="black", facecolor="None")
-        self.gdf.plot(ax=ax)
+#         # plot grid and river
+#         self.grid.loc[[id]].plot(ax=ax, edgecolor="black", facecolor="None")
+#         self.gdf.plot(ax=ax)
 
-        # extract this grids crossings from the main river crossing dataframe
-        data_gdf = self.crossings.loc[self.crossings.dl_id == id]
+#         # extract this grids crossings from the main river crossing dataframe
+#         data_gdf = self.crossings.loc[self.crossings.dl_id == id]
 
-        if len(data_gdf) > 0:
-            data_gdf["color"] = [int(date2num(i)) for i in data_gdf["date"].values]
-            data_gdf.plot(
-                ax=ax,
-                column="color",
-                vmin=int(date2num(datetime.datetime(2019, 1, 1))),
-                vmax=int(date2num(datetime.datetime(2024, 12, 31))),
-                cmap=cm.batlow,
-                alpha=0.5,
-                legend=True,
-            )
+#         if len(data_gdf) > 0:
+#             data_gdf["color"] = [int(date2num(i)) for i in data_gdf["date"].values]
+#             data_gdf.plot(
+#                 ax=ax,
+#                 column="color",
+#                 vmin=int(date2num(datetime.datetime(2019, 1, 1))),
+#                 vmax=int(date2num(datetime.datetime(2024, 12, 31))),
+#                 cmap=cm.batlow,
+#                 alpha=0.5,
+#                 legend=True,
+#             )
 
-        fig.tight_layout()
-        plt.show()
+#         fig.tight_layout()
+#         plt.show()
 
-    def crossings_to_rivers(self, riv_key):
-        # add the river name (or id) to the closest crossing point
-        self.crossings = gpd.sjoin_nearest(
-            self.crossings, self.gdf[[riv_key, "geometry"]], how="left"
-        )
+#     def crossings_to_rivers(self, riv_key):
+#         # add the river name (or id) to the closest crossing point
+#         self.crossings = gpd.sjoin_nearest(
+#             self.crossings, self.gdf[[riv_key, "geometry"]], how="left"
+#         )
 
-    def plot_river_profile(self, riv_key, name, delta):
-        # extract the river associated with the name
-        river = self.gdf.loc[self.gdf[riv_key] == name]
+#     def plot_river_profile(self, riv_key, name, delta):
+#         # extract the river associated with the name
+#         river = self.gdf.loc[self.gdf[riv_key] == name]
 
-        # extract the crossings matching the river key name
-        crossings = self.crossings.loc[
-            self.crossings[riv_key] == name
-        ]  # this should be a gdf
+#         # extract the crossings matching the river key name
+#         crossings = self.crossings.loc[
+#             self.crossings[riv_key] == name
+#         ]  # this should be a gdf
 
-        #### Start the figure
-        # now plot the river profile by distance downriver
-        fig, main_ax = plt.subplots(1, 2, figsize=(10, 5))
+#         #### Start the figure
+#         # now plot the river profile by distance downriver
+#         fig, main_ax = plt.subplots(1, 2, figsize=(10, 5))
 
-        ax = main_ax[0]
-        river.plot(ax=ax)
-        crossings.plot(
-            ax=ax,
-            column="height",
-            cmap=cm.batlow,
-            legend=True,
-            legend_kwds={"label": "Height (m)"},
-        )
+#         ax = main_ax[0]
+#         river.plot(ax=ax)
+#         crossings.plot(
+#             ax=ax,
+#             column="height",
+#             cmap=cm.batlow,
+#             legend=True,
+#             legend_kwds={"label": "Height (m)"},
+#         )
 
-        # Now we convert to local crs and do the calculateions for where on the river the crossing is
-        river = river.to_crs(river.estimate_utm_crs())
-        river_line = river.geometry.values[0]
+#         # Now we convert to local crs and do the calculateions for where on the river the crossing is
+#         river = river.to_crs(river.estimate_utm_crs())
+#         river_line = river.geometry.values[0]
 
-        crossings = crossings.to_crs(crossings.estimate_utm_crs())
+#         crossings = crossings.to_crs(crossings.estimate_utm_crs())
 
-        # interpolate the river linestring into points
-        if river_line.geom_type == "MultiLinesString":
-            # TODO: convert to linestring somehow?
-            pass
+#         # interpolate the river linestring into points
+#         if river_line.geom_type == "MultiLinesString":
+#             # TODO: convert to linestring somehow?
+#             pass
 
-        # now assume we are dealing with a linestring
-        # use shapely interpolate to get the points at a known interval downstream
-        river_points, point_dist = geometry.line_to_points(river_line, delta)
+#         # now assume we are dealing with a linestring
+#         # use shapely interpolate to get the points at a known interval downstream
+#         river_points, point_dist = geometry.line_to_points(river_line, delta)
 
-        # find the nearest linepoint to the crossings and record the distance along the river
-        for i in crossings.index:
-            point = crossings.loc[i, "geometry"]
-            index, _, _ = geometry.find_closest_geom(point, river_points)
-            crossings.loc[i, "dist"] = point_dist[index]
+#         # find the nearest linepoint to the crossings and record the distance along the river
+#         for i in crossings.index:
+#             point = crossings.loc[i, "geometry"]
+#             index, _, _ = geometry.find_closest_geom(point, river_points)
+#             crossings.loc[i, "dist"] = point_dist[index]
 
-        # make the 1d profile
-        ax = main_ax[1]
-        plot = ax.scatter(
-            crossings.dist / 1000,
-            crossings.height,
-            c=[d.month for d in crossings.date],
-            cmap=cm.brocO,
-        )
-        # plot = crossings.plot(ax=ax, x='dist', y='height', kind='scatter', c=[d.month for d in crossings.date], cmap=cm.batlow, legend=True)
-        cbar = fig.colorbar(plot, label="Month")
-        ax.set_xlabel("Distance downriver (km)")
-        ax.set_ylabel("Height (m)")
+#         # make the 1d profile
+#         ax = main_ax[1]
+#         plot = ax.scatter(
+#             crossings.dist / 1000,
+#             crossings.height,
+#             c=[d.month for d in crossings.date],
+#             cmap=cm.brocO,
+#         )
+#         # plot = crossings.plot(ax=ax, x='dist', y='height', kind='scatter', c=[d.month for d in crossings.date], cmap=cm.batlow, legend=True)
+#         cbar = fig.colorbar(plot, label="Month")
+#         ax.set_xlabel("Distance downriver (km)")
+#         ax.set_ylabel("Height (m)")
 
-        fig.tight_layout()
-        plt.show()
+#         fig.tight_layout()
+#         plt.show()

@@ -91,62 +91,62 @@ def _pred(xk, cov_xx, n=1, system_noise=0, system_noise_unc=0.05):
     return xk_next, cov_xx_next
 
 
-def kalman(time_series, date_key="day", height_key="height", error_key="ADM", n=1):
-    """
-    Run Kalman filter
+# def kalman(time_series, date_key="day", height_key="height", error_key="ADM", n=1):
+#     """
+#     Run Kalman filter
 
-    Parameters
-    ----------
-    time_series : DataFrame
-        Outlier filtered dataframe to be used as input for Kalman filter.
-        Must contain height and error columns
-    height : string, optional
-        Name of height column. The default is 'height_OCOG'.
-    error : string, optional
-        Name of error column. The default is 'ADM'.
-    n : Int, optional
-        Grid size - only relevant for large lakes e.g. Not yet implemented. The default is 1.
+#     Parameters
+#     ----------
+#     time_series : DataFrame
+#         Outlier filtered dataframe to be used as input for Kalman filter.
+#         Must contain height and error columns
+#     height : string, optional
+#         Name of height column. The default is 'height_OCOG'.
+#     error : string, optional
+#         Name of error column. The default is 'ADM'.
+#     n : Int, optional
+#         Grid size - only relevant for large lakes e.g. Not yet implemented. The default is 1.
 
-    Returns
-    -------
-    xk_plus : array
-        Kalman filter updated values of WSE.
-    cov_xx_plus : array
-        Covariance of the updated value.
+#     Returns
+#     -------
+#     xk_plus : array
+#         Kalman filter updated values of WSE.
+#     cov_xx_plus : array
+#         Covariance of the updated value.
 
-    """
+#     """
 
-    dates = sorted(time_series[date_key]unique())
-    xks = np.ones((n, len(time_series[date_key].unique()))) * np.nan
-    cov_xxs = np.ones((n, n, len(time_series[date_key].unique()))) * np.nan
+#     dates = sorted(time_series[date_key]unique())
+#     xks = np.ones((n, len(time_series[date_key].unique()))) * np.nan
+#     cov_xxs = np.ones((n, n, len(time_series[date_key].unique()))) * np.nan
 
-    # Initialize prediction and uncertainty matrices
-    obs = time_series.loc[time_series[date_key] == dates[0]]
-    lk = obs[height_key].values
-    slk = (obs[error_key].values) ** 2
+#     # Initialize prediction and uncertainty matrices
+#     obs = time_series.loc[time_series[date_key] == dates[0]]
+#     lk = obs[height_key].values
+#     slk = (obs[error_key].values) ** 2
 
-    # First prediction = value with smallest ADM and identity matrix of size n, n
-    xks[:, 0] = lk[np.argmin(slk)]
-    cov_xxs[:, :, 0] = np.identity(n)
+#     # First prediction = value with smallest ADM and identity matrix of size n, n
+#     xks[:, 0] = lk[np.argmin(slk)]
+#     cov_xxs[:, :, 0] = np.identity(n)
 
-    # Observation model
-    for i, d in enumerate(dates):
-        # Update
-        obs = time_series.loc[time_series[date_key] == d]
-        xk_plus, cov_xx_plus = _update(
-            obs, xks[:, i], cov_xxs[:, :, i], height=height_key, error=error_key, n=n
-        )
+#     # Observation model
+#     for i, d in enumerate(dates):
+#         # Update
+#         obs = time_series.loc[time_series[date_key] == d]
+#         xk_plus, cov_xx_plus = _update(
+#             obs, xks[:, i], cov_xxs[:, :, i], height=height_key, error=error_key, n=n
+#         )
 
-        # Predict
-        xk1, cov_xx1 = _pred(
-            xk_plus, cov_xx_plus, n=n, system_noise=0, system_noise_unc=0.05
-        )
-        xks[:, i] = xk_plus
-        cov_xxs[:, :, i] = cov_xx_plus
-        try:
-            xks[:, i + 1] = xk1
-            cov_xxs[:, :, i + 1] = cov_xx1
-        except IndexError:
-            pass
+#         # Predict
+#         xk1, cov_xx1 = _pred(
+#             xk_plus, cov_xx_plus, n=n, system_noise=0, system_noise_unc=0.05
+#         )
+#         xks[:, i] = xk_plus
+#         cov_xxs[:, :, i] = cov_xx_plus
+#         try:
+#             xks[:, i + 1] = xk1
+#             cov_xxs[:, :, i + 1] = cov_xx1
+#         except IndexError:
+#             pass
 
-    return xks, cov_xxs
+#     return xks, cov_xxs

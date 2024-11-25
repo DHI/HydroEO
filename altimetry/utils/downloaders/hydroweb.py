@@ -1,3 +1,16 @@
+import os
+import shutil
+
+from eodag import EODataAccessGateway
+
+import sqlite3
+
+import pandas as pd
+import geopandas as gpd
+import shapely
+
+from altimetry.utils import utils
+
 help_message = """
 Download products from your Hydroweb.next project (https://hydroweb.next.theia-land.fr) using EODAG (https://github.com/CS-SI/eodag)
 This script is an example tuned for your last Hydroweb.next project but feel free to adapt it for future requests.
@@ -12,19 +25,6 @@ Follow these steps:
 
 For more information, please refer to EODAG Documentation https://eodag.readthedocs.io
 """
-import os
-import shutil
-
-from eodag import EODataAccessGateway, SearchResult
-from eodag import setup_logging
-
-import sqlite3
-
-import pandas as pd
-import geopandas as gpd
-import shapely
-
-from altimetry.utils import utils
 
 
 def download_PLD(download_dir: str, file_name: str, bounds: list):

@@ -5,7 +5,6 @@ from tqdm import tqdm
 
 import netCDF4
 
-import time
 import datetime
 
 import numpy as np
