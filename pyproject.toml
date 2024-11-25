@@ -22,7 +22,7 @@ dependencies = [
     "geopandas",
     "shapely",
     "matplotlib",
-    "seaborn"
+    "seaborn",
     "cmcrameri",
     "icepyx",
     "eodag",

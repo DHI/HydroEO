@@ -13,7 +13,7 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 
-from altimetry.utils.downloads import creodias
+from altimetry.utils.downloaders import creodias
 from altimetry.utils import geometry
 
 
