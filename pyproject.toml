@@ -25,9 +25,7 @@ dependencies = [
     "seaborn",
     "cmcrameri",
     "icepyx",
-    "eodag",
-    "sqlite3"
-
+    "eodag"
 ]
 
 authors = [
