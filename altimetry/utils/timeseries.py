@@ -86,6 +86,8 @@ class Timeseries:
             df_kalman, date_key=self.date_key, height_key=self.height_key
         )
 
+        # TODO: include run_svr_rbf after kalman filtering
+
         # return the filtered timeseries object
         return ts_kalman
 

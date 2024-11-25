@@ -85,7 +85,7 @@ class Project:
 
         ### load in elements for download and processing
         if "rivers" in self.config.keys():
-            warnings.warn("RIvers system is not yet implemented, input will be ignored")
+            warnings.warn("Rivers system is not yet implemented, input will be ignored")
             # self.rivers = Rivers(
             #     gdf=gpd.read_file(self.config["rivers"]["path"]),
             #     dirs=self.dirs,
