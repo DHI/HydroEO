@@ -4,6 +4,10 @@ import numpy as np
 import pandas as pd
 from sklearn.svm import SVR
 
+from tqdm import tqdm
+
+from datetime import datetime
+
 
 def elevation_filter(timeseries, height_range):
     timeseries.df = timeseries.df.loc[timeseries.df[timeseries.height_key] > 0]
@@ -142,20 +146,20 @@ def _run_svr_linear(heights, err=0.1, epsilon=0.1):
         Outlier filtered heights.
 
     """
-    # Day since start
+    # sequential x axis along track
     x = np.arange(0, len(heights))
-    x = np.vstack([x, np.ones(len(x))]).T
-    # First remove slope if any
-    y = heights.values
+    x = np.vstack(
+        [x, np.ones(len(x))]
+    ).T  # Extend x data to contain another row vector of 1s
+    y = heights.values  # TODO: investigate First remove slope if any
 
-    # Extend x data to contain another row vector of 1s
-
+    # make SVR kernel and fit with confidence bounds
     svr_rbf = SVR(kernel="linear", epsilon=epsilon)
     rbf = svr_rbf.fit(x, y)
-
     uconf = rbf.predict(x) + err
     lconf = rbf.predict(x) - err
 
+    # only keep the filtered valeus
     filtered = np.where((y >= lconf) & (y <= uconf))[0]
 
     return np.array(heights)[filtered]
@@ -166,16 +170,25 @@ def svr_linear(timeseries):
     date_key = timeseries.date_key
     height_key = timeseries.height_key
 
+    # get the remaining heights after the filter
+    print("lin svr")
     lin_filt = df.groupby(date_key)[height_key].apply(_run_svr_linear).reset_index()
+
+    # reassign the values to their date (essentially, "ungrouby")
+    print("create df date index")
     r = pd.DataFrame(
         {
             col: np.repeat(lin_filt[col].values, lin_filt[height_key].str.len())
             for col in lin_filt.columns.drop(height_key)
         }
-    ).assign(**{height_key: np.concatenate(lin_filt[height_key].values)})[
+    )
+    print("assign height")
+    r = r.assign(**{height_key: np.concatenate(lin_filt[height_key].values)})[
         lin_filt.columns
     ]
-    timeseries.df.merge(r, on=height_key)
+
+    # Reset the time series to the filtered values
+    timeseries.df = r
 
 
 """Kalman filter for estimating state of reservoir from noisy timeseries"""
@@ -335,3 +348,124 @@ def kalman(timeseries, error_key="ADM", n=1):
         {date_key: dates, height_key: xks[0], "cov": cov_xxs[0][0]}
     )
     return df_kalman
+
+
+def _run_svr_rbf(dates, heights, err=1, rbf_c=10000, gamma=0.0000438, epsilon=0.1):
+    """
+    Radial Base Function outlier filtering post-Kalman filter.
+    This is run at virtual station level
+
+    Parameters
+    ----------
+    dates : array
+        Sorted dates of altimetry observations.
+    heights : array
+        Predicted (and updated) water surface elevation.
+    err : Float, optional
+        Observation uncertainty. The default is 1 m. As used in DAHITI for rivers
+        (0.1 m can be used for lakes)
+    C : TYPE, optional
+        Regularization parameter in sklearn.svm.RBF. The default here is 10000 (as in DAHITI)
+    gamma : TYPE, optional
+        Kernel coefficient for ‘rbf’ in sklearn.svm.RBF
+        Alternative values include float, 'scale' or 'auto'
+        The default here is 0.0000438 (as in DAHITI)
+    epsilon : TYPE, optional
+        "Epsilon in the epsilon-SVR model.
+        It specifies the epsilon-tube within which no penalty is associated in the training loss
+        function with points predicted within a distance epsilon from the actual value."
+        (from https://scikit-learn.org/stable/modules/generated/sklearn.svm.SVR.html)
+        The default is .1.
+
+    Returns
+    -------
+    rbf_filter : array
+        Filter for Kalman filter predictions of WSE
+    """
+    # Day since start
+    x = np.array(
+        [0]
+        + list(
+            np.cumsum(
+                pd.to_datetime(dates)[1:] - pd.to_datetime(dates)[:-1]
+            ).days.astype("float32")
+        )
+    )
+    # Kalman heights
+    y = heights
+    x = np.vstack([x, np.ones(len(x))]).T
+    # y = np.vstack([y, np.ones(len(y))]).T
+
+    # Scale values:
+    # std_x = StandardScaler()
+    # std_y = StandardScaler()
+    # x2 = std_x.fit_transform(x)
+    # y2 = std_y.fit_transform(y)[:,0]
+
+    # Extend x data to contain another row vector of 1s
+
+    svr_rbf = SVR(kernel="rbf", C=rbf_c, gamma=gamma, epsilon=epsilon)
+    rbf = svr_rbf.fit(x, y)
+    corr = rbf.predict(x)
+
+    uconf = corr + err
+    lconf = corr - err
+
+    rbf_filter = np.where((y >= lconf) & (y <= uconf))
+
+    return rbf_filter
+
+
+def _year_fraction(dt):
+    start = datetime(dt.year, 1, 1).toordinal()
+    year_length = datetime(dt.year + 1, 1, 1).toordinal() - start
+    return dt.year + float(dt.toordinal() - start) / year_length
+
+
+def svr_radial(timeseries):
+    df = timeseries.df.copy()
+    date_key = timeseries.date_key
+    height_key = timeseries.height_key
+    error_key = timeseries.error_key
+
+    rbf_filter = _run_svr_rbf(
+        df[date_key].values,
+        df[height_key].values,
+        err=0.1,
+        rbf_c=1000,
+        gamma=0.0000438,
+        epsilon=0.1,
+    )  # these are the default values as in DAHITI with error changed from 1 to 0.1m for lakes
+
+    nb_obs = df.groupby(date_key).count().reset_index()
+    pass_ = df.groupby(date_key).first().reset_index()
+    # coords = df.loc[df.groupby(date_key)[error_key].idxmin()].reset_index()
+
+    nb_obs["nb_obs"] = nb_obs[date_key]
+    # nb_obs[["relative orbit", "orbit", "platform"]] = pass_[
+    #     ["relative_orbit", "orbit", "platform"]
+    # ]
+    # nb_obs[["lat", "lon"]] = coords[["lat", "lon"]]
+
+    # Create new dataframe:
+    vs = pd.DataFrame(
+        {
+            date_key: df[date_key].values[rbf_filter],
+            height_key: df[height_key].values[rbf_filter],
+        }
+    )
+    # vs = pd.merge(
+    #     nb_obs[["day", "nb_obs", "relative orbit", "orbit", "platform", "lat", "lon"]],
+    #     vs,
+    #     left_on="day",
+    #     right_on="date",
+    # )
+
+    # vs["decimal year"] = [
+    #     str(round(_year_fraction(pd.to_datetime(uniq_d)), 8)) for uniq_d in vs.date
+    # ]
+    # vs["date"] = [
+    #     datetime.strftime(pd.to_datetime(uniq_d), "%Y/%m/%d") for uniq_d in vs.date
+    # ]
+
+    return vs

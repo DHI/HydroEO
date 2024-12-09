@@ -72,24 +72,25 @@ class Timeseries:
 
     def merge(self):
         # run the SVR linear outlier filtering
+        print("SVR")
         fltrs.svr_linear(self)
 
         # run the big outlier filtering on the whole set of values
+        print("MAD filter")
         fltrs.mad_filter(self, threshold=5)
 
         # run the ADM running filter
+        print("Daily MAD filter")
         fltrs.daily_mad_error(self)
 
         # here we should run the kalman filter
+        print("Kalman")
         df_kalman = fltrs.kalman(self)
-        ts_kalman = Timeseries(
-            df_kalman, date_key=self.date_key, height_key=self.height_key
-        )
+        self = Timeseries(df_kalman, date_key=self.date_key, height_key=self.height_key)
 
-        # TODO: include run_svr_rbf after kalman filtering
-
-        # return the filtered timeseries object
-        return ts_kalman
+        # a radial base svr to get the final timeseries
+        df_rbf = fltrs.svr_radial(self)
+        self = Timeseries(df_rbf, date_key=self.date_key, height_key=self.height_key)
 
     def export_csv(self, path):
         self.df.to_csv(path)

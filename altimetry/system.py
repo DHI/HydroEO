@@ -320,28 +320,33 @@ class System:
 
     def merge_product_timeseries(self, products: list):
         for id in tqdm(self.download_gdf[self.id_key]):
-            ts_list = list()
-            for product in products:
-                # get timeseries for id and each product to clean individually
-                df = self.get_cleaned_product_timeseries(id, [product])
-                if df is not None:
-                    ts_list.append(
-                        timeseries.Timeseries(df, date_key="date", height_key="height")
-                    )
+            print(id)
 
-            # create a timeseries object of all available timeseries for id object
-            ts = timeseries.concat(ts_list)
+            if id not in ["Lower Se San 2 + Lower Sre Pok 2"]:
+                ts_list = list()
+                for product in products:
+                    # get timeseries for id and each product to clean individually
+                    df = self.get_cleaned_product_timeseries(id, [product])
+                    if df is not None:
+                        ts_list.append(
+                            timeseries.Timeseries(
+                                df, date_key="date", height_key="height"
+                            )
+                        )
 
-            # bias correct the timeseries
-            ts.bias_correct()  # perhaps save intermediate step?
+                # create a timeseries object of all available timeseries for id object
+                ts = timeseries.concat(ts_list)
 
-            # run the merge function TODO: include satellite bias and run kalman filter, right now just takes mean, if overlapping observations, and simple cleaning with MAD
-            ts_merged = ts.merge()
+                # bias correct the timeseries
+                ts.bias_correct()  # perhaps save intermediate step?
 
-            # save the merged timeseries
-            data_dir = os.path.join(self.dirs["output"], f"{id}")
-            utils.ifnotmakedirs(data_dir)
-            ts_merged.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
+                # run the merge function, runs linear SVR, MAD, Kalman filter and radial base SVR to get a final merged timeseries
+                ts.merge()
+
+                # save the merged timeseries
+                data_dir = os.path.join(self.dirs["output"], f"{id}")
+                utils.ifnotmakedirs(data_dir)
+                ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
 
     def get_merged_timeseries(self, id):
         data_path = os.path.join(self.dirs["output"], f"{id}", "merged_timeseries.csv")
