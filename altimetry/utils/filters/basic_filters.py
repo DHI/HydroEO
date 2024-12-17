@@ -171,18 +171,15 @@ def svr_linear(timeseries):
     height_key = timeseries.height_key
 
     # get the remaining heights after the filter
-    print("lin svr")
     lin_filt = df.groupby(date_key)[height_key].apply(_run_svr_linear).reset_index()
 
     # reassign the values to their date (essentially, "ungrouby")
-    print("create df date index")
     r = pd.DataFrame(
         {
             col: np.repeat(lin_filt[col].values, lin_filt[height_key].str.len())
             for col in lin_filt.columns.drop(height_key)
         }
     )
-    print("assign height")
     r = r.assign(**{height_key: np.concatenate(lin_filt[height_key].values)})[
         lin_filt.columns
     ]

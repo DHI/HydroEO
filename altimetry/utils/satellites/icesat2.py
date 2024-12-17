@@ -136,6 +136,11 @@ class ATL13:
                 else:
                     self.date = None
 
+                # orbit information (just take the first for the granule)
+                self.orbit = np.asarray(src["orbit_info"]["orbit_number"])[0]
+                self.rgt = np.asarray(src["orbit_info"]["rgt"])[0]
+                self.cycle_number = np.asarray(src["orbit_info"]["cycle_number"])[0]
+
     def setattr_from_file(self, src: h5py.File, name: str, attribute: str):
         if attribute in src[self.track_key].keys():
             self.__setattr__(name, np.asarray(src[self.track_key][attribute]))
@@ -167,6 +172,9 @@ class ATL13:
                 "dem": self.dem_track,
                 "sat_frac_track": self.sat_frac_track,
                 "beam": self.track_key,
+                "orbit": self.orbit,
+                "rgt": self.rgt,
+                "cycle_number": self.cycle_number,
                 "file_name": self.file_name,
             },
             index=np.arange(len(self.height_seg)),

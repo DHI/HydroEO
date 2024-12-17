@@ -320,9 +320,9 @@ class System:
 
     def merge_product_timeseries(self, products: list):
         for id in tqdm(self.download_gdf[self.id_key]):
-            print(id)
-
-            if id not in ["Lower Se San 2 + Lower Sre Pok 2"]:
+            if id not in [
+                "Lower Se San 2 + Lower Sre Pok 2"
+            ]:  # TODO: REMOVE THIS LINE!
                 ts_list = list()
                 for product in products:
                     # get timeseries for id and each product to clean individually
@@ -336,6 +336,9 @@ class System:
 
                 # create a timeseries object of all available timeseries for id object
                 ts = timeseries.concat(ts_list)
+                data_dir = os.path.join(self.dirs["output"], f"{id}")
+                utils.ifnotmakedirs(data_dir)
+                ts.export_csv(os.path.join(data_dir, "all_raw_timeseries.csv"))
 
                 # bias correct the timeseries
                 ts.bias_correct()  # perhaps save intermediate step?

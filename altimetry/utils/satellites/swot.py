@@ -143,6 +143,9 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
             observations["product"] = "SWOT_L2_HR_LakeSP_2.0"
             observations["height"] = observations.wse
             observations["date"] = pd.to_datetime(observations.time_str)
+            observations["orbit"] = (
+                observations.lake_id
+            )  # TODO: edit to SWOT equivalent, ask PASE
 
             dst_sub_dir = os.path.join(dst_dir, f"{dl_id}", "raw_observations")
             utils.ifnotmakedirs(dst_sub_dir)

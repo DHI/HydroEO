@@ -63,28 +63,49 @@ class Timeseries:
         if "rolling_median" in filters:
             fltrs.rolling_median(self)
 
-    def bias_correct(self, orbit_key="orbit", product_key="product"):
+    def bias_correct(self, orbit_key="orbit", product_key="platform"):
         # bias correct between orbits and products
         # TODO: implement bias correction
+
+        # we treat each orbit as a single entity regardless of platform
+        # entity = (
+        #     self.df[product_key].astype(str)
+        #     + "_"
+        #     + self.df[orbit_key].astype(int).astype(str)
+        # )
+
+        # # first find the orbit with the most overlap with other observations
+        # for e in entity.unique():
+        #     print(e)
+
+        # for platform in bak.vs_id.unique():
+        #     subset = bak.loc[bak.vs_id == platform]
+        #     orb_mean = subset.groupby(['orbit']).mean().height.reset_index()
+
+        #     for orb in subset.orbit.unique():
+        #         subset_orb = bak.loc[bak.orbit == orb]
+        #         orb_mean = subset_orb.groupby(['orbit']).mean().height.reset_index()
+        #         # print(orb, [[n, [pd.to_datetime(d).month for d in subset_orb.date.unique()].count(n) / len(subset_orb) * 100] for n in range(1,13)])
+        #         print(platform, orb, len(subset_orb), [[n, [pd.to_datetime(d).year for d in subset_orb.date.unique()].count(n) / len(subset_orb) * 100] for n in range(2017, 2023)])
+
+        #     nb_obs = subset.groupby(['orbit']).count().height.reset_index()
+        #     ind = nb_obs.idxmax(axis=0)['height']
+        #     ref_orbit = nb_obs.loc[ind, 'orbit']
 
         # for now pretend like we bias corrected and put out in the correct output
         pass
 
     def merge(self):
         # run the SVR linear outlier filtering
-        print("SVR")
         fltrs.svr_linear(self)
 
         # run the big outlier filtering on the whole set of values
-        print("MAD filter")
         fltrs.mad_filter(self, threshold=5)
 
         # run the ADM running filter
-        print("Daily MAD filter")
         fltrs.daily_mad_error(self)
 
         # here we should run the kalman filter
-        print("Kalman")
         df_kalman = fltrs.kalman(self)
         self = Timeseries(df_kalman, date_key=self.date_key, height_key=self.height_key)
 
@@ -101,7 +122,13 @@ def concat(timeseries: list = [], main_date_key="date", main_height_key="height"
 
     # create a single timeseries object from the multiple timeseries
     for ts in timeseries:
-        df = ts.df[[ts.date_key, ts.height_key]]
+        keep = [ts.date_key, ts.height_key]
+        if "orbit" in ts.df.columns:
+            keep = keep + ["orbit"]
+        if "platform" in ts.df.columns:
+            keep = keep + ["platform"]
+
+        df = ts.df[keep]
         df = df.rename(
             columns={ts.date_key: main_date_key, ts.height_key: main_height_key}
         )
