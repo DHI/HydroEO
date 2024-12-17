@@ -128,30 +128,31 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
     # now loop through the ids in the features gdf to extract the observations from the main one
     for i in tqdm(features.index, desc="Extracting SWOT Lake SP product"):
         dl_id = str(features.loc[i, id_key])
-        lake_id = str(int(features.loc[i, "prior_lake_id"]))
+        if not np.isnan(features.loc[i, "prior_lake_id"]):
+            lake_id = str(int(features.loc[i, "prior_lake_id"]))
 
-        # filter observations to keep only the ones associated with this lake/reservoir
-        observations = (
-            data_gdf.loc[data_gdf.lake_id.astype(int).astype(str) == lake_id]
-            .reset_index(drop=True)
-            .sort_values(by="time")
-        )
+            # filter observations to keep only the ones associated with this lake/reservoir
+            observations = (
+                data_gdf.loc[data_gdf.lake_id.astype(int).astype(str) == lake_id]
+                .reset_index(drop=True)
+                .sort_values(by="time")
+            )
 
-        # if we have observations for this reservoir export it
-        if len(observations) > 0:
-            observations["platform"] = "swot"
-            observations["product"] = "SWOT_L2_HR_LakeSP_2.0"
-            observations["height"] = observations.wse
-            observations["date"] = pd.to_datetime(observations.time_str)
-            observations["orbit"] = (
-                observations.lake_id
-            )  # TODO: edit to SWOT equivalent, ask PASE
+            # if we have observations for this reservoir export it
+            if len(observations) > 0:
+                observations["platform"] = "swot"
+                observations["product"] = "SWOT_L2_HR_LakeSP_2.0"
+                observations["height"] = observations.wse
+                observations["date"] = pd.to_datetime(observations.time_str)
+                observations["orbit"] = (
+                    observations.lake_id
+                )  # TODO: edit to SWOT equivalent, ask PASE
 
-            dst_sub_dir = os.path.join(dst_dir, f"{dl_id}", "raw_observations")
-            utils.ifnotmakedirs(dst_sub_dir)
-            dst_path = os.path.join(dst_sub_dir, dst_file_name)
+                dst_sub_dir = os.path.join(dst_dir, f"{dl_id}", "raw_observations")
+                utils.ifnotmakedirs(dst_sub_dir)
+                dst_path = os.path.join(dst_sub_dir, dst_file_name)
 
-            observations.to_file(dst_path)
+                observations.to_file(dst_path)
 
 
 def get_latest_obs_date(data_dir):
