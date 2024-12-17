@@ -347,7 +347,9 @@ class System:
                 # save the merged timeseries
                 data_dir = os.path.join(self.dirs["output"], f"{id}")
                 utils.ifnotmakedirs(data_dir)
-                ts.merge(save_progress=True, dir=data_dir)
+                ts.merge(
+                    save_progress=True, dir=os.path.join(data_dir, "merged_progress")
+                )
                 ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
 
     def get_merged_timeseries(self, id):
