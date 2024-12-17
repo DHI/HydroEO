@@ -344,11 +344,10 @@ class System:
                 ts.bias_correct()  # perhaps save intermediate step?
 
                 # run the merge function, runs linear SVR, MAD, Kalman filter and radial base SVR to get a final merged timeseries
-                ts.merge()
-
                 # save the merged timeseries
                 data_dir = os.path.join(self.dirs["output"], f"{id}")
                 utils.ifnotmakedirs(data_dir)
+                ts.merge(save_progress=True, dir=data_dir)
                 ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
 
     def get_merged_timeseries(self, id):

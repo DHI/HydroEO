@@ -1,8 +1,10 @@
 from dataclasses import dataclass
 import warnings
+import os
 import pandas as pd
 
 import altimetry.utils.filters.basic_filters as fltrs
+from altimetry.utils import utils
 
 
 @dataclass
@@ -95,23 +97,36 @@ class Timeseries:
         # for now pretend like we bias corrected and put out in the correct output
         pass
 
-    def merge(self):
+    def merge(self, save_progress=False, dir=".\\merged_progress"):
+        # make a folder for saving steps of the timeseries cleaning process
+        utils.ifnotmakedirs(dir)
+
         # run the SVR linear outlier filtering
         fltrs.svr_linear(self)
+        if save_progress:
+            self.export_csv(os.path.join(dir, "svr_linear.csv"))
 
         # run the big outlier filtering on the whole set of values
         fltrs.mad_filter(self, threshold=5)
+        if save_progress:
+            self.export_csv(os.path.join(dir, "mad_filter.csv"))
 
         # run the ADM running filter
         fltrs.daily_mad_error(self)
+        if save_progress:
+            self.export_csv(os.path.join(dir, "daily_mad_error.csv"))
 
-        # here we should run the kalman filter
+        # here we should run the kalman filter TODO: edit the kalman and svr_radial functions to edit the timeseries in place or edit the above to return new edited timeseries
         df_kalman = fltrs.kalman(self)
         self = Timeseries(df_kalman, date_key=self.date_key, height_key=self.height_key)
+        if save_progress:
+            self.export_csv(os.path.join(dir, "kalman.csv"))
 
         # a radial base svr to get the final timeseries
         df_rbf = fltrs.svr_radial(self)
         self = Timeseries(df_rbf, date_key=self.date_key, height_key=self.height_key)
+        if save_progress:
+            self.export_csv(os.path.join(dir, "svr_radial.csv"))
 
     def export_csv(self, path):
         self.df.to_csv(path)

@@ -165,7 +165,9 @@ def _run_svr_linear(heights, err=0.1, epsilon=0.1):
     return np.array(heights)[filtered]
 
 
-def svr_linear(timeseries):
+def svr_linear(
+    timeseries,
+):  # TODO: this should maybe be processed on the individual product timeseries?
     df = timeseries.df
     date_key = timeseries.date_key
     height_key = timeseries.height_key
