@@ -160,12 +160,12 @@ Example of ground track and beam setup for ICESat-2:
 
 
 ### Sentinel-3A, 3B
-![](images/S3_instruments.jpg)
+![](images/S3_instruments.png)
 ([https://sentiwiki.copernicus.eu/web/s3-mission], Figure 2)(https://sentiwiki.copernicus.eu/web/s3-mission)
 
 ESA's Sentinel-3 satellites carry 3 instruments (OLCI, SLSTR and an altimetry payload) designed to serve a range of applications within the scope of understanding and monitoring global climatic phenomena. Inland water applications rely on the Altimetry Surface Topography Mission (STM) payload, which includes the dual frequency Sentinel-3 Radar Altimeter (SRAL). The altimeter operates by emitting and receiving a single across-track pulse every ca. 2 km.
 
-![](images/S3_swaths.jpg)
+![](images/S3_swaths.png)
 ([https://sentiwiki.copernicus.eu/web/s3-mission], Figure 3)(https://sentiwiki.copernicus.eu/web/s3-mission)
 
 Sentinel 3-A and Sentinel 3-B operate on the same orbit +/- 140 degrees, in order to increase spatial coverage of data. The repeat cycle for both satellites is of 27 days.
@@ -194,7 +194,7 @@ Summary of Sentinel-6 mission details:
 The Sentinel-6 mission provides high-resolution altimetry data that can be used to monitor inland water bodies, including lakes and reservoirs. The 10-day repeat cycle allows for frequent observations, making it a valuable addition to the suite of satellite products for water resource applications.
 
 Example of ground track for Sentinel-6:
-![](images/Sentinel-6_tracks.png)
+![](images/Sentinel-6_tracks.jpg)
 [https://www.esa.int/ESA_Multimedia/Images/2020/11/Copernicus_Sentinel-6_orbital_tracks](https://www.esa.int/ESA_Multimedia/Images/2020/11/Copernicus_Sentinel-6_orbital_tracks)
 
 
