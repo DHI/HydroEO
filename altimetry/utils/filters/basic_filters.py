@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.svm import SVR
 
-from tqdm import tqdm
+# from tqdm import tqdm
 
 from datetime import datetime
 
@@ -425,7 +425,7 @@ def svr_radial(timeseries):
     df = timeseries.df.copy()
     date_key = timeseries.date_key
     height_key = timeseries.height_key
-    error_key = timeseries.error_key
+    # error_key = timeseries.error_key
 
     rbf_filter = _run_svr_rbf(
         df[date_key].values,
@@ -437,7 +437,7 @@ def svr_radial(timeseries):
     )  # these are the default values as in DAHITI with error changed from 1 to 0.1m for lakes
 
     nb_obs = df.groupby(date_key).count().reset_index()
-    pass_ = df.groupby(date_key).first().reset_index()
+    # pass_ = df.groupby(date_key).first().reset_index()
     # coords = df.loc[df.groupby(date_key)[error_key].idxmin()].reset_index()
 
     nb_obs["nb_obs"] = nb_obs[date_key]
