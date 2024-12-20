@@ -139,5 +139,4 @@ dmypy.json
 /data/*
 
 # development notebooks
-project_test_initial.ipynb
-river_development.ipynb
+/river_development.ipynb

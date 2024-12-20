@@ -29,6 +29,8 @@ def mad_filter(timeseries, threshold=5):
         timeseries.df = timeseries.df.reset_index(drop=True)
         timeseries.df = timeseries.df.sort_values(by=timeseries.date_key)
 
+    return timeseries
+
 
 def daily_mad_error(timeseries, reg_weight=0.1, reg_default=0.5, error_key="ADM"):
     # sort inplace the timeseries object
@@ -64,6 +66,8 @@ def daily_mad_error(timeseries, reg_weight=0.1, reg_default=0.5, error_key="ADM"
     # add error to timeseries
     timeseries.df[error_key] = error
 
+    return timeseries
+
 
 def daily_mean_merge(timeseries):
     # aggregates values that occur on the same day to a mean value
@@ -95,6 +99,8 @@ def daily_mean_merge(timeseries):
     timeseries.df = timeseries.df.reset_index(drop=True)
     timeseries.df.sort_values(by=timeseries.date_key)
 
+    return timeseries
+
 
 def hampel(timeseries, k=7, t0=3):
     """
@@ -114,11 +120,15 @@ def hampel(timeseries, k=7, t0=3):
 
     timeseries.df[timeseries.height_key] = vals.values
 
+    return timeseries
+
 
 def rolling_median(timeseries, window=7):
     timeseries.df[timeseries.height_key] = (
         timeseries.df[timeseries.height_key].rolling(window).median()
     )
+
+    return timeseries
 
 
 def _run_svr_linear(heights, err=0.1, epsilon=0.1):
@@ -188,6 +198,8 @@ def svr_linear(
 
     # Reset the time series to the filtered values
     timeseries.df = r
+
+    return timeseries
 
 
 """Kalman filter for estimating state of reservoir from noisy timeseries"""
@@ -430,7 +442,7 @@ def svr_radial(timeseries):
     rbf_filter = _run_svr_rbf(
         df[date_key].values,
         df[height_key].values,
-        err=0.1,
+        err=1,  # TODO: consider 0.1 for lakes after bias correction?
         rbf_c=1000,
         gamma=0.0000438,
         epsilon=0.1,

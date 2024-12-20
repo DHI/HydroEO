@@ -15,6 +15,7 @@ import datetime
 
 from altimetry.utils.satellites import swot, icesat2, sentinel
 from altimetry.utils import utils, timeseries
+from altimetry.utils.downloaders import hydroweb
 
 from tqdm import tqdm
 
@@ -320,9 +321,8 @@ class System:
 
     def merge_product_timeseries(self, products: list):
         for id in tqdm(self.download_gdf[self.id_key]):
-            if id not in [
-                "Lower Se San 2 + Lower Sre Pok 2"
-            ]:  # TODO: REMOVE THIS LINE!
+            if id not in []:
+                # ["Lower Se San 2 + Lower Sre Pok 2"]:  # TODO: REMOVE THIS LINE!
                 ts_list = list()
                 for product in products:
                     # get timeseries for id and each product to clean individually
@@ -341,13 +341,13 @@ class System:
                 ts.export_csv(os.path.join(data_dir, "all_raw_timeseries.csv"))
 
                 # bias correct the timeseries
-                ts.bias_correct()  # perhaps save intermediate step?
+                # ts.bias_correct()  # perhaps save intermediate step?
 
                 # run the merge function, runs linear SVR, MAD, Kalman filter and radial base SVR to get a final merged timeseries
                 # save the merged timeseries
                 data_dir = os.path.join(self.dirs["output"], f"{id}")
                 utils.ifnotmakedirs(data_dir)
-                ts.merge(
+                ts = ts.merge(
                     save_progress=True, dir=os.path.join(data_dir, "merged_progress")
                 )
                 ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
@@ -366,7 +366,72 @@ class System:
             )
             return None
 
-    def summarize_cleaning_by_id(self, id):
+    def summarize_crossings_by_id(self, id, show=True, save=False):
+        sns.set()
+        cmap = cm.batlow.resampled(5)
+        colors = {
+            "icesat2": cmap(0),
+            "sentinel3": cmap(1),
+            "sentinel6": cmap(3),
+            "swot": cmap(4),
+        }
+
+        # start figure
+        fig, ax = plt.subplots()
+        fig.suptitle(f"{self.type}: {id}")
+
+        # extract item shape
+        indx = self.gdf.loc[self.gdf[self.id_key] == id].index[0]
+
+        # set boudns
+        xmin, ymin, xmax, ymax = self.gdf.loc[indx, "geometry"].bounds
+
+        ax.set_xlim([xmin - 0.1, xmax + 0.1])
+        ax.set_ylim([ymin - 0.1, ymax + 0.1])
+
+        # plot reservoir
+        self.gdf.loc[[indx]].plot(
+            ax=ax,
+            edgecolor="black",
+            facecolor="None",
+            zorder=5,
+            label="Reservoir outline",
+        )
+
+        # loop through each product in file and plot
+        data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
+        for file_name in os.listdir(data_dir):
+            if file_name.endswith(".shp"):
+                path_to_file = os.path.join(data_dir, file_name)
+                product = file_name.split(".")[0]
+                gdf = gpd.read_file(path_to_file)
+                if product == "swot":
+                    zorder = 0
+                    alpha = 0.1
+                else:
+                    zorder = 10
+                    alpha = 0.5
+                gdf.plot(
+                    ax=ax,
+                    color=colors[product],
+                    edgecolor="none",
+                    alpha=alpha,
+                    zorder=zorder,
+                    label=product,
+                )
+
+        ax.legend()
+        fig.tight_layout()
+        if save:
+            plt.savefig(
+                os.path.join(self.dirs["output"], f"{id}", "crossing_summary.png")
+            )
+        if show:
+            plt.show()
+
+        return None
+
+    def summarize_cleaning_by_id(self, id, show=True, save=False):
         sns.set()
         cmap = cm.batlow.resampled(5)
         colors = {
@@ -430,40 +495,49 @@ class System:
         ax.tick_params(axis="x", rotation=45)
 
         fig.tight_layout()
-        plt.show()
+        if save:
+            plt.savefig(
+                os.path.join(self.dirs["output"], f"{id}", "cleaning_summary.png")
+            )
+        if show:
+            plt.show()
 
-    # def load_crossings(self):
-    #     self.crossings = gpd.read_file(os.path.join(self.dirs['output'], rf"icesat2_crossings.shp"))
+    def summarize_merging_by_id(self, id, show=True, save=False):
+        merged_dir = os.path.join(self.dirs["output"], str(id), "merged_progress")
 
-    # def map_all_crossings(self):
+        file_names = os.listdir(merged_dir)
+        num_files = len(file_names)
 
-    #     fig, ax = plt.subplots()
+        sns.set()
+        fig, main_ax = plt.subplots(num_files, 1, figsize=(10, 10))
+        fig.suptitle(f"{self.type}: {id}")
 
-    #     # plot river
-    #     self.gdf.plot(ax=ax)
-    #     self.crossings.plot(ax=ax, column="height", cmap=cm.batlow, legend=True, legend_kwds={'label': 'Height (m)'})
+        def _plot_file(i, fig, main_ax, file_name, file_names, dir):
+            if file_name in file_names:
+                i = i + 1
+                ax = main_ax.flat[i]
+                df = pd.read_csv(os.path.join(dir, file_name))
+                df["date"] = pd.to_datetime(df.date)
+                df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
+                ax.set_title(file_name)
+            return i
 
-    #     fig.tight_layout()
-    #     plt.show()
+        i = -1
+        i = _plot_file(i, fig, main_ax, "svr_linear.csv", file_names, merged_dir)
+        i = _plot_file(i, fig, main_ax, "mad_filter.csv", file_names, merged_dir)
+        i = _plot_file(i, fig, main_ax, "daily_mad_error.csv", file_names, merged_dir)
+        i = _plot_file(i, fig, main_ax, "kalman.csv", file_names, merged_dir)
+        i = _plot_file(i, fig, main_ax, "svr_radial.csv", file_names, merged_dir)
 
-    # def plot_timeseries_by_id(self, id, summarize=True):
+        fig.tight_layout()
+        if save:
+            plt.savefig(
+                os.path.join(self.dirs["output"], f"{id}", "merging_summary.png")
+            )
+        if show:
+            plt.show()
 
-    #     # start figure
-    #     fig, ax = plt.subplots()
-
-    #     # extract this grids crossings from the main river crossing dataframe
-    #     data_gdf = self.crossings.loc[self.crossings[self.id_key] == id]
-
-    #     if summarize:
-    #         # apply simple mean groupby to make daily estimate (There is no adjustment for bias here just an example of how to get to a single daily value quickly)
-    #         data_gdf['date'] = data_gdf.date.dt.floor('d')
-    #         data_gdf = data_gdf[['date', 'height', 'lon']].groupby(by='date').mean().reset_index()
-
-    #     # make a scatter plot with this data
-    #     data_gdf.plot(ax=ax, x='date', y='height', kind='scatter', c=data_gdf['lon'], cmap=cm.batlow)
-
-    #     fig.tight_layout()
-    #     plt.show()
+        return
 
 
 @dataclass
@@ -475,6 +549,18 @@ class Reservoirs(System):
         utils.ifnotmakedirs(self.dirs["output"])
 
         self.geom_type = self.gdf.loc[0, "geometry"].geom_type
+
+    def download_pld(self, overwrite=False):
+        pld_path = self.dirs["pld"]
+
+        # determine if we need to download or simply load the pld
+        if (not os.path.exists(pld_path)) or (overwrite):
+            download_dir = os.path.dirname(pld_path)
+            file_name = os.path.basename(pld_path)
+            bounds = list(self.gdf.unary_union.bounds)
+            hydroweb.download_PLD(
+                download_dir=download_dir, file_name=file_name, bounds=bounds
+            )
 
     def assign_pld_id(self, local_crs, max_distance):
         # load the pld
@@ -510,24 +596,6 @@ class Reservoirs(System):
         print(
             f"Out of the {len(self.gdf)} reservoirs, {len(present)} are present and {len(missing)} are missing from the PLD."
         )
-
-    # def assign_reservoir_polygons(self):
-    #     # function to set a reservoir polygon to the reservoirs in the system based on a pld id TODO: need to account for getting shapes for non hits
-    #     # load the pld
-    #     pld = gpd.read_file(self.dirs["pld"])
-
-    #     download_gdf = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
-
-    #     geometries = [
-    #         pld.loc[pld.lake_id == lake_id].geometry.values[0]
-    #         for lake_id in download_gdf.prior_lake_id
-    #     ]
-
-    #     download_gdf["geometry"] = geometries
-
-    #     download_gdf[prior_lake_id] = download_gdf.prior_lake_id.astype(int)
-
-    #     self.download_gdf = download_gdf
 
     def extract_product_timeseries(self, products: list):
         if "icesat2" in products:
@@ -608,28 +676,6 @@ class Reservoirs(System):
                 features=self.download_gdf,
                 id_key=self.id_key,
             )
-
-    # def map_crossings_by_id(self, id):
-
-    #     # start figure
-    #     fig, ax = plt.subplots()
-
-    #     # set boudns
-    #     xmin, ymin, xmax, ymax = self.gdf.loc[id, 'geometry'].bounds
-    #     ax.set_xlim([xmin-0.1, xmax+0.1])
-    #     ax.set_ylim([ymin-0.1, ymax+0.1])
-
-    #     # plot reservoir
-    #     self.gdf.loc[[id]].plot(ax=ax, edgecolor='black', facecolor='None')
-
-    #     data_gdf = self.crossings.loc[self.crossings[self.id_key] == id]
-
-    #     if len(data_gdf) > 0:
-    #         data_gdf['color'] = [int(date2num(i)) for i in data_gdf["date"].values]
-    #         data_gdf.plot(ax=ax, column='color', vmin=int(date2num(datetime(2019, 1, 1))), vmax=int(date2num(datetime(2024, 12, 31))), cmap=cm.batlow, alpha=0.5, legend=True)
-
-    #     fig.tight_layout()
-    #     plt.show()
 
 
 # Rivers are not yet implemented

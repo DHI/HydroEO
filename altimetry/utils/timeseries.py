@@ -57,7 +57,7 @@ class Timeseries:
             fltrs.daily_mean_merge(self)
 
         if "MAD" in filters:
-            fltrs.mad_filter(self, threshold=4)
+            fltrs.mad_filter(self, threshold=5)
 
         if "hampel" in filters:
             fltrs.hampel(self)
@@ -102,17 +102,17 @@ class Timeseries:
         utils.ifnotmakedirs(dir)
 
         # run the SVR linear outlier filtering
-        fltrs.svr_linear(self)
+        self = fltrs.svr_linear(self)
         if save_progress:
             self.export_csv(os.path.join(dir, "svr_linear.csv"))
 
         # run the big outlier filtering on the whole set of values
-        fltrs.mad_filter(self, threshold=5)
-        if save_progress:
-            self.export_csv(os.path.join(dir, "mad_filter.csv"))
+        # fltrs.mad_filter(self, threshold=6)
+        # if save_progress:
+        #     self.export_csv(os.path.join(dir, "mad_filter.csv"))
 
         # run the ADM running filter
-        fltrs.daily_mad_error(self)
+        self = fltrs.daily_mad_error(self)
         if save_progress:
             self.export_csv(os.path.join(dir, "daily_mad_error.csv"))
 
@@ -127,6 +127,8 @@ class Timeseries:
         self = Timeseries(df_rbf, date_key=self.date_key, height_key=self.height_key)
         if save_progress:
             self.export_csv(os.path.join(dir, "svr_radial.csv"))
+
+        return self
 
     def export_csv(self, path):
         self.df.to_csv(path)
