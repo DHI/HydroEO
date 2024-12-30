@@ -67,6 +67,8 @@ def query(
     # the same granuale appears in a new set of search parameters. Thus we may be downloading a granule with no actual crossing
     # over a reservoir many times over. Consider pull request to be able to add this functionality later
 
+    print(query.avail_granules())
+
     # order granules
     query.order_granules()
     query.download_granules(download_directory)

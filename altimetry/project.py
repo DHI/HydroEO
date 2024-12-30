@@ -148,3 +148,64 @@ class Project:
             self.rivers.report()
         if hasattr(self, "reservoirs"):
             self.reservoirs.report()
+
+    def initialize(self):
+        # Checks that we have all information needed for downloads
+        if hasattr(self, "reservoirs"):
+            # if we are processing swot data then we will need
+            if "swot" in self.to_download or "swot" in self.to_process:
+                # download PLD if needed
+                self.reservoirs.download_pld(overwrite=False)
+
+                # load the pld and associate the reservoirs with a "lake id"
+                self.reservoirs.assign_pld_id(
+                    local_crs=self.local_crs, max_distance=100
+                )  # take the downloaded PLD and see where we have overlap with the input reservoirs
+                self.reservoirs.flag_missing_priors()  # flag and export which reservoirs have entries in the PLD
+
+            # assign download geometry (for reservoirs this is the same as the input boundaries)
+            self.reservoirs.download_gdf = self.reservoirs.gdf
+
+    def download(self):
+        if hasattr(self, "reservoirs"):
+            if "swot" in self.to_download:
+                self.reservoirs.download_altimetry(
+                    product="SWOT_Lake",
+                    startdate=self.startdates["swot"],
+                    enddate=self.enddates["swot"],
+                    update_existing=False,
+                )
+
+            if "icesat2" in self.to_download:
+                self.reservoirs.download_altimetry(
+                    product="ATL13",
+                    startdate=self.startdates["icesat2"],
+                    enddate=self.enddates["icesat2"],
+                    update_existing=False,
+                )
+
+            if "sentinel3" in self.to_download:
+                self.reservoirs.download_altimetry(
+                    product="S3",
+                    startdate=self.startdates["sentinel3"],
+                    enddate=self.enddates["sentinel3"],
+                    credentials=(self.creodias_user, self.creodias_pass),
+                    update_existing=False,
+                )
+            if "sentinel6" in self.to_download:
+                self.reservoirs.download_altimetry(
+                    product="S6",
+                    startdate=self.startdates["sentinel6"],
+                    enddate=self.enddates["sentinel6"],
+                    credentials=(self.creodias_user, self.creodias_pass),
+                    update_existing=False,
+                )
+
+    def update(self):
+        raise NotImplementedError()
+
+    def create_timeseries(self):
+        raise NotImplementedError()
+
+    def generate_summaries(self):
+        raise NotImplementedError()

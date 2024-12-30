@@ -1,0 +1,51 @@
+project :
+  main_dir : "C:\\Users\\cwch\\altimetry_project" # EDIT: main directory in which to store processed outputs
+
+gis :
+  global_crs : 'EPSG:4326'
+
+reservoirs :
+  path : "C:\\Users\\cwch\\altimetry_project\\sample_reservoirs_v2.zip" # EDIT: path to the shapefile holding one or more resevoirs per feature
+  id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
+
+##### A earthaccess username and password may not be needed if your machine is already authenticated
+earthaccess: # EDIT: create an Earth Data account at https://urs.earthdata.nasa.gov/ 
+  username : ""
+  password : ""
+
+hydroweb: # EDIT: create an account and api key at https://hydroweb.next.theia-land.fr/
+  api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
+  PLD_path : "C:\\Users\\cwch\\temp\\priors\\PLD_subset.shp" # path to which the downloaded SWOT PLD file will be saved or loaded from if it already exists
+
+swot:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\swot" # directory in which to store raw SWOT files (if not provided, a directory will be made within the project directory)
+  startdate : [2024, 12, 1] # [year, month, day] format
+  enddate   : [2024, 12, 8]
+
+icesat2:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\icesat2" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
+  startdate : [2024, 12, 1] # [year, month, day] format
+  enddate   : [2024, 12, 8]
+
+##### EDIT: A creodias username and password must be provided if downloading Sentinel data
+creodias:
+  username : ""
+  password : ""
+
+sentinel3:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\sentinel3" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
+  startdate : [2024, 12, 1] # [year, month, day] format
+  enddate   : [2024, 12, 8]
+
+sentinel6:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\sentinel6"
+  startdate : [2024, 12, 1] # [year, month, day] format
+  enddate   : [2024, 12, 8]

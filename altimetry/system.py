@@ -555,12 +555,15 @@ class Reservoirs(System):
 
         # determine if we need to download or simply load the pld
         if (not os.path.exists(pld_path)) or (overwrite):
+            print("Downloading PLD")
             download_dir = os.path.dirname(pld_path)
             file_name = os.path.basename(pld_path)
             bounds = list(self.gdf.unary_union.bounds)
             hydroweb.download_PLD(
                 download_dir=download_dir, file_name=file_name, bounds=bounds
             )
+        else:
+            print("PLD located")
 
     def assign_pld_id(self, local_crs, max_distance):
         # load the pld
@@ -581,6 +584,9 @@ class Reservoirs(System):
             columns={"lake_id": "prior_lake_id", "res_id": "prior_res_id"}
         )
 
+        # map null lake ids to a negative number -9999
+        joined_gdf.loc[joined_gdf.prior_lake_id.isnull(), "prior_lake_id"] = -9999
+
         # reset the reservoir data frame to include the changes
         self.gdf = joined_gdf
 
@@ -588,7 +594,7 @@ class Reservoirs(System):
         self,
     ):  # simple function to report what reservoirs do not have PLD shapes
         present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
-        missing = self.gdf.loc[self.gdf.prior_lake_id.isnull()].reset_index(drop=True)
+        missing = self.gdf.loc[self.gdf.prior_lake_id < 0].reset_index(drop=True)
 
         present.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
         missing.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
