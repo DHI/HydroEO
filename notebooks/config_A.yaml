@@ -5,7 +5,7 @@ gis :
   global_crs : 'EPSG:4326'
 
 reservoirs :
-  path : "C:\\Users\\cwch\\altimetry_project\\sample_reservoirs_v2.zip" # EDIT: path to the shapefile holding one or more resevoirs per feature
+  path : "C:\\Users\\cwch\\Projects\\WR-Collaboration\\rk-altimetry\\notebooks\\example_data\\example_A.shp" # EDIT: path to the shapefile holding one or more resevoirs per feature
   id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
 
 ##### A earthaccess username and password may not be needed if your machine is already authenticated
@@ -21,15 +21,15 @@ swot:
   download : True
   process : True
   download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\swot" # directory in which to store raw SWOT files (if not provided, a directory will be made within the project directory)
-  startdate : [2024, 12, 1] # [year, month, day] format
-  enddate   : [2024, 12, 8]
+  startdate : [2024, 10, 1] # [year, month, day] format
+  enddate   : [2024, 11, 1]
 
 icesat2:
   download : True
   process : True
   download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\icesat2" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
-  startdate : [2024, 12, 1] # [year, month, day] format
-  enddate   : [2024, 12, 8]
+  startdate : [2024, 10, 1] # [year, month, day] format
+  enddate   : [2024, 11, 1]
 
 ##### EDIT: A creodias username and password must be provided if downloading Sentinel data
 creodias:
@@ -40,12 +40,12 @@ sentinel3:
   download : True
   process : True
   download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\sentinel3" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
-  startdate : [2024, 12, 1] # [year, month, day] format
-  enddate   : [2024, 12, 8]
+  startdate : [2024, 10, 1] # [year, month, day] format
+  enddate   : [2024, 11, 1]
 
 sentinel6:
   download : True
   process : True
   download_dir : "C:\\Users\\cwch\\altimetry_project\\data\\sentinel6"
-  startdate : [2024, 12, 1] # [year, month, day] format
-  enddate   : [2024, 12, 8]
+  startdate : [2024, 10, 1] # [year, month, day] format
+  enddate   : [2024, 11, 1]

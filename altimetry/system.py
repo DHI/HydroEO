@@ -299,23 +299,27 @@ class System:
     def get_cleaned_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "cleaned_observations")
 
-        # loop through raw directory and load in all raw observations
-        df_list = list()
-        for file in os.listdir(data_dir):
-            if file.endswith(".csv"):
-                # check if we process all products or only what is specified in the product list
-                if (len(products) == 0) or (file.split(".")[0] in products):
-                    df_path = os.path.join(data_dir, file)
-                    df = pd.read_csv(df_path)
-                    df_list.append(df)
+        if os.path.exists(data_dir):
+            # loop through raw directory and load in all raw observations
+            df_list = list()
+            for file in os.listdir(data_dir):
+                if file.endswith(".csv"):
+                    # check if we process all products or only what is specified in the product list
+                    if (len(products) == 0) or (file.split(".")[0] in products):
+                        df_path = os.path.join(data_dir, file)
+                        df = pd.read_csv(df_path)
+                        df_list.append(df)
 
-        # concatenate everything into one dataframe
-        if len(df_list) > 0:
-            df = pd.concat(df_list)
-            df["date"] = pd.to_datetime(df.date)
-            df = df.sort_values(by="date")
+            # concatenate everything into one dataframe
+            if len(df_list) > 0:
+                df = pd.concat(df_list)
+                df["date"] = pd.to_datetime(df.date)
+                df = df.sort_values(by="date")
+            else:
+                df = None  # TODO: maybe raise an error instead?
+
         else:
-            df = None  # TODO: maybe raise an error instead?
+            df = None
 
         return df
 
@@ -335,22 +339,25 @@ class System:
                         )
 
                 # create a timeseries object of all available timeseries for id object
-                ts = timeseries.concat(ts_list)
-                data_dir = os.path.join(self.dirs["output"], f"{id}")
-                utils.ifnotmakedirs(data_dir)
-                ts.export_csv(os.path.join(data_dir, "all_raw_timeseries.csv"))
+                if len(ts_list) > 0:
+                    ts = timeseries.concat(ts_list)
 
-                # bias correct the timeseries
-                # ts.bias_correct()  # perhaps save intermediate step?
+                    data_dir = os.path.join(self.dirs["output"], f"{id}")
+                    utils.ifnotmakedirs(data_dir)
+                    ts.export_csv(os.path.join(data_dir, "all_cleaned_timeseries.csv"))
 
-                # run the merge function, runs linear SVR, MAD, Kalman filter and radial base SVR to get a final merged timeseries
-                # save the merged timeseries
-                data_dir = os.path.join(self.dirs["output"], f"{id}")
-                utils.ifnotmakedirs(data_dir)
-                ts = ts.merge(
-                    save_progress=True, dir=os.path.join(data_dir, "merged_progress")
-                )
-                ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
+                    # bias correct the timeseries
+                    # ts.bias_correct()  # perhaps save intermediate step?
+
+                    # run the merge function, runs linear SVR, MAD, Kalman filter and radial base SVR to get a final merged timeseries
+                    # save the merged timeseries
+                    data_dir = os.path.join(self.dirs["output"], f"{id}")
+                    utils.ifnotmakedirs(data_dir)
+                    ts = ts.merge(
+                        save_progress=True,
+                        dir=os.path.join(data_dir, "merged_progress"),
+                    )
+                    ts.export_csv(os.path.join(data_dir, "merged_timeseries.csv"))
 
     def get_merged_timeseries(self, id):
         data_path = os.path.join(self.dirs["output"], f"{id}", "merged_timeseries.csv")
@@ -447,95 +454,100 @@ class System:
 
         # plot unfiltered timeseries
         df = self.get_unfiltered_product_timeseries(id)
-        df = df[["date", "height", "platform", "product"]]
+        if df is not None:
+            df = df[["date", "height", "platform", "product"]]
 
-        ax = main_ax[0]
-        ax.set_title("Unfiltered Products")
-        for platform in df.platform.unique():
-            df.loc[df.platform == platform].plot(
-                ax=ax,
-                x="date",
-                y="height",
-                c=colors[platform],
-                kind="scatter",
-                label=platform,
-            )
+            ax = main_ax[0]
+            ax.set_title("Unfiltered Products")
+            for platform in df.platform.unique():
+                df.loc[df.platform == platform].plot(
+                    ax=ax,
+                    x="date",
+                    y="height",
+                    c=colors[platform],
+                    kind="scatter",
+                    label=platform,
+                )
 
-        ax.legend()
-        ax.tick_params(axis="x", rotation=45)
+            ax.legend()
+            ax.tick_params(axis="x", rotation=45)
 
-        # now plot cleaned timeseries
-        df = self.get_cleaned_product_timeseries(id)
-        df = df[["date", "height", "platform", "product"]]
+            # now plot cleaned timeseries
+            df = self.get_cleaned_product_timeseries(id)
+            df = df[["date", "height", "platform", "product"]]
 
-        ax = main_ax[1]
-        ax.set_title("Cleaned Products")
-        for platform in df.platform.unique():
-            df.loc[df.platform == platform].plot(
-                ax=ax,
-                x="date",
-                y="height",
-                c=colors[platform],
-                kind="scatter",
-                label=platform,
-            )
+            ax = main_ax[1]
+            ax.set_title("Cleaned Products")
+            for platform in df.platform.unique():
+                df.loc[df.platform == platform].plot(
+                    ax=ax,
+                    x="date",
+                    y="height",
+                    c=colors[platform],
+                    kind="scatter",
+                    label=platform,
+                )
 
-        ax.legend()
-        ax.tick_params(axis="x", rotation=45)
+            ax.legend()
+            ax.tick_params(axis="x", rotation=45)
 
         # now plot merged timeseries
         df = self.get_merged_timeseries(id)
-        df = df[["date", "height"]]
+        if df is not None:
+            df = df[["date", "height"]]
 
-        ax = main_ax[2]
-        ax.set_title("Merged Timeseries")
-        df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
+            ax = main_ax[2]
+            ax.set_title("Merged Timeseries")
+            df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
 
-        ax.legend()
-        ax.tick_params(axis="x", rotation=45)
+            ax.legend()
+            ax.tick_params(axis="x", rotation=45)
 
-        fig.tight_layout()
-        if save:
-            plt.savefig(
-                os.path.join(self.dirs["output"], f"{id}", "cleaning_summary.png")
-            )
-        if show:
-            plt.show()
+            fig.tight_layout()
+            if save:
+                plt.savefig(
+                    os.path.join(self.dirs["output"], f"{id}", "cleaning_summary.png")
+                )
+            if show:
+                plt.show()
 
     def summarize_merging_by_id(self, id, show=True, save=False):
         merged_dir = os.path.join(self.dirs["output"], str(id), "merged_progress")
 
-        file_names = os.listdir(merged_dir)
-        num_files = len(file_names)
+        if os.path.exists(merged_dir):
+            file_names = os.listdir(merged_dir)
+            num_files = len(file_names)
 
-        sns.set()
-        fig, main_ax = plt.subplots(num_files, 1, figsize=(10, 10))
-        fig.suptitle(f"{self.type}: {id}")
+            sns.set()
+            fig, main_ax = plt.subplots(num_files, 1, figsize=(10, 10))
+            fig.suptitle(f"{self.type}: {id}")
 
-        def _plot_file(i, fig, main_ax, file_name, file_names, dir):
-            if file_name in file_names:
-                i = i + 1
-                ax = main_ax.flat[i]
-                df = pd.read_csv(os.path.join(dir, file_name))
-                df["date"] = pd.to_datetime(df.date)
-                df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
-                ax.set_title(file_name)
-            return i
+            def _plot_file(i, fig, main_ax, file_name, file_names, dir):
+                if file_name in file_names:
+                    i = i + 1
+                    ax = main_ax.flat[i]
+                    df = pd.read_csv(os.path.join(dir, file_name))
+                    df["date"] = pd.to_datetime(df.date)
+                    df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
+                    ax.set_title(file_name)
+                return i
 
-        i = -1
-        i = _plot_file(i, fig, main_ax, "svr_linear.csv", file_names, merged_dir)
-        i = _plot_file(i, fig, main_ax, "mad_filter.csv", file_names, merged_dir)
-        i = _plot_file(i, fig, main_ax, "daily_mad_error.csv", file_names, merged_dir)
-        i = _plot_file(i, fig, main_ax, "kalman.csv", file_names, merged_dir)
-        i = _plot_file(i, fig, main_ax, "svr_radial.csv", file_names, merged_dir)
-
-        fig.tight_layout()
-        if save:
-            plt.savefig(
-                os.path.join(self.dirs["output"], f"{id}", "merging_summary.png")
+            i = -1
+            i = _plot_file(i, fig, main_ax, "svr_linear.csv", file_names, merged_dir)
+            i = _plot_file(i, fig, main_ax, "mad_filter.csv", file_names, merged_dir)
+            i = _plot_file(
+                i, fig, main_ax, "daily_mad_error.csv", file_names, merged_dir
             )
-        if show:
-            plt.show()
+            i = _plot_file(i, fig, main_ax, "kalman.csv", file_names, merged_dir)
+            i = _plot_file(i, fig, main_ax, "svr_radial.csv", file_names, merged_dir)
+
+            fig.tight_layout()
+            if save:
+                plt.savefig(
+                    os.path.join(self.dirs["output"], f"{id}", "merging_summary.png")
+                )
+            if show:
+                plt.show()
 
         return
 

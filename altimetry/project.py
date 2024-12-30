@@ -7,6 +7,7 @@ import yaml
 import warnings
 
 import geopandas as gpd
+import datetime
 
 from altimetry.system import Reservoirs
 from altimetry.utils import utils
@@ -202,10 +203,63 @@ class Project:
                 )
 
     def update(self):
-        raise NotImplementedError()
+        # get the current date of the system
+        current_date = datetime.date.today()
+        print(f"Updating download archives up to {current_date}")
+        current_date = [current_date.year, current_date.month, current_date.day]
+
+        if hasattr(self, "reservoirs"):
+            if "swot" in self.to_download:
+                print("Updating SWOT Lake SP product")
+                self.reservoirs.download_altimetry(
+                    product="SWOT_Lake",
+                    startdate=self.startdates["swot"],
+                    enddate=current_date,
+                    update_existing=True,
+                )
+            if "icesat2" in self.to_download:
+                print("Updating Icesat-2 ATL13 product")
+                self.reservoirs.download_altimetry(
+                    product="ATL13",
+                    startdate=self.startdates["icesat2"],
+                    enddate=current_date,
+                    update_existing=True,
+                )
+            if "sentinel3":
+                print("Updating Sentinel-3 Hydro product")
+                self.reservoirs.download_altimetry(
+                    product="S3",
+                    startdate=self.startdates["sentinel3"],
+                    enddate=current_date,
+                    credentials=(self.creodias_user, self.creodias_pass),
+                    update_existing=True,
+                )
+            if "sentinel6":
+                print("Updating Sentinel-6 Hydro product")
+                self.reservoirs.download_altimetry(
+                    product="S6",
+                    startdate=self.startdates["sentinel6"],
+                    enddate=current_date,
+                    credentials=(self.creodias_user, self.creodias_pass),
+                    update_existing=True,
+                )
 
     def create_timeseries(self):
-        raise NotImplementedError()
+        if hasattr(self, "reservoirs"):
+            # extract the data
+            self.reservoirs.extract_product_timeseries(self.to_process)
 
-    def generate_summaries(self):
-        raise NotImplementedError()
+            # clean the individual timeseries
+            self.reservoirs.clean_product_timeseries(
+                products=self.to_process, filters=["elevation", "MAD"]
+            )
+
+            # merge the product timeseries
+            self.reservoirs.merge_product_timeseries(products=self.to_process)
+
+    def generate_summaries(self, show=False, save=True):
+        if hasattr(self, "reservoirs"):
+            for id in self.reservoirs.download_gdf[self.reservoirs.id_key]:
+                self.reservoirs.summarize_crossings_by_id(id, show=show, save=save)
+                self.reservoirs.summarize_cleaning_by_id(id, show=show, save=save)
+                self.reservoirs.summarize_merging_by_id(id, show=show, save=save)
