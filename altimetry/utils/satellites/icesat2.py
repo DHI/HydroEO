@@ -67,11 +67,13 @@ def query(
     # the same granuale appears in a new set of search parameters. Thus we may be downloading a granule with no actual crossing
     # over a reservoir many times over. Consider pull request to be able to add this functionality later
 
-    print(query.avail_granules())
+    if hasattr(query.granules, "avail"):
+        # order granules
+        query.order_granules()
+        query.download_granules(download_directory)
 
-    # order granules
-    query.order_granules()
-    query.download_granules(download_directory)
+    else:
+        print("No available granules found")
 
 
 @dataclass
