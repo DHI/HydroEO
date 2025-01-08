@@ -118,11 +118,16 @@ class System:
             print(f"{len(to_download)} products of 'Prior' type")
 
             # download the individual file
-            files = swot.download(to_download, download_directory=download_dir)
+            _ = swot.download(to_download, download_directory=download_dir)
 
             # we want to subset the downloaded file to only include known waterbodies TODO: add functionality to skip subsetting if the subsetted file exists
+            files_in_dir = [
+                os.path.join(download_dir, f)
+                for f in os.listdir(download_dir)
+                if f.endswith(".zip")
+            ]
             swot.subset_by_id(
-                files, self.download_gdf["prior_lake_id"].astype(int).values
+                files_in_dir, self.download_gdf["prior_lake_id"].astype(int).values
             )
 
         elif product in ["ATL13"]:

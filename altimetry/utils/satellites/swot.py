@@ -86,27 +86,31 @@ def subset_by_id(files: list, ids: list):
         utils.ifnotmakedirs(temp_dir)
 
         # unzip file
-        with zipfile.ZipFile(file, "r") as zip_ref:
-            zip_ref.extractall(temp_dir)
+        try:
+            with zipfile.ZipFile(file, "r") as zip_ref:
+                zip_ref.extractall(temp_dir)
 
-        # open shape file
-        shp_file = file_name.split(".")[0] + ".shp"
-        gdf = gpd.read_file(os.path.join(temp_dir, shp_file))
+            # open shape file
+            shp_file = file_name.split(".")[0] + ".shp"
+            gdf = gpd.read_file(os.path.join(temp_dir, shp_file))
 
-        # remove water bodies that have no data
-        gdf = gdf.loc[gdf.obs_id != "no_data"].reset_index(drop=True)
+            # remove water bodies that have no data
+            gdf = gdf.loc[gdf.obs_id != "no_data"].reset_index(drop=True)
 
-        # extract entries that are in id list
-        gdf = gdf.loc[np.in1d(gdf.lake_id.astype(int).values, ids)]
+            # extract entries that are in id list
+            gdf = gdf.loc[np.in1d(gdf.lake_id.astype(int).values, ids)]
 
-        if len(gdf) > 0:
-            # save file
-            export_file = "sub_" + shp_file
-            gdf.to_file(os.path.join(file_dir, export_file))
+            if len(gdf) > 0:
+                # save file
+                export_file = "sub_" + shp_file
+                gdf.to_file(os.path.join(file_dir, export_file))
 
-        # clean up original file and temp directory
-        os.remove(file)
-        shutil.rmtree(temp_dir)
+            # clean up original file and temp directory
+            os.remove(file)
+            shutil.rmtree(temp_dir)
+
+        except:
+            print(f"Unable to unzip: {file}")
 
 
 def merge_shps(dir):
