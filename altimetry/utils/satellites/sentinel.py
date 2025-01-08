@@ -165,7 +165,7 @@ def subset(
     # ensure correct formatting of coordinate list and extract corner coordinates
     # Upper left corner = lon min, lat max / Lower right corner = lon max, lat min
     ulx, lry, lrx, uly = shapely.Polygon(geometry.format_coord_list(aoi)).bounds
-    print(ulx, lry, lrx, uly)
+    # print(ulx, lry, lrx, uly)
     if ulx > lrx or lry > uly:
         raise ValueError("Study area extent conflicts - please check coordinates.")
 
@@ -218,7 +218,7 @@ def subset(
         disable=not show_progress,
     )
     for folder in os.listdir(download_dir):
-        print(EXTENSION[product], folder)
+        # print(EXTENSION[product], folder)
         if folder.endswith(EXTENSION[product]):
             pbar.update(1)
             # within the sentinel file, select the correct type of mearurements with the file_id key
@@ -241,7 +241,7 @@ def subset(
                 )
 
                 # now we read the file
-                print(file)
+                # print(file)
                 nc = netCDF4.Dataset(file)
 
                 # SciHub contains 1Hz and 20Hz variables
@@ -272,7 +272,7 @@ def subset(
 
                 # Adjust the longitude
                 lon20 = center_longitude(lon20)
-                print(min(lon20), max(lon20))
+                # print(min(lon20), max(lon20))
 
                 min_index20 = len(lat20) + 1
                 max_index20 = 0
@@ -283,7 +283,7 @@ def subset(
                 selected = np.where(
                     (lon20 <= lrx) & (lon20 >= ulx) & (lat20 >= lry) & (lat20 <= uly)
                 )[0]
-                print(len(selected))
+                # print(len(selected))
 
                 if len(selected) > 0:
                     if selected[0] < min_index20:
@@ -307,9 +307,9 @@ def subset(
                 nc.close()
 
                 # if we have data within the bounds, start copying all extra data to new file
-                print(max_index20)
-                print(lon20)
-                print(lat20)
+                # print(max_index20)
+                # print(lon20)
+                # print(lat20)
                 if max_index20 > 0:
                     print("Copying data to new file")
                     with (
