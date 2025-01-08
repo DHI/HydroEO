@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 from sklearn.svm import SVR
 
-# from tqdm import tqdm
-
 from datetime import datetime
 
 
