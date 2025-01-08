@@ -54,9 +54,10 @@ class Project:
         ##### Set credentials and access keys
         if "hydroweb" in self.config.keys():
             if "api_key" in self.config["hydroweb"]:
-                os.environ["EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY"] = (
-                    self.config["hydroweb"]["api_key"]
-                )
+                # os.environ["EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY"] = (
+                #     self.config["hydroweb"]["api_key"]
+                # )
+                os.environ["HYDROWEB_API_KEY"] = self.config["hydroweb"]["api_key"]
 
             if "PLD_path" in self.config["hydroweb"]:
                 self.dirs["pld"] = self.config["hydroweb"]["PLD_path"]
