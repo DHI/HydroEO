@@ -244,13 +244,16 @@ class System:
                 )
 
                 # subset the data so that we only keep what lies within the download geometry
-                sentinel.subset(
-                    aoi=coords,
-                    download_dir=download_dir,
-                    dest_dir=download_dir,
-                    product=product,
-                    show_progress=True,
-                )
+                try:
+                    sentinel.subset(
+                        aoi=coords,
+                        download_dir=download_dir,
+                        dest_dir=download_dir,
+                        product=product,
+                        show_progress=True,
+                    )
+                except:
+                    print("Unable to subset data")
 
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
                 utils.remove_non_exts(download_dir, [".nc", ".log"])

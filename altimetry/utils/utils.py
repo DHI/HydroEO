@@ -74,3 +74,18 @@ def remove_non_exts(dir: str, ext: Union[str, list]):
 
             elif os.path.isfile(item):
                 os.remove(item)
+
+
+def center_longitude(lon_org):
+    # This assumes the longitude is provided in degrees east of the greenwhich meridian
+
+    lon_converted = lon_org[lon_org > 180]
+    lon_converted = -(
+        360 - lon_converted
+    )  # only edit the values greater than 180 degrees
+
+    lon_org[lon_org > 180] = (
+        lon_converted  # insert convereted values to the original array
+    )
+
+    return lon_org

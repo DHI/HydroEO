@@ -14,6 +14,7 @@ import shapely
 
 from altimetry.utils.downloaders import creodias
 from altimetry.utils import geometry
+from altimetry.utils.utils import center_longitude
 
 
 def query(
@@ -164,6 +165,7 @@ def subset(
     # ensure correct formatting of coordinate list and extract corner coordinates
     # Upper left corner = lon min, lat max / Lower right corner = lon max, lat min
     ulx, lry, lrx, uly = shapely.Polygon(geometry.format_coord_list(aoi)).bounds
+    print(ulx, lry, lrx, uly)
     if ulx > lrx or lry > uly:
         raise ValueError("Study area extent conflicts - please check coordinates.")
 
@@ -216,6 +218,7 @@ def subset(
         disable=not show_progress,
     )
     for folder in os.listdir(download_dir):
+        print(EXTENSION[product], folder)
         if folder.endswith(EXTENSION[product]):
             pbar.update(1)
             # within the sentinel file, select the correct type of mearurements with the file_id key
@@ -238,6 +241,7 @@ def subset(
                 )
 
                 # now we read the file
+                print(file)
                 nc = netCDF4.Dataset(file)
 
                 # SciHub contains 1Hz and 20Hz variables
@@ -266,6 +270,10 @@ def subset(
                     lat01 = nc[freq_01][lat][:]
                     lon01 = nc[freq_01][lon][:]
 
+                # Adjust the longitude
+                lon20 = center_longitude(lon20)
+                print(min(lon20), max(lon20))
+
                 min_index20 = len(lat20) + 1
                 max_index20 = 0
                 min_index01 = len(lat01) + 1
@@ -275,6 +283,7 @@ def subset(
                 selected = np.where(
                     (lon20 <= lrx) & (lon20 >= ulx) & (lat20 >= lry) & (lat20 <= uly)
                 )[0]
+                print(len(selected))
 
                 if len(selected) > 0:
                     if selected[0] < min_index20:
@@ -298,7 +307,11 @@ def subset(
                 nc.close()
 
                 # if we have data within the bounds, start copying all extra data to new file
+                print(max_index20)
+                print(lon20)
+                print(lat20)
                 if max_index20 > 0:
+                    print("Copying data to new file")
                     with (
                         netCDF4.Dataset(file) as src,
                         netCDF4.Dataset(nc_cropped, "w") as dst,
@@ -384,6 +397,8 @@ def __crop_s3(src, dst, index_bounds_20, index_bounds_01):
         if "20_" in name:
             dst.createVariable(name, variable.datatype, variable.dimensions)
             dst[name].setncatts({k: variable.getncattr(k) for k in variable.ncattrs()})
+            print(min_index20, max_index20)
+            print(src[name][min_index20 : max_index20 + 1])
             dst[name][:] = src[name][min_index20 : max_index20 + 1]
 
         elif "01" in name:
@@ -750,50 +765,53 @@ def extract_observations(src_dir, dst_path, features):
     files = list(os.listdir(src_dir))
 
     for file in files:
-        file_split = file.split("_")
-        if file_split[0] == "sub":  # assume that we have subsetted the data already
-            # use differnt read funciton base don which sentinel we use
-            platform = file_split[1]
-            if "S3" in platform:
-                infile = os.path.join(src_dir, file)
-                data = Sentinel3(infile)
-                # hard code product name, will need to change if incorperating other products in future
-                product = "SR_2_LAN_HY"
+        try:
+            file_split = file.split("_")
+            if file_split[0] == "sub":  # assume that we have subsetted the data already
+                # use differnt read funciton base don which sentinel we use
+                platform = file_split[1]
+                if "S3" in platform:
+                    infile = os.path.join(src_dir, file)
+                    data = Sentinel3(infile)
+                    # hard code product name, will need to change if incorperating other products in future
+                    product = "SR_2_LAN_HY"
 
-            elif "S6" in platform:
-                infile = os.path.join(src_dir, file)
-                data = Sentinel6(infile)
-                # hard code product name, will need to change if incorperating other products in future
-                product = "P4_2__LR_____"
+                elif "S6" in platform:
+                    infile = os.path.join(src_dir, file)
+                    data = Sentinel6(infile)
+                    # hard code product name, will need to change if incorperating other products in future
+                    product = "P4_2__LR_____"
 
-            else:
-                raise Exception(
-                    "unsure which satellite product file is associated with"
-                )
-
-            # read the data, if we have height data
-            if data.check_height_data():
-                data_df = data.read()
-                data_gdf = gpd.GeoDataFrame(
-                    data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat)
-                )
-
-                # filter observations to ensure they fall within geometry
-                data_gdf = data_gdf.loc[
-                    data_gdf.within(features.unary_union)
-                ].reset_index(drop=True)
-                if len(data_gdf) > 0:
-                    # filter by sigma0
-                    data_gdf = data_gdf.loc[data_gdf.sigma0 < 1e5].reset_index(
-                        drop=True
+                else:
+                    raise Exception(
+                        "unsure which satellite product file is associated with"
                     )
 
-                    # add platform by satellite type
-                    data_gdf["platform"] = platform
-                    data_gdf["product"] = product
+                # read the data, if we have height data
+                if data.check_height_data():
+                    data_df = data.read()
+                    data_gdf = gpd.GeoDataFrame(
+                        data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat)
+                    )
 
-                    # if we have data for the reservoir add it to the reservoir specific dataframe
-                    gdf_list.append(data_gdf)
+                    # filter observations to ensure they fall within geometry
+                    data_gdf = data_gdf.loc[
+                        data_gdf.within(features.unary_union)
+                    ].reset_index(drop=True)
+                    if len(data_gdf) > 0:
+                        # filter by sigma0
+                        data_gdf = data_gdf.loc[data_gdf.sigma0 < 1e5].reset_index(
+                            drop=True
+                        )
+
+                        # add platform by satellite type
+                        data_gdf["platform"] = platform
+                        data_gdf["product"] = product
+
+                        # if we have data for the reservoir add it to the reservoir specific dataframe
+                        gdf_list.append(data_gdf)
+        except:
+            print("Unable to open sentinel file")
 
     # once all tracks are processed combine them and save in the destination dir
     if len(gdf_list) > 0:
