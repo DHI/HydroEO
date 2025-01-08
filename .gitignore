@@ -137,6 +137,8 @@ dmypy.json
 # other additions
 /gis/*
 /data/*
+/quarto/*
 
 # development notebooks
 /river_development.ipynb
+/project_test.ipynb
