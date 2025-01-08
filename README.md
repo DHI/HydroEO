@@ -1,10 +1,11 @@
-# rk-altimetry: Easy access altimetry for water resource applications
+![](images/HydroEO.png)
+# Easy access Earth observation data for water resource applications
 
 Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over reservoirs and lakes for integration into larger water resource projects.
 
 > [!CAUTION]
 > rk-altimetry is experimental and under development.
-> * The package is expected to be ready for limited use by Janurary 2025
+> * The package is expected to be ready for limited use by early 2025
 
 ## Installation
 > Note: Ensure that `pip` and `git` are installed on your system before running the following command.
@@ -12,12 +13,12 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 pip install git+https://github.com/DHI/rk-altimetry.git
 ```
 #### Python versions
-rk-altimetry currently runs on Python 3.12.
+rk-altimetry currently runs on Python 3.9 - 3.12.
 
 ## What is currently included in the library?
 - (Needs testing) - Provide shape file of reservoir or reservoirs of interest to initiate search and dowload of available data
 - (Needs testing) - Supported Satellite products include
-    - SWOT Lake SP product
+    - SWOT Lake SP product 
     - ICESat-2 ATL13 inland water product
     - Sentinel 3A and 3B inland hydrology product
     - Sentinel 6 inland hydrology product
