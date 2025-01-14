@@ -397,8 +397,8 @@ def __crop_s3(src, dst, index_bounds_20, index_bounds_01):
         if "20_" in name:
             dst.createVariable(name, variable.datatype, variable.dimensions)
             dst[name].setncatts({k: variable.getncattr(k) for k in variable.ncattrs()})
-            print(min_index20, max_index20)
-            print(src[name][min_index20 : max_index20 + 1])
+            # print(min_index20, max_index20)
+            # print(src[name][min_index20 : max_index20 + 1])
             dst[name][:] = src[name][min_index20 : max_index20 + 1]
 
         elif "01" in name:
