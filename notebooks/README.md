@@ -1,1 +1,1 @@
-Location for notebooks
+Notebooks provide examples into how you can use this HydroEO. Example_A.ipynb provides the hight level use of the package while Example_B.ipynb provides more detail and control over the workflow. Be sure to edit the example configuration file for your needs when runnign the notebook.

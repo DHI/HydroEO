@@ -111,12 +111,12 @@ Please see the example configuration file in the notebooks folder for a complete
 Downloading, cleaning and viewing data for your reservoirs can be as simple as a couple lines. See the example notebook for more options and a complete overview.
 
 ```
-from altimetry.project import Project
+from HydroEO.project import Project
 altimetry_project = Project(name="my_altimetry_project", config="config.yaml")
 altimetry_project.initialize()
 altimetry_project.download()
 altimetry_project.create_timeseries()
-altimetry_project.timeseries_report()
+altimetry_project.generate_summaries()
 ```
 
 ## More details into available satellite products
@@ -183,10 +183,3 @@ Example of ground track for Sentinel-6:
 
 
 Combining data from Sentinel-6 with other missions like SWOT, ICESat-2, and Sentinel-3 can enhance the temporal and spatial coverage of water level observations. This multi-mission approach provides a more comprehensive understanding of water dynamics.
-
-
-## Python development resources
-If you're interested in learning more about best practices for developing Python packages, check out the following resources:
-
-- [Python Package Development at DHI](https://dhi.github.io/python-package-development/)
-- [Scientific Python Library Development Guide](https://learn.scientific-python.org/development/)
