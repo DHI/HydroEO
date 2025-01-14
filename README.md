@@ -124,6 +124,9 @@ You can find an overview of the different satellites and products support here. 
 
 ### Surface Water Ocean and Topography (SWOT) mission
 
+The Surface Water and Ocean Topography (SWOT) mission will be NASA's first global survey of Earth's surface water, tackling pressing issues such as availability of Earth's freshwater resources, our changing ocean and coasts, and much more. Their studies will be essential for achieving societal goals of clean air and water, preparedness for extreme events, and adaptation to long-term environmental changes on continental scales. Using state-of-the-art "radar interferometry" technology to measure the elevation of water, SWOT will observe major lakes, rivers and wetlands while detecting ocean features with unprecedented resolution. SWOT data will provide critical information that is needed to assess water resources on land, track regional sea level changes, monitor coastal processes, and observe small-scale ocean currents and eddies. Using JPL-developed instrument technology, radar interferometry, KaRIn will measure ocean and surface water levels over a 120-km (75-mi) wide swath with a ~20 km (~12 mi) gap along nadir.
+
+
 ### ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13)
 ![](images/icesat2-hqprint.jpg)
 https://science.nasa.gov/wp-content/uploads/2023/06/icesat2-hqprint-print.jpg?w=4096&format=jpeg
