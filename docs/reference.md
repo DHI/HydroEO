@@ -1,4 +1,4 @@
 # Reference
 
-::: altimetry.project
-::: altimetry.system
+::: HydroEO.project
+::: HydroEO.system
