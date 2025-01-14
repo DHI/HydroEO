@@ -1,4 +1,4 @@
-LIB = altimetry
+LIB = HydroEO
 
 check: lint typecheck test doctest
 

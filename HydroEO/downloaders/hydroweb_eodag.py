@@ -9,7 +9,7 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 
-from altimetry.utils import utils
+from HydroEO.utils import general
 
 help_message = """
 Download products from your Hydroweb.next project (https://hydroweb.next.theia-land.fr) using EODAG (https://github.com/CS-SI/eodag)
@@ -29,7 +29,7 @@ For more information, please refer to EODAG Documentation https://eodag.readthed
 
 def download_PLD(download_dir: str, file_name: str, bounds: list):
     # create download directory if needed
-    utils.ifnotmakedirs(download_dir)
+    general.ifnotmakedirs(download_dir)
 
     # Set timeout to 30s
     os.environ["EODAG__HYDROWEB_NEXT__SEARCH__TIMEOUT"] = (

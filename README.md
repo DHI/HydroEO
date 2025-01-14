@@ -4,8 +4,7 @@
 Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over reservoirs and lakes for integration into larger water resource projects.
 
 > [!CAUTION]
-> rk-altimetry is experimental and under development.
-> * The package is expected to be ready for limited use by early 2025
+> HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/rk-altimetry/issues
 
 ## Installation
 > Note: Ensure that `pip` and `git` are installed on your system before running the following command.

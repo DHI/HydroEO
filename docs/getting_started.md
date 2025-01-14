@@ -3,5 +3,5 @@
 ## Installation
 
 ```
-pip install altimetry
+pip install HydroEO
 ```

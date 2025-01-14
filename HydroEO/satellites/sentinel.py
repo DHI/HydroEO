@@ -12,9 +12,9 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 
-from altimetry.utils.downloaders import creodias
-from altimetry.utils import geometry
-from altimetry.utils.utils import center_longitude
+from HydroEO.downloaders import creodias
+from HydroEO.utils import geometry
+from HydroEO.utils.general import center_longitude
 
 
 def query(

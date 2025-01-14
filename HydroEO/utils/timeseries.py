@@ -3,8 +3,8 @@ import warnings
 import os
 import pandas as pd
 
-import altimetry.utils.filters.basic_filters as fltrs
-from altimetry.utils import utils
+import HydroEO.utils.filters.basic_filters as fltrs
+from HydroEO.utils import general
 
 
 @dataclass
@@ -99,7 +99,7 @@ class Timeseries:
 
     def merge(self, save_progress=False, dir=".\\merged_progress"):
         # make a folder for saving steps of the timeseries cleaning process
-        utils.ifnotmakedirs(dir)
+        general.ifnotmakedirs(dir)
 
         # run the SVR linear outlier filtering
         self = fltrs.svr_linear(self)

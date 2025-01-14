@@ -13,9 +13,9 @@ import matplotlib.pyplot as plt
 
 import datetime
 
-from altimetry.utils.satellites import swot, icesat2, sentinel
-from altimetry.utils import utils, timeseries
-from altimetry.utils.downloaders import hydroweb
+from HydroEO.satellites import swot, icesat2, sentinel
+from HydroEO.utils import general, timeseries
+from HydroEO.downloaders import hydroweb
 
 from tqdm import tqdm
 
@@ -76,7 +76,7 @@ class System:
         if product == "SWOT_LAKE":
             # define and if needed create directory for each download geometry
             download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
-            utils.ifnotmakedirs(download_dir)
+            general.ifnotmakedirs(download_dir)
 
             # check if we need to update the start time for the download
             if update_existing:
@@ -162,7 +162,7 @@ class System:
 
                 # define and if needed create directory for each download geometry
                 download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
-                utils.ifnotmakedirs(download_dir)
+                general.ifnotmakedirs(download_dir)
 
                 # query and download data
                 print(
@@ -221,7 +221,7 @@ class System:
                     download_dir = os.path.join(
                         self.dirs["sentinel6"], rf"{self.type}\{id}"
                     )
-                utils.ifnotmakedirs(download_dir)
+                general.ifnotmakedirs(download_dir)
 
                 # query copernicus for download ids
                 print(
@@ -244,7 +244,7 @@ class System:
                 )
 
                 # once we have finished downloading all data for the aoi, we need to unzip the files keeping only .nc files
-                utils.unzip_dir_files_with_ext(
+                general.unzip_dir_files_with_ext(
                     download_dir, download_dir, ".nc", show_progress=True
                 )
 
@@ -261,7 +261,7 @@ class System:
                     print("Unable to subset data")
 
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
-                utils.remove_non_exts(download_dir, [".nc", ".log"])
+                general.remove_non_exts(download_dir, [".nc", ".log"])
 
     def get_unfiltered_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
@@ -301,7 +301,7 @@ class System:
                     export_dir = os.path.join(
                         self.dirs["output"], f"{id}", "cleaned_observations"
                     )
-                    utils.ifnotmakedirs(export_dir)
+                    general.ifnotmakedirs(export_dir)
                     ts.export_csv(os.path.join(export_dir, f"{product}.csv"))
 
     def get_cleaned_product_timeseries(self, id, products: list = []):
@@ -351,7 +351,7 @@ class System:
                     ts = timeseries.concat(ts_list)
 
                     data_dir = os.path.join(self.dirs["output"], f"{id}")
-                    utils.ifnotmakedirs(data_dir)
+                    general.ifnotmakedirs(data_dir)
                     ts.export_csv(os.path.join(data_dir, "all_cleaned_timeseries.csv"))
 
                     # bias correct the timeseries
@@ -360,7 +360,7 @@ class System:
                     # run the merge function, runs linear SVR, MAD, Kalman filter and radial base SVR to get a final merged timeseries
                     # save the merged timeseries
                     data_dir = os.path.join(self.dirs["output"], f"{id}")
-                    utils.ifnotmakedirs(data_dir)
+                    general.ifnotmakedirs(data_dir)
                     ts = ts.merge(
                         save_progress=True,
                         dir=os.path.join(data_dir, "merged_progress"),
@@ -566,7 +566,7 @@ class Reservoirs(System):
         self.type = "reservoirs"
 
         self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
-        utils.ifnotmakedirs(self.dirs["output"])
+        general.ifnotmakedirs(self.dirs["output"])
 
         self.geom_type = self.gdf.loc[0, "geometry"].geom_type
 
@@ -637,7 +637,7 @@ class Reservoirs(System):
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
                     )
-                    utils.ifnotmakedirs(dst_dir)
+                    general.ifnotmakedirs(dst_dir)
                     dst_path = os.path.join(dst_dir, "icesat2.shp")
 
                     # extract observations within bounds and save as timeseries csv
@@ -660,7 +660,7 @@ class Reservoirs(System):
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
                     )
-                    utils.ifnotmakedirs(dst_dir)
+                    general.ifnotmakedirs(dst_dir)
                     dst_path = os.path.join(dst_dir, "sentinel3.shp")
 
                     # extract observations within bounds and save as timeseries csv
@@ -683,7 +683,7 @@ class Reservoirs(System):
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
                     )
-                    utils.ifnotmakedirs(dst_dir)
+                    general.ifnotmakedirs(dst_dir)
                     dst_path = os.path.join(dst_dir, "sentinel6.shp")
 
                     # extract observations within bounds and save as timeseries csv

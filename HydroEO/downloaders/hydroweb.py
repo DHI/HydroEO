@@ -9,7 +9,7 @@ import pandas as pd
 import geopandas as gpd
 import shapely
 
-from altimetry.utils import utils
+from HydroEO.utils import general
 
 help_message = """
 Download products from your hydroweb.next projects (https://hydroweb.next.theia-land.fr) using the py-hydroweb lib (https://pypi.org/project/py-hydroweb/)
@@ -29,7 +29,7 @@ For more documentation about how to use the py-hydroweb lib, please refer to htt
 
 def download_PLD(download_dir: str, file_name: str, bounds: list):
     # create download directory if needed
-    utils.ifnotmakedirs(download_dir)
+    general.ifnotmakedirs(download_dir)
 
     # Create a client
     #  - either using the API-Key environment variable

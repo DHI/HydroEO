@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 import datetime
 
-from altimetry.utils import utils, geometry
+from HydroEO.utils import general, geometry
 
 
 def query(
@@ -83,7 +83,7 @@ def subset_by_id(files: list, ids: list):
 
         # make a temporary directory
         temp_dir = os.path.join(file_dir, ".temp")
-        utils.ifnotmakedirs(temp_dir)
+        general.ifnotmakedirs(temp_dir)
 
         # unzip file
         try:
@@ -153,7 +153,7 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
                 )  # TODO: edit to SWOT equivalent, ask PASE
 
                 dst_sub_dir = os.path.join(dst_dir, f"{dl_id}", "raw_observations")
-                utils.ifnotmakedirs(dst_sub_dir)
+                general.ifnotmakedirs(dst_sub_dir)
                 dst_path = os.path.join(dst_sub_dir, dst_file_name)
 
                 observations.to_file(dst_path)

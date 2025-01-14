@@ -9,8 +9,8 @@ import warnings
 import geopandas as gpd
 import datetime
 
-from altimetry.system import Reservoirs
-from altimetry.utils import utils
+from HydroEO.system import Reservoirs
+from HydroEO.utils import general
 
 
 @dataclass
@@ -47,7 +47,7 @@ class Project:
         ### Define the project directory for saving outputs, etc
         if "project" in self.config.keys():
             self.dirs["main"] = self.config["project"]["main_dir"]
-            utils.ifnotmakedirs(self.dirs["main"])
+            general.ifnotmakedirs(self.dirs["main"])
         else:
             raise Warning("Project directory must be defined within configuration file")
 

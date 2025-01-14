@@ -6,14 +6,14 @@ build-backend = "hatchling.build"
 # location of package relative to the repository root (e.g. alternatively "src/rk-altimetry")
 # note: the package name 'rk-altimetry' can be different from the project name on PyPI
 #       the project name (PyPI) is used for pip install, whereas the package name is used for imports
-packages = ["altimetry"]  
+packages = ["HydroEO"]  
 
 [tool.hatch.build.targets.sdist]
 exclude = ["notebooks", "tests", "images"]
 
 [project]
 # name on PyPI (e.g. pip install rk-altimetry)
-name = "rk-altimetry"
+name = "HydroEO"
 version = "0.0.1"
 dependencies = [
     "h5netcdf==1.4.0",
