@@ -13,26 +13,10 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 pip install git+https://github.com/DHI/rk-altimetry.git
 ```
 #### Python versions
-rk-altimetry currently runs on Python 3.9 - 3.12.
-
-## What is currently included in the library?
-- (Needs testing) - Provide shape file of reservoir or reservoirs of interest to initiate search and dowload of available data
-- (Needs testing) - Supported Satellite products include
-    - SWOT Lake SP product 
-    - ICESat-2 ATL13 inland water product
-    - Sentinel 3A and 3B inland hydrology product
-    - Sentinel 6 inland hydrology product
-- (Needs testing) - Get report of all available crossings over reservoir(s) of interest
-- (Under development) - Bias correct between satellite orbits and simple cleaning per product timeseries
-- (Under development) - Estimation of reservoir state based on kalman filter for multi product timeseries over individual reservoirs
-- (Needs testing) - Allow for near real time updates of water levels of alreadey initialized reservoirs
-
-## What could come?
-- (not started) - Report of data gaps or questionable timeseries
-- (not started) - Implementation of downloads for virtual stations along a provided river shapefile
+HydroEO currently runs on Python 3.9 - 3.12.
 
 ## How to get started
-> > Users can find usage examples in the [`notebooks`](./notebooks) directory.
+> Users can find usage examples in the [`notebooks`](./notebooks) directory.
 
 The altimetry project is initialized entirely from information within the provided config file. You can find an example configuration file in `notebooks/example_config.yaml`.
 The configuration file includes information on the project directory, reservoir shape file location, gis info as well as credentials for downloading data from various locations. Importantly, this is also where you will specify which satellite products you wish to download and process and for which dates to download. The following will walk you through the different components of the configuration file and explain what is needed when specifying each aspect.

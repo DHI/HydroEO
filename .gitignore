@@ -138,7 +138,9 @@ dmypy.json
 /gis/*
 /data/*
 /quarto/*
+/development_notes/*
+
 
 # development notebooks
-/river_development.ipynb
-/project_test.ipynb
+/notebooks/river_development.ipynb
+/notebooks/river_development.ipynb
