@@ -257,7 +257,7 @@ class System:
                         product=product,
                         show_progress=True,
                     )
-                except:
+                except Exception:
                     print("Unable to subset data")
 
                 # clean up zip and unzipped folders keeping only the remaining subsetted data

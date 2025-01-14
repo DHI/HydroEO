@@ -1,3 +1,16 @@
+import os
+import shutil
+import zipfile
+
+import py_hydroweb
+import sqlite3
+
+import pandas as pd
+import geopandas as gpd
+import shapely
+
+from altimetry.utils import utils
+
 help_message = """
 Download products from your hydroweb.next projects (https://hydroweb.next.theia-land.fr) using the py-hydroweb lib (https://pypi.org/project/py-hydroweb/)
 This script is an example tuned for your last hydroweb.next project but feel free to adapt it for future requests.
@@ -12,19 +25,6 @@ Follow these steps:
 
 For more documentation about how to use the py-hydroweb lib, please refer to https://pypi.org/project/py-hydroweb/.
 """
-
-import os
-import shutil
-import zipfile
-
-import py_hydroweb
-import sqlite3
-
-import pandas as pd
-import geopandas as gpd
-import shapely
-
-from altimetry.utils import utils
 
 
 def download_PLD(download_dir: str, file_name: str, bounds: list):

@@ -109,7 +109,7 @@ def subset_by_id(files: list, ids: list):
             os.remove(file)
             shutil.rmtree(temp_dir)
 
-        except:
+        except Exception:
             print(f"Unable to unzip: {file}")
 
 

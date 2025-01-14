@@ -810,7 +810,7 @@ def extract_observations(src_dir, dst_path, features):
 
                         # if we have data for the reservoir add it to the reservoir specific dataframe
                         gdf_list.append(data_gdf)
-        except:
+        except Exception:
             print("Unable to open sentinel file")
 
     # once all tracks are processed combine them and save in the destination dir
