@@ -89,15 +89,6 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
             # add the remaining shapes to the list for concatenation
             gdf_list.append(gdf)
 
-    # once we have processed the files within the download directory, remove the folder
-    shutil.rmtree(downloaded_zip_path)
-    shutil.rmtree(unzipped_dir)
-
-    # we also remove the .downloads cache that is left from dag
-    cache_path = os.path.join(download_dir, ".downloaded")
-    if os.path.exists(cache_path):
-        shutil.rmtree(cache_path)
-
     # once we have processed all files, concatenate them
     gdf = pd.concat(gdf_list).reset_index(drop=True)
 
@@ -105,3 +96,12 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
     export_path = os.path.join(download_dir, file_name)
     gdf.to_file(export_path)
     print(f"Merged data saved to: {export_path}")
+
+    # once we have processed the files within the download directory, remove the folder
+    os.remove(downloaded_zip_path)
+    shutil.rmtree(unzipped_dir)
+
+    # we also remove the .downloads cache that is left from dag
+    cache_path = os.path.join(download_dir, ".downloaded")
+    if os.path.exists(cache_path):
+        shutil.rmtree(cache_path)
