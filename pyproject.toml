@@ -31,6 +31,7 @@ dependencies = [
     "eodag==3.0.0",
     "scikit-learn==1.5.2",
     "py-hydroweb==1.0.2"
+    "harmony-py==0.5.1"
 ]
 
 authors = [

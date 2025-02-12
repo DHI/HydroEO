@@ -63,11 +63,15 @@ class Project:
                 self.dirs["pld"] = self.config["hydroweb"]["PLD_path"]
 
         if "earthaccess" in self.config.keys():
-            self.earthdata_user = self.config["earthaccess"]["username"]
-            self.earthdata_pass = self.config["earthaccess"]["password"]
+            if "username" in self.config["earthaccess"].keys():
+                self.earthdata_user = self.config["earthaccess"]["username"]
+                self.earthdata_pass = self.config["earthaccess"]["password"]
 
-            os.environ["EARTHDATA_USERNAME"] = self.earthdata_user
-            os.environ["EARTHDATA_PASSWORD"] = self.earthdata_pass
+                os.environ["EDL_USERNAME"] = self.earthdata_user
+                os.environ["EDL_PASSWORD"] = self.earthdata_pass
+
+            if "token" in self.config["earthaccess"].keys():
+                os.environ["EDL_TOKEN"] = self.config["earthaccess"]["token"]
 
         if "creodias" in self.config.keys():
             self.creodias_user = self.config["creodias"]["username"]
