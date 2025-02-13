@@ -88,3 +88,13 @@ def format_coord_list(coords: list):
         coords = new_list
 
     return coords
+
+
+def poly_coord_list_to_wkt(coords: list):
+    # Ensure the polygon is closed
+    if coords[0] != coords[-1]:
+        coords.append(coords[0])
+
+    coord_str = ", ".join(f"{x} {y}" for x, y in coords)
+
+    return f"POLYGON (({coord_str}))"
