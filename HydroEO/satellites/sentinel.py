@@ -311,7 +311,7 @@ def subset(
                 # print(lon20)
                 # print(lat20)
                 if max_index20 > 0:
-                    print("Copying data to new file")
+                    # print("Copying data to new file")
                     with (
                         netCDF4.Dataset(file) as src,
                         netCDF4.Dataset(nc_cropped, "w") as dst,
