@@ -3,10 +3,9 @@ import os
 import warnings
 import datetime
 
-from HydroEO.utils import general, geometry
+from HydroEO.utils import geometry
 
-from harmony import BBox, WKT, Client, Collection, Request
-from harmony.config import Environment
+from harmony import WKT, Client, Collection, Request
 
 import h5py
 import numpy as np
