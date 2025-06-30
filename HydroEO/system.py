@@ -153,12 +153,7 @@ class System:
                         startdate = datetime.date(*latest_obs)
 
                 # grab coordinates of geometry
-                coords = [
-                    (x, y)
-                    for x, y in self.download_gdf.loc[
-                        i, "geometry"
-                    ].envelope.exterior.coords
-                ]
+                bounds = self.download_gdf.loc[i, "geometry"].bounds
 
                 # define and if needed create directory for each download geometry
                 download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
@@ -169,7 +164,7 @@ class System:
                     f"Searching for Icesat2 ATL13 for aoi from {startdate} to {enddate}"
                 )
                 _ = icesat2.query(
-                    aoi=coords,
+                    bounds=bounds,
                     startdate=startdate,
                     enddate=enddate,
                     earthdata_credentials=credentials,

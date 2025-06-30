@@ -5,7 +5,7 @@ import datetime
 
 from HydroEO.utils import geometry
 
-from harmony import WKT, Client, Collection, Request
+from harmony import WKT, BBox, Client, Collection, Request
 
 import h5py
 import numpy as np
@@ -14,7 +14,7 @@ import geopandas as gpd
 
 
 def query(
-    aoi: list,
+    bounds: tuple,
     startdate: datetime.date,
     enddate: datetime.date,
     earthdata_credentials: tuple,
@@ -33,10 +33,13 @@ def query(
     else:
         harmony_client = Client(token=token)
 
+    # unpack the bounds
+    w, s, e, n = bounds
+
     # make the hamony request
     request = Request(
         collection=Collection(id=product),
-        spatial=WKT(geometry.poly_coord_list_to_wkt(aoi)),
+        spatial=BBox(n=n, s=s, e=e, w=w),
         temporal={
             "start": startdate,
             "stop": enddate,
@@ -190,15 +193,19 @@ def extract_observations(src_dir, dst_path, features):
 
             # check if the height data is actually present
             if data.check_height_data():
+                print(file, key)
+
                 data_df = data.read()
                 data_gdf = gpd.GeoDataFrame(
                     data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat)
                 )
+                print(data_gdf.head())
 
                 # filter observations to ensure they fall within geometry
                 data_gdf = data_gdf.loc[
                     data_gdf.within(features.unary_union)
                 ].reset_index(drop=True)
+                print(data_gdf.head())
 
                 # if we have data for the reservoir add it to the reservoir specific dataframe
                 if len(data_gdf) > 0:
@@ -219,3 +226,84 @@ def get_latest_obs_date(data_dir):
         gdf = gpd.read_file(shp_path)
         last_obs_date = max(gdf.date.values).astype(datetime.date)
         return last_obs_date
+
+
+###### Development for ATL08
+@dataclass
+class ATL08:
+    """
+    ICESat-2 utility class for reading ATL08 data from .h5 files.
+
+    Arguments:
+    ----------
+        infile: ATL08 file path (.h5)
+        track_key: ICESat-2 ground track key
+    """
+
+    infile: str
+    track_key: str
+
+    def __post_init__(self):
+        self.file_name = os.path.basename(self.infile)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+
+            with h5py.File(self.infile, "r") as src:
+                # make sure key is in the file otherwise throw error
+                if self.track_key not in src.keys():
+                    raise KeyError("Track key not in granule.")
+
+                # ancillery data
+                self.date = src["ancillery_data"]["data_start_utc"]
+
+                # extract other data
+                self.photon_class = np.array(
+                    src[self.track_key]["signal_photons"]["classed_pc_flag"]
+                )
+                self.segment_id = np.array(
+                    src[self.track_key]["signal_photons"]["ph_segment_id"]
+                )
+
+                self.lat = np.array(src[self.track_key]["land_segments"]["latitude"])
+                self.lon = np.array(src[self.track_key]["land_segments"]["longitude"])
+
+                self.segment_id_beg = np.array(
+                    src[self.track_key]["land_segments"]["segment_id_beg"]
+                )
+                self.segment_id_end = np.array(
+                    src[self.track_key]["land_segments"]["segment_id_end"]
+                )
+
+                self.h_canopy = np.array(src["land_segments"]["canopy"]["h_canopy"])
+                self.h_terrain = np.array(
+                    src["land_segments"]["canopy"]["h_te_best_fit"]
+                )
+
+    def check_height_data(self) -> bool:
+        return self.height_terrain is not None
+
+    def read(self) -> pd.DataFrame:
+        """
+        Reads data (height, coordinates and geophysical corrections) from ATL03 file,
+        and removes points outside buffered DEM elevation bands.
+
+        Returns:
+        ----------
+            track_df: Dataframe with requested variables
+        """
+
+        track_df = pd.DataFrame(
+            data={
+                "h_canopy": self.h_canopy,
+                "h_terrain": self.h_terrain,
+                "lat": self.lat,
+                "lon": self.lon,
+                "date": self.date,
+                "beam": self.track_key,
+                "file_name": self.file_name,
+            },
+            index=np.arange(len(self.h_canopy)),
+        )
+
+        return track_df
