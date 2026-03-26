@@ -1,1 +1,1 @@
-"""rk-altimetry has useful functionality"""
+"""HydroEO has useful functionality"""

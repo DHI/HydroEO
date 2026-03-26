@@ -1,4 +1,4 @@
-# Welcome to rk-altimetry
+# Welcome to HydroEO
 
 See more in [Getting started](getting_started.md)
 

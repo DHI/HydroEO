@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-# location of package relative to the repository root (e.g. alternatively "src/rk-altimetry")
-# note: the package name 'rk-altimetry' can be different from the project name on PyPI
+# location of package relative to the repository root
+# note: the package name 'HydroEO' can be different from the project name on PyPI
 #       the project name (PyPI) is used for pip install, whereas the package name is used for imports
 packages = ["HydroEO"]  
 
@@ -12,7 +12,7 @@ packages = ["HydroEO"]
 exclude = ["notebooks", "tests", "images"]
 
 [project]
-# name on PyPI (e.g. pip install rk-altimetry)
+# name on PyPI (e.g. pip install HydroEO)
 name = "HydroEO"
 version = "0.0.1"
 dependencies = [
@@ -71,8 +71,8 @@ notebooks = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/DHI/rk-altimetry"
-"Bug Tracker" = "https://github.com/DHI/rk-altimetry/issues"
+"Homepage" = "https://github.com/DHI/HydroEO"
+"Bug Tracker" = "https://github.com/DHI/HydroEO/issues"
 
 
 [tool.ruff]

@@ -4,12 +4,12 @@
 Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over reservoirs and lakes for integration into larger water resource projects.
 
 > [!CAUTION]
-> HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/rk-altimetry/issues
+> HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/HydroEO/issues
 
 ## Installation
 > Note: Ensure that `pip` and `git` are installed on your system before running the following command.
 ```sh
-pip install git+https://github.com/DHI/rk-altimetry.git
+pip install git+https://github.com/DHI/HydroEO.git
 ```
 #### Python versions
 HydroEO currently runs on Python 3.9 - 3.12.
