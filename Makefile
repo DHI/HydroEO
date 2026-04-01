@@ -6,22 +6,22 @@ build: typecheck test
 	python -m build
 
 lint:
-	ruff check $(LIB)
+	uvx ruff check $(LIB)
 
 format:
-	ruff format $(LIB)
+	uvx ruff format $(LIB)
 
 test:
-	pytest --disable-warnings
+	uvx pytest --disable-warnings
 
 typecheck:
-	mypy $(LIB)/ --config-file pyproject.toml
+	uvx mypy $(LIB)/ --config-file pyproject.toml
 
 doctest:
-	pytest --doctest-modules $(LIB)
+	uvx pytest --doctest-modules $(LIB)
 
 coverage: 
-	pytest --cov-report html --cov=$(LIB) tests/
+	uvx pytest --cov-report html --cov=$(LIB) tests/
 
 docs: FORCE
 	mkdocs build
