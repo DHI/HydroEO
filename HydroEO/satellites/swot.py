@@ -64,7 +64,7 @@ def download(results, download_directory: str):
         if file_name not in downloaded_ids:
             to_download.append(result)
 
-    print(f"{len(results)-len(to_download)} files shown as downloaded in log")
+    print(f"{len(results) - len(to_download)} files shown as downloaded in log")
     print(f"{len(to_download)} will be downloaded")
     if to_download:
         files = earthaccess.download(to_download, download_directory)

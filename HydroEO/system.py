@@ -43,9 +43,7 @@ class System:
 
         # check if the requested product is supported
         product = product.upper()
-        # Normalise legacy alias to the current baseline D short name
-        if product == "SWOT_LAKE":
-            product = "SWOT_LAKE"  # keep internal label for routing below
+
         if product not in supported_products:
             raise ValueError(
                 f'"{product}" is not accepted as a valid download product. Please provide a valid product.'
