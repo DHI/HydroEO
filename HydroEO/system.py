@@ -43,6 +43,9 @@ class System:
 
         # check if the requested product is supported
         product = product.upper()
+        # Normalise legacy alias to the current baseline D short name
+        if product == "SWOT_LAKE":
+            product = "SWOT_LAKE"  # keep internal label for routing below
         if product not in supported_products:
             raise ValueError(
                 f'"{product}" is not accepted as a valid download product. Please provide a valid product.'
@@ -94,28 +97,28 @@ class System:
                 for x, y in self.download_gdf.unary_union.envelope.exterior.coords
             ]
 
-            # query all available data
+            # query all available data — uses baseline D product (SWOT_L2_HR_LakeSP_D)
             print(
-                f"Searching for SWOT_L2_HR_LakeSP_2.0 for aoi from {startdate} to {enddate}"
+                f"Searching for {swot.SWOT_LAKE_SHORT_NAME} for aoi from {startdate} to {enddate}"
             )
             results = swot.query(
                 aoi=coords,
                 startdate=startdate,
                 enddate=enddate,
                 earthdata_credentials=credentials,
-                product="SWOT_L2_HR_LakeSP_2.0",
             )
 
-            # loop through results and check if it is the product we want (right now it must include "Prior"), later we can try and get the observed water bodies and match them
+            # Filter to the prior-lake sub-collection granules.
+            # Baseline D file names end with "_prior_*" (lower-case); baseline C
+            # used "_Prior_*" (title-case). We match both for robustness.
             print(f"{len(results)} products returned from query")
             to_download = list()
             for result in results:
-                # just based on that we know where to find the long product name and download link, may need to change if naming conventions change!
-                product_pieces = result.data_links()[0].split("/")[-1].split("_")
-
-                if "Prior" in product_pieces:
+                link = result.data_links()[0]
+                filename = link.split("/")[-1].lower()
+                if "_prior_" in filename or "prior" in filename.split("_"):
                     to_download.append(result)
-            print(f"{len(to_download)} products of 'Prior' type")
+            print(f"{len(to_download)} prior-lake granules selected for download")
 
             # download the individual file
             _ = swot.download(to_download, download_directory=download_dir)

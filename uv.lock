@@ -272,6 +272,7 @@ dependencies = [
     { name = "jmespath" },
     { name = "s3transfer" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/f1/13/33c8b8704d677fcaf5555ba8c6cc39468fc7b9a0c6b6c496e008cd5557fc/boto3-1.42.76.tar.gz", hash = "sha256:aa2b1973eee8973a9475d24bb579b1dee7176595338d4e4f7880b5c6189b8814", size = 112789, upload-time = "2026-03-25T19:33:25.985Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/dc/21b3dfb135125eb7e3a46b9aab0aede847726f239fc8f39474742a87ebb0/boto3-1.42.76-py3-none-any.whl", hash = "sha256:63c6779c814847016b89ae1b72ed968f8a63d80e589ba337511aa6fc1b59585e", size = 140557, upload-time = "2026-03-25T19:33:23.289Z" },
 ]
@@ -3146,7 +3147,6 @@ dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "ghp-import" },
     { name = "importlib-metadata", version = "8.7.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
-    { name = "importlib-metadata", version = "9.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_version < '0'" },
     { name = "jinja2" },
     { name = "markdown", version = "3.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
     { name = "markdown", version = "3.10.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.10'" },

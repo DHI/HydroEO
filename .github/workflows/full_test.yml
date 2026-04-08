@@ -1,5 +1,8 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+#
+# NOTE: ci.yml is the primary CI workflow for PRs and pushes.
+# full_test.yml is retained for compatibility but delegates to the same steps.
 
 name: Full test
 
@@ -18,24 +21,16 @@ jobs:
         python-version: ["3.9", "3.12"]
 
     steps:
-      - uses: actions/checkout@v3
-      - uses: chartboost/ruff-action@v1 # Fail fast if there are any linting errors
+      - uses: actions/checkout@v4
+      - uses: chartboost/ruff-action@v1  # Fail fast if there are any linting errors
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: "pip"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-cov
-      - name: Install altimetry
-        run: |
-          pip install .[test]
-      # - name: Static type check
-      #   run: make typecheck
-      # - name: Test with pytest
-      #   run: |
-      #     make test
-      # - name: Test docstrings with pytest
-      #   run: |
-      #     make doctest
+          pip install ".[test]"
+      - name: Run unit tests
+        run: pytest -m unit -v

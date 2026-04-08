@@ -176,7 +176,7 @@ class Project:
         if hasattr(self, "reservoirs"):
             if "swot" in self.to_download:
                 self.reservoirs.download_altimetry(
-                    product="SWOT_Lake",
+                    product="SWOT_LAKE",
                     startdate=self.startdates["swot"],
                     enddate=self.enddates["swot"],
                     update_existing=False,
@@ -230,7 +230,7 @@ class Project:
                     enddate=current_date,
                     update_existing=True,
                 )
-            if "sentinel3":
+            if "sentinel3" in self.to_download:
                 print("Updating Sentinel-3 Hydro product")
                 self.reservoirs.download_altimetry(
                     product="S3",
@@ -239,7 +239,7 @@ class Project:
                     credentials=(self.creodias_user, self.creodias_pass),
                     update_existing=True,
                 )
-            if "sentinel6":
+            if "sentinel6" in self.to_download:
                 print("Updating Sentinel-6 Hydro product")
                 self.reservoirs.download_altimetry(
                     product="S6",

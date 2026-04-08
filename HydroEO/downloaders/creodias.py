@@ -15,7 +15,8 @@ API_URL = (
     "https://catalogue.dataspace.copernicus.eu/resto/api/collections/{collection}"
     "/search.json?maxRecords=1000"
 )
-DOWNLOAD_URL = "https://zipper.creodias.eu/download"
+# Updated from zipper.creodias.eu (decommissioned) to Copernicus Data Space zipper
+DOWNLOAD_URL = "https://zipper.dataspace.copernicus.eu/download"
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 
 

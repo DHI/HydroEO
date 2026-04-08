@@ -15,12 +15,16 @@ import datetime
 from HydroEO.utils import general, geometry
 
 
+# Baseline D short name (supersedes Version C / 2.0)
+SWOT_LAKE_SHORT_NAME = "SWOT_L2_HR_LakeSP_D"
+
+
 def query(
     aoi: list,
     startdate: datetime.date,
     enddate: datetime.date,
     earthdata_credentials: tuple,
-    product: str = "SWOT_L2_HR_LakeSP_2.0",
+    product: str = SWOT_LAKE_SHORT_NAME,
 ) -> object:
     # format coordinates and extract bounds
     aoi = geometry.format_coord_list(aoi)
@@ -145,7 +149,7 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
             # if we have observations for this reservoir export it
             if len(observations) > 0:
                 observations["platform"] = "swot"
-                observations["product"] = "SWOT_L2_HR_LakeSP_2.0"
+                observations["product"] = SWOT_LAKE_SHORT_NAME
                 observations["height"] = observations.wse
                 observations["date"] = pd.to_datetime(observations.time_str)
                 observations["orbit"] = (
