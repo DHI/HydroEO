@@ -147,3 +147,6 @@ dmypy.json
 # development notebooks
 /notebooks/river_development.ipynb
 /notebooks/river_development.ipynb
+
+# current configuration
+config.yaml

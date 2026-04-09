@@ -71,7 +71,8 @@ def download(results, download_directory: str):
 
         with open(log_path, "a") as log:
             for file in files:
-                log.write(file.split("\\")[-1].split(".zip")[0] + "\n")
+                file_name = str(file).replace("\\", "/").split("/")[-1]
+                log.write(file_name.split(".zip")[0] + "\n")
 
         return files
 

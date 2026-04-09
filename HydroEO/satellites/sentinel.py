@@ -22,6 +22,7 @@ def query(
     startdate: datetime.date,
     enddate: datetime.date,
     product: str = "S3",
+    creodias_credentials: tuple = None,
 ) -> object:
     """
     Parameters
@@ -75,7 +76,12 @@ def query(
             f'"{product}" is unrecognized as a valid sentinel product for query'
         )
 
-    results = creodias.query(**params)
+    query_kwargs = {}
+    if creodias_credentials:
+        query_kwargs["username"] = creodias_credentials[0]
+        query_kwargs["password"] = creodias_credentials[1]
+
+    results = creodias.query(**params, **query_kwargs)
     ids = [result["id"] for result in results.values()]
 
     return ids

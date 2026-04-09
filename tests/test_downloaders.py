@@ -11,6 +11,7 @@ Live tests live in test_integration.py.
 """
 
 import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -83,6 +84,21 @@ def test_swot_download_queues_new_file(tmp_path, fake_ea_prior_result):
 
     mock_ea.download.assert_called_once()
     assert result == [fake_path]
+
+
+@pytest.mark.unit
+def test_swot_download_handles_path_objects(tmp_path, fake_ea_prior_result):
+    """swot.download() must accept pathlib.Path objects from earthaccess.download."""
+    from HydroEO.satellites.swot import download
+
+    with patch("HydroEO.satellites.swot.earthaccess") as mock_ea:
+        fake_path = tmp_path / "SWOT_file.zip"
+        mock_ea.download.return_value = [fake_path]
+        result = download([fake_ea_prior_result], str(tmp_path))
+
+    assert result == [fake_path]
+    log_path = tmp_path / "downloaded.log"
+    assert "SWOT_file" in log_path.read_text()
 
 
 # ---------------------------------------------------------------------------

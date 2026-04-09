@@ -11,10 +11,7 @@ import time
 import os
 
 ##### Global variables
-API_URL = (
-    "https://catalogue.dataspace.copernicus.eu/resto/api/collections/{collection}"
-    "/search.json?maxRecords=1000"
-)
+API_URL = "https://datahub.creodias.eu/resto/api/collections/{collection}/search.json?maxRecords=1000"
 # Updated from zipper.creodias.eu (decommissioned) to Copernicus Data Space zipper
 DOWNLOAD_URL = "https://zipper.dataspace.copernicus.eu/download"
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
@@ -27,6 +24,9 @@ def query(
     end_date=None,
     geometry=None,
     status="ONLINE",
+    username=None,
+    password=None,
+    token=None,
     **kwargs,
 ):
     """Query the EOData Finder API
@@ -44,6 +44,12 @@ def query(
         area of interest as well-known text string
     status : str
         allowed online/offline/all status (ONLINE || OFFLINE || ALL)
+    username: str, optional
+        CDSE/CREODIAS username used to request a bearer token for authenticated search.
+    password: str, optional
+        CDSE/CREODIAS password used to request a bearer token for authenticated search.
+    token: str, optional
+        Existing bearer token. If provided, username/password are not required.
     **kwargs
         Additional arguments can be used to specify other query parameters,
         e.g. productType=L1GT
@@ -64,10 +70,33 @@ def query(
         **kwargs,
     )
 
+    auth_token = token
+    if auth_token is None and username and password:
+        auth_token = _get_token(username, password)
+
+    headers = None
+    if auth_token is not None:
+        headers = {"Authorization": f"Bearer {auth_token}"}
+
     query_response = {}
     while query_url:
-        response = requests.get(query_url)
-        response.raise_for_status()
+        response = requests.get(query_url, headers=headers)
+        try:
+            response.raise_for_status()
+        except requests.HTTPError:
+            # Retry a forbidden anonymous query once with auth if credentials are available.
+            if (
+                response.status_code == 403
+                and auth_token is None
+                and username
+                and password
+            ):
+                auth_token = _get_token(username, password)
+                headers = {"Authorization": f"Bearer {auth_token}"}
+                response = requests.get(query_url, headers=headers)
+                response.raise_for_status()
+            else:
+                raise
         data = response.json()
         for feature in data["features"]:
             query_response[feature["id"]] = feature
@@ -167,7 +196,7 @@ def _parse_argvalue(value):
             return value
         else:
             raise ValueError(
-                "Invalid number of elements in list. Expected 2, received " "{}".format(
+                "Invalid number of elements in list. Expected 2, received {}".format(
                     len(value)
                 )
             )

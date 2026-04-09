@@ -233,6 +233,7 @@ class System:
                     startdate=startdate,
                     enddate=enddate,
                     product=product,
+                    creodias_credentials=credentials,
                 )
 
                 # download granules that havent already been logged as downloaded
@@ -617,8 +618,19 @@ class Reservoirs(System):
         present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
         missing = self.gdf.loc[self.gdf.prior_lake_id < 0].reset_index(drop=True)
 
-        present.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
-        missing.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
+        # ESRI Shapefile limits field names to 10 chars. Rename explicitly so
+        # writes are deterministic and avoid pyogrio truncation warnings.
+        shp_field_map = {
+            "index_right": "idx_right",
+            "prior_lake_id": "prior_lake",
+            "prior_res_id": "prior_res",
+            "dist_to_pld": "dist_pld",
+        }
+        present_out = present.rename(columns=shp_field_map)
+        missing_out = missing.rename(columns=shp_field_map)
+
+        present_out.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
+        missing_out.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
 
         print(
             f"Out of the {len(self.gdf)} reservoirs, {len(present)} are present and {len(missing)} are missing from the PLD."
