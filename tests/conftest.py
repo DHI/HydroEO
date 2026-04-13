@@ -3,6 +3,7 @@
 import datetime
 import pytest
 import os
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Sample identifiers (fixed for Stage 1 — do NOT change without updating CI)
@@ -29,7 +30,7 @@ S3_LAKE_NAME = "TITICACA"
 class _FakeEAResult:
     """Minimal stand-in for an earthaccess DataGranule result."""
 
-    def __init__(self, filename: str, url: str | None = None):
+    def __init__(self, filename: str, url: Optional[str] = None):
         self._filename = filename
         self._url = url or f"https://example.com/swot/{filename}.zip"
 
