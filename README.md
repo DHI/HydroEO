@@ -63,13 +63,13 @@ Run test suites:
 make test
 
 # Unit tests (fast, mocked)
-pytest -m unit
+uv run pytest -m unit
 
 # API contract tests (endpoint/schema checks)
-pytest -m api_contract
+uv run pytest -m api_contract
 
 # Integration tests (live API calls)
-pytest -m integration -v
+uv run pytest -m integration -v
 
 # Coverage report
 make coverage

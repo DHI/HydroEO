@@ -149,5 +149,6 @@ dmypy.json
 /notebooks/river_development.ipynb
 
 # current runtime and configuration
+.env
 run.py
 config.yaml

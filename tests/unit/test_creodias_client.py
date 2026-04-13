@@ -39,3 +39,33 @@ def test_creodias_query_raises_on_http_error():
                 start_date=TEST_START,
                 end_date=TEST_END,
             )
+
+
+@pytest.mark.unit
+def test_parse_geometry_accepts_coordinate_tuple_list():
+    """_parse_geometry() should accept a list of (lon, lat) tuples."""
+    from HydroEO.downloaders.creodias import _parse_geometry
+
+    geom = [
+        (-70.5, -16.5),
+        (-68.5, -16.5),
+        (-68.5, -15.0),
+        (-70.5, -15.0),
+        (-70.5, -16.5),
+    ]
+
+    wkt = _parse_geometry(geom)
+
+    assert wkt.startswith("POLYGON")
+
+
+@pytest.mark.unit
+def test_parse_geometry_accepts_flat_coordinate_list():
+    """_parse_geometry() should accept a flat [lon, lat, ...] coordinate list."""
+    from HydroEO.downloaders.creodias import _parse_geometry
+
+    geom = [-70.5, -16.5, -68.5, -16.5, -68.5, -15.0, -70.5, -15.0, -70.5, -16.5]
+
+    wkt = _parse_geometry(geom)
+
+    assert wkt.startswith("POLYGON")

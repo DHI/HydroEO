@@ -12,7 +12,7 @@ format:
 	uvx ruff format $(LIB)
 
 test:
-	uvx pytest --disable-warnings
+	uv run pytest --disable-warnings
 
 typecheck:
 	uvx mypy $(LIB)/ --config-file pyproject.toml

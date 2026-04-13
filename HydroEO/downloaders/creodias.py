@@ -4,10 +4,9 @@ import requests
 from tqdm import tqdm
 import datetime
 
-# from six.moves.urllib.parse import urlencode
 from six import string_types
 import dateutil.parser
-from shapely.geometry import shape
+from shapely.geometry import Polygon, shape
 import time
 import os
 
@@ -176,21 +175,49 @@ def _add_time(date):
 
 
 def _tastes_like_wkt_polygon(geometry):
-    try:
-        return geometry.replace(", ", ",").replace(" ", "", 1).replace(" ", "+")
-    except Exception:
-        raise ValueError("Geometry must be in well-known text format")
+    if not isinstance(geometry, string_types):
+        return False
+
+    normalized = geometry.strip().upper()
+    return normalized.startswith("POLYGON") or normalized.startswith("MULTIPOLYGON")
+
+
+def _coords_to_polygon_wkt(coords):
+    if not isinstance(coords, (list, tuple)):
+        raise ValueError("Coordinates must be provided as a list or tuple")
+
+    if len(coords) < 3:
+        raise ValueError("Polygon coordinates must contain at least 3 points")
+
+    if all(isinstance(item, (list, tuple)) and len(item) >= 2 for item in coords):
+        points = [(float(item[0]), float(item[1])) for item in coords]
+    elif len(coords) % 2 == 0 and all(
+        isinstance(item, (int, float)) for item in coords
+    ):
+        points = [
+            (float(coords[i]), float(coords[i + 1])) for i in range(0, len(coords), 2)
+        ]
+    else:
+        raise ValueError("Unsupported polygon coordinate format")
+
+    polygon = Polygon(points)
+    if polygon.is_empty or not polygon.is_valid:
+        raise ValueError("Invalid polygon coordinates")
+
+    return polygon.wkt
 
 
 def _parse_geometry(geom):
     try:
         # If geom has a __geo_interface__
         return shape(geom).wkt
-    except AttributeError:
+    except Exception:
         if _tastes_like_wkt_polygon(geom):
             return geom
+        if isinstance(geom, (list, tuple)):
+            return _coords_to_polygon_wkt(geom)
         raise ValueError(
-            "geometry must be a WKT polygon str or have a __geo_interface__"
+            "geometry must be a WKT polygon str, list of coordinates, or have a __geo_interface__"
         )
 
 
