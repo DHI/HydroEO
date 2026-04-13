@@ -52,7 +52,7 @@ def test_cdse_odata_endpoint_reachable():
 
     # Query a specific collection endpoint (more reliable than root)
     url = "https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=Collection/Name%20eq%20%27SENTINEL-3%27&$top=1"
-    
+
     try:
         resp = requests.get(url, timeout=10)
         # Should be reachable; may be 401 without auth, 200 with auth, 400 for bad query
@@ -77,7 +77,7 @@ def test_cdse_token_endpoint_bad_credentials_returns_4xx():
     import requests
 
     url = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-    
+
     payload = {
         "grant_type": "password",
         "username": "invalid@test.local",
@@ -161,7 +161,7 @@ def test_hydroweb_api_key_valid():
     """HydroWeb API key must be accepted (no 401/403 on basic client init)."""
     try:
         from py_hydroweb import Client
-        
+
         client = Client(api_key=os.environ["HYDROWEB_API_KEY"])
         # If initialization succeeds without raising an auth error, the key is valid
         assert client is not None

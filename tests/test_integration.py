@@ -23,7 +23,7 @@ import pytest
 # Shared coordinates and date window
 # ---------------------------------------------------------------------------
 
-SWOT_LAKE_ID = "6340048832"       # Lake Geneva in PLD
+SWOT_LAKE_ID = "6340048832"  # Lake Geneva in PLD
 SWOT_AOI = [
     (6.0, 46.2),
     (6.9, 46.2),
@@ -102,8 +102,7 @@ def test_swot_live_prior_granules_present():
     )
 
     prior_results = [
-        r for r in results
-        if "_prior_" in r.data_links()[0].split("/")[-1].lower()
+        r for r in results if "_prior_" in r.data_links()[0].split("/")[-1].lower()
     ]
 
     assert len(prior_results) > 0, (
@@ -173,14 +172,14 @@ def test_swot_granule_has_data_links():
     )
 
     assert len(results) > 0, "No SWOT results to validate"
-    
+
     for granule in results[:1]:  # Test first granule only
         links = granule.data_links()
         assert isinstance(links, list), "data_links() must return a list"
         assert len(links) > 0, "granule.data_links() returned empty list"
-        assert any(
-            url.endswith(('.zip', '.nc')) for url in links
-        ), f"Expected .zip or .nc URLs, got {links}"
+        assert any(url.endswith((".zip", ".nc")) for url in links), (
+            f"Expected .zip or .nc URLs, got {links}"
+        )
 
 
 @pytest.mark.integration
@@ -200,8 +199,7 @@ def test_swot_prior_granule_naming_convention():
     )
 
     prior_granules = [
-        r for r in results 
-        if "_prior_" in r.data_links()[0].split("/")[-1].lower()
+        r for r in results if "_prior_" in r.data_links()[0].split("/")[-1].lower()
     ]
 
     assert len(prior_granules) > 0, (
@@ -225,7 +223,7 @@ def test_sentinel3_response_shape():
     )
 
     assert len(results) > 0, "No Sentinel-3 results — cannot validate schema"
-    
+
     for result_id, result_data in list(results.items())[:1]:
         assert "Id" in result_data, f"Missing 'Id' key in response: {result_data}"
         assert "Name" in result_data, f"Missing 'Name' key in response: {result_data}"
@@ -268,10 +266,12 @@ def test_sentinel6_response_shape():
     )
 
     assert len(results) > 0, "No Sentinel-6 results — cannot validate schema"
-    
+
     for result_id, result_data in list(results.items())[:1]:
         assert "Id" in result_data, f"Missing 'Id' key in S6 response: {result_data}"
-        assert "Name" in result_data, f"Missing 'Name' key in S6 response: {result_data}"
+        assert "Name" in result_data, (
+            f"Missing 'Name' key in S6 response: {result_data}"
+        )
 
 
 @pytest.mark.integration

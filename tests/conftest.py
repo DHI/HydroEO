@@ -6,8 +6,8 @@ import pytest
 # ---------------------------------------------------------------------------
 # Sample identifiers (fixed for Stage 1 — do NOT change without updating CI)
 # ---------------------------------------------------------------------------
-SWOT_LAKE_ID = "6340048832"       # Lake Geneva in PLD
-SWOT_AOI = [                       # small bounding box around Lake Geneva
+SWOT_LAKE_ID = "6340048832"  # Lake Geneva in PLD
+SWOT_AOI = [  # small bounding box around Lake Geneva
     (6.0, 46.2),
     (6.9, 46.2),
     (6.9, 46.6),
@@ -23,6 +23,7 @@ S3_LAKE_NAME = "TITICACA"
 # ---------------------------------------------------------------------------
 # Lightweight earthaccess mock
 # ---------------------------------------------------------------------------
+
 
 class _FakeEAResult:
     """Minimal stand-in for an earthaccess DataGranule result."""
@@ -76,7 +77,7 @@ CDSE_ONE_RESULT_RESPONSE = {
     "properties": {
         "id": "test",
         "totalResults": 1,
-        "links": [],   # no 'next' page
+        "links": [],  # no 'next' page
     },
 }
 
