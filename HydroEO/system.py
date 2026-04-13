@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import warnings
-import gc
 
 import os
 import pandas as pd
