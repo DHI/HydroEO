@@ -41,28 +41,32 @@ def daily_mad_error(timeseries, reg_weight=0.1, reg_default=0.5, error_key="ADM"
     date_key = timeseries.date_key
     height_key = timeseries.height_key
 
-    # assign a group to each unique day
-    unique_days = df[date_key].dt.date.unique()
+    # Assign and use a consistent day key for grouping and mapping.
+    # Mixing full timestamps and date-only keys can produce NaN mapped values.
+    day_key = df[date_key].dt.floor("D")
 
-    # Group by day and get median
-    medval = df.groupby(df[date_key]).median(numeric_only=True)[height_key]
-    day_grp = df.groupby(date_key).count()[height_key]
+    # Group by day and get median/count.
+    medval = df.groupby(day_key).median(numeric_only=True)[height_key]
+    day_grp = df.groupby(day_key).count()[height_key]
 
     # Add regularization factor to avoid giving advantage to median:
     reg = reg_weight / day_grp
     reg[day_grp == 1] = reg_default
 
     # map the median val and regularization to the dates they belong to
-    med_map = dict(zip(unique_days, medval))
-    reg_map = dict(zip(unique_days, reg))
-    df["med"] = df[date_key].map(med_map)
-    df["reg"] = df[date_key].map(reg_map)
+    med_map = medval.to_dict()
+    reg_map = reg.to_dict()
+    df["med"] = day_key.map(med_map)
+    df["reg"] = day_key.map(reg_map)
 
-    # calculate error
-    error = (np.abs(df[height_key] - df["med"]) + df["reg"]).values
+    # calculate error and enforce a positive finite lower bound for Kalman stability
+    error = np.abs(df[height_key] - df["med"]) + df["reg"]
+    error = (
+        error.replace([np.inf, -np.inf], np.nan).fillna(reg_default).clip(lower=1e-6)
+    )
 
     # add error to timeseries
-    timeseries.df[error_key] = error
+    timeseries.df[error_key] = error.values
 
     return timeseries
 
@@ -230,15 +234,26 @@ def _update(obs, xk, cov_xx, height="height", error="ADM", n=1):
         Covariance of the updated value.
 
     """
+    obs = obs.copy()
+    obs = obs.replace([np.inf, -np.inf], np.nan)
+    obs = obs.dropna(subset=[height, error])
+
+    # No valid observations for this epoch: keep predicted state unchanged.
+    if obs.empty:
+        return xk, cov_xx
+
     obs_list = obs[height].values
     m = len(obs_list)
     lk = np.array(obs_list).reshape(m, n)
     Ak = np.ones((m, n))
 
     # compute Kalman matrix (weights of the innovation)
-    slk = (obs[error].values) ** 2
+    slk = np.maximum((obs[error].values) ** 2, 1e-12)
     cov_lk = np.diag(slk)
     inv = Ak * cov_xx * np.transpose(Ak) + cov_lk
+    if not np.all(np.isfinite(inv)):
+        return xk, cov_xx
+    inv = inv + np.eye(m) * 1e-8
     Kk = cov_xx * np.dot(np.transpose(Ak), np.linalg.pinv(inv))
 
     # update x

@@ -3,7 +3,8 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 import datetime
-from six.moves.urllib.parse import urlencode
+
+# from six.moves.urllib.parse import urlencode
 from six import string_types
 import dateutil.parser
 from shapely.geometry import shape
@@ -11,10 +12,12 @@ import time
 import os
 
 ##### Global variables
-API_URL = "https://datahub.creodias.eu/resto/api/collections/{collection}/search.json?maxRecords=1000"
-# Updated from zipper.creodias.eu (decommissioned) to Copernicus Data Space zipper
-DOWNLOAD_URL = "https://zipper.dataspace.copernicus.eu/download"
+API_URL = "https://catalogue.dataspace.copernicus.eu/odata/v1"
+DOWNLOAD_URL = "https://zipper.creodias.eu/download"
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
+ATTRIBUTE_URL = (
+    "https://catalogue.dataspace.copernicus.eu/odata/v1/Attributes({collection})"
+)
 
 
 ##### Functions associated with queries
@@ -24,9 +27,7 @@ def query(
     end_date=None,
     geometry=None,
     status="ONLINE",
-    username=None,
-    password=None,
-    token=None,
+    metadata=False,
     **kwargs,
 ):
     """Query the EOData Finder API
@@ -44,12 +45,6 @@ def query(
         area of interest as well-known text string
     status : str
         allowed online/offline/all status (ONLINE || OFFLINE || ALL)
-    username: str, optional
-        CDSE/CREODIAS username used to request a bearer token for authenticated search.
-    password: str, optional
-        CDSE/CREODIAS password used to request a bearer token for authenticated search.
-    token: str, optional
-        Existing bearer token. If provided, username/password are not required.
     **kwargs
         Additional arguments can be used to specify other query parameters,
         e.g. productType=L1GT
@@ -62,83 +57,102 @@ def query(
         the product's attributes (a dictionary) as the value.
     """
     query_url = _build_query(
-        API_URL.format(collection=collection),
+        collection,
         start_date,
         end_date,
         geometry,
         status,
         **kwargs,
     )
-
-    auth_token = token
-    if auth_token is None and username and password:
-        auth_token = _get_token(username, password)
-
-    headers = None
-    if auth_token is not None:
-        headers = {"Authorization": f"Bearer {auth_token}"}
+    if metadata:
+        query_url += "&$expand=Attributes"
 
     query_response = {}
     while query_url:
-        response = requests.get(query_url, headers=headers)
-        try:
-            response.raise_for_status()
-        except requests.HTTPError:
-            # Retry a forbidden anonymous query once with auth if credentials are available.
-            if (
-                response.status_code == 403
-                and auth_token is None
-                and username
-                and password
-            ):
-                auth_token = _get_token(username, password)
-                headers = {"Authorization": f"Bearer {auth_token}"}
-                response = requests.get(query_url, headers=headers)
-                response.raise_for_status()
-            else:
-                raise
+        response = requests.get(query_url)
+        response.raise_for_status()
         data = response.json()
-        for feature in data["features"]:
-            query_response[feature["id"]] = feature
-        query_url = _get_next_page(data["properties"]["links"])
+        for feature in data["value"]:
+            query_response[feature["Id"]] = feature
+        query_url = data.get("@odata.nextLink")
     return query_response
 
 
 def _build_query(
-    base_url, start_date=None, end_date=None, geometry=None, status=None, **kwargs
+    collection=None,
+    start_date=None,
+    end_date=None,
+    geometry=None,
+    status=None,
+    **kwargs,
 ):
-    query_params = {}
+    if collection is None:
+        raise ValueError(
+            "You need to provide a collection. Check 'https://documentation.dataspace.copernicus.eu/APIs/OData.html#query-collection-of-products' for possible values"
+        )
+
+    collection = collection.upper()
+
+    query_list = []
+    if geometry is not None:
+        wkt = _parse_geometry(geometry)
+        query_list.append(f"OData.CSC.Intersects(area=geography'SRID=4326;{wkt}')")
 
     if start_date is not None:
         start_date = _parse_date(start_date)
-        query_params["startDate"] = start_date.isoformat()
+        query_list.append(f"ContentDate/Start gt '{start_date.isoformat()}'")
+
     if end_date is not None:
         end_date = _parse_date(end_date)
         end_date = _add_time(end_date)
-        query_params["completionDate"] = end_date.isoformat()
-
-    if geometry is not None:
-        query_params["geometry"] = _parse_geometry(geometry)
+        query_list.append(f"ContentDate/Start lt '{end_date.isoformat()}'")
 
     if status is not None:
-        query_params["status"] = status
+        if status == "ONLINE":
+            query_list.append("Online eq true")
+        elif status == "OFFLINE":
+            query_list.append("Online eq false")
 
-    for attr, value in sorted(kwargs.items()):
+    response = requests.get(ATTRIBUTE_URL.format(collection=collection))
+    response.raise_for_status()
+    attr_dict = response.json()
+    for key, value in sorted(kwargs.items()):
+        attr_type = _parse_argtype(key, attr_dict=attr_dict)
         value = _parse_argvalue(value)
-        query_params[attr] = value
+        if not attr_type:
+            raise ValueError(f"Kwarg {key} wasn't found in allowed attributes")
+        if attr_type == "String":
+            query_list.append(
+                f"Attributes/OData.CSC.{attr_type}Attribute/any(att:att/Name eq '{key}' and att/OData.CSC.{attr_type}Attribute/Value eq '{value}')"
+            )
+        else:
+            if isinstance(value, (list, tuple)):
+                query_list.append(
+                    f"Attributes/OData.CSC.{attr_type}Attribute/any(att:att/Name eq '{key}' and att/OData.CSC.{attr_type}Attribute/Value ge {value[0]}) and "
+                    + f"Attributes/OData.CSC.{attr_type}Attribute/any(att:att/Name eq '{key}' and att/OData.CSC.{attr_type}Attribute/Value le {value[1]})"
+                )
+            else:
+                query_list.append(
+                    f"Attributes/OData.CSC.{attr_type}Attribute/any(att:att/Name eq '{key}' and att/OData.CSC.{attr_type}Attribute/Value eq {value})"
+                )
 
-    url = base_url
-    if query_params:
-        url += f"&{urlencode(query_params)}"
-
-    return url
+    ## create query url
+    query = f"{API_URL}/Products?$filter={' and '.join(query_list)}&$top=500"
+    return query
 
 
-def _get_next_page(links):
-    for link in links:
-        if link["rel"] == "next":
-            return link["href"]
-    return False
+def _parse_argtype(key, attr_dict):
+    for obj in attr_dict:
+        if obj.get("Name") == key:
+            return obj.get("ValueType")
+
+
+# TODO: remove
+# def _get_next_page(links):
+#     for link in links:
+#         if link["rel"] == "next":
+#             return link["href"]
+#     return False
 
 
 def _parse_date(date):

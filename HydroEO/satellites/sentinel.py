@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import logging
 import warnings
 import os
 from tqdm import tqdm
@@ -15,6 +16,142 @@ import shapely
 from HydroEO.downloaders import creodias
 from HydroEO.utils import geometry
 from HydroEO.utils.general import center_longitude
+
+
+logger = logging.getLogger(__name__)
+
+VARIABLES = {
+    "S3": [
+        "lat_20_ku",
+        "lon_20_ku",
+        "elevation_ocog_20_ku",
+        "waveform_20_ku",
+        "sig0_ocog_20_ku",
+        "time_20_ku",
+        "alt_20_ku",
+        "tracker_range_20_ku",
+        "range_ocog_20_ku",
+        "lat_01",
+        "geoid_01",
+    ],
+    "S6": [
+        "latitude",
+        "longitude",
+        "altitude",
+        "range_ocog",
+        "model_wet_tropo_cor_measurement_altitude",
+        "model_dry_tropo_cor_measurement_altitude",
+        "sig0_ocog",
+        "time_tai",
+        "geoid",
+    ],
+}
+
+ATTRIBUTES = {
+    "S3": ["first_meas_lat", "last_meas_lat", "pass_number"],
+    "S6": [
+        "first_measurement_latitude",
+        "last_measurement_latitude",
+        "pass_number",
+    ],
+}
+
+
+def _format_array_range(values):
+    data = np.ma.asarray(values).compressed()
+    if data.size == 0:
+        return "empty"
+
+    return f"[{float(np.nanmin(data)):.6f}, {float(np.nanmax(data)):.6f}]"
+
+
+def _find_subset_file(folder_path: str, product: str, file_id: str):
+    if product == "S3":
+        file_path = os.path.join(folder_path, file_id)
+        return file_path if os.path.isfile(file_path) else None
+
+    candidates = []
+    for potential in sorted(os.listdir(folder_path)):
+        if potential.endswith(".nc") and "STD" in potential.split("_"):
+            candidates.append(os.path.join(folder_path, potential))
+
+    return candidates
+
+
+def _netcdf_contains_variable(group, variable: str) -> bool:
+    if variable in group.variables:
+        return True
+
+    for subgroup in group.groups.values():
+        if _netcdf_contains_variable(subgroup, variable):
+            return True
+
+    return False
+
+
+def _validate_subset_source(nc, product: str, file_path: str):
+    missing_attrs = [att for att in ATTRIBUTES[product] if att not in nc.ncattrs()]
+    if missing_attrs:
+        logger.warning(
+            "Subset source %s is missing global attributes: %s",
+            file_path,
+            ", ".join(missing_attrs),
+        )
+
+    if product == "S3":
+        required_variables = ["lat_20_ku", "lon_20_ku", "lat_01", "lon_01"]
+        missing_variables = [
+            var for var in required_variables if var not in nc.variables.keys()
+        ]
+        if missing_variables:
+            raise KeyError(
+                "Missing required S3 variables for subset: "
+                + ", ".join(missing_variables)
+            )
+
+    elif product == "S6":
+        missing_groups = [
+            group for group in ["data_20", "data_01"] if group not in nc.groups
+        ]
+        if missing_groups:
+            raise KeyError(
+                "Missing required S6 groups for subset: " + ", ".join(missing_groups)
+            )
+
+        if "ku" not in nc["data_20"].groups:
+            raise KeyError("Missing required S6 group for subset: data_20/ku")
+
+        missing_20_variables = [
+            var
+            for var in ["latitude", "longitude"]
+            if var not in nc["data_20"]["ku"].variables.keys()
+        ]
+        missing_01_variables = [
+            var
+            for var in ["latitude", "longitude"]
+            if var not in nc["data_01"].variables.keys()
+        ]
+        missing_variables = missing_20_variables + missing_01_variables
+        if missing_variables:
+            raise KeyError(
+                "Missing required S6 variables for subset: "
+                + ", ".join(sorted(set(missing_variables)))
+            )
+
+
+def _validate_subset_output(nc, product: str, file_path: str):
+    missing_vars = [
+        var for var in VARIABLES[product] if not _netcdf_contains_variable(nc, var)
+    ]
+    missing_attrs = [att for att in ATTRIBUTES[product] if att not in nc.ncattrs()]
+
+    if missing_vars or missing_attrs:
+        logger.warning(
+            "Subset output %s is missing variables=%s attributes=%s",
+            file_path,
+            ", ".join(missing_vars) if missing_vars else "none",
+            ", ".join(missing_attrs) if missing_attrs else "none",
+        )
 
 
 def query(
@@ -53,7 +190,7 @@ def query(
     # build the query parameters based on the requeste product
     if product == "S3":
         params = {
-            "collection": "Sentinel3",
+            "collection": "SENTINEL-3",
             "start_date": startdate,
             "end_date": enddate,
             "geometry": shapely.Polygon(aoi).wkt,
@@ -63,7 +200,7 @@ def query(
 
     elif product == "S6":
         params = {
-            "collection": "Sentinel6",
+            "collection": "SENTINEL-6",
             "start_date": startdate,
             "end_date": enddate,
             "geometry": shapely.Polygon(aoi).wkt,
@@ -77,12 +214,9 @@ def query(
         )
 
     query_kwargs = {}
-    if creodias_credentials:
-        query_kwargs["username"] = creodias_credentials[0]
-        query_kwargs["password"] = creodias_credentials[1]
 
     results = creodias.query(**params, **query_kwargs)
-    ids = [result["id"] for result in results.values()]
+    ids = [result["Id"] for result in results.values()]
 
     return ids
 
@@ -180,42 +314,6 @@ def subset(
 
     EXTENSION = {"S3": ".SEN3", "S6": ".SEN6"}
 
-    VARIABLES = {
-        "S3": [
-            "lat_20_ku",
-            "lon_20_ku",
-            "elevation_ocog_20_ku",
-            "waveform_20_ku",
-            "sig0_ocog_20_ku",
-            "time_20_ku",
-            "alt_20_ku",
-            "tracker_range_20_ku",
-            "range_ocog_20_ku",
-            "lat_01",
-            "geoid_01",
-        ],
-        "S6": [
-            "latitude",
-            "longitude",
-            "altitude",
-            "range_ocog",
-            "model_wet_tropo_cor_measurement_altitude",
-            "model_dry_tropo_cor_measurement_altitude",
-            "sig0_ocog",
-            "time_tai",
-            "geoid",
-        ],
-    }
-
-    ATTRIBUTES = {
-        "S3": ["first_meas_lat", "last_meas_lat", "pass_number"],
-        "S6": [
-            "first_measurement_latitude",
-            "last_measurement_latitude",
-            "pass_number",
-        ],
-    }
-
     # loop through the downloads folder and subset any products with the right extention
     pbar = tqdm(
         total=int(len(os.listdir(download_dir)) / 2),
@@ -227,17 +325,48 @@ def subset(
         # print(EXTENSION[product], folder)
         if folder.endswith(EXTENSION[product]):
             pbar.update(1)
-            # within the sentinel file, select the correct type of mearurements with the file_id key
-            if product == "S3":
-                file = os.path.join(download_dir, folder, file_id)
+            folder_path = os.path.join(download_dir, folder)
 
-            elif product == "S6":
-                for potential in os.listdir(os.path.join(download_dir, folder)):
-                    if "STD" in potential.split("_"):
-                        if potential.endswith(".nc"):
-                            file = os.path.join(download_dir, folder, potential)
+            try:
+                # within the sentinel file, select the correct type of mearurements with the file_id key
+                if product == "S3":
+                    file = _find_subset_file(folder_path, product, file_id)
+                    if file is None:
+                        logger.warning(
+                            "Skipping subset for %s: source file %s is missing.",
+                            folder,
+                            os.path.join(folder_path, file_id),
+                        )
+                        continue
 
-            if os.path.isfile(file):
+                elif product == "S6":
+                    candidates = _find_subset_file(folder_path, product, file_id)
+                    if len(candidates) == 0:
+                        logger.warning(
+                            "Skipping subset for %s: no Sentinel-6 STD netCDF found in %s.",
+                            folder,
+                            folder_path,
+                        )
+                        continue
+                    if len(candidates) > 1:
+                        logger.warning(
+                            "Multiple Sentinel-6 subset candidates found for %s: %s. Using %s.",
+                            folder,
+                            ", ".join(
+                                os.path.basename(candidate) for candidate in candidates
+                            ),
+                            os.path.basename(candidates[0]),
+                        )
+                    file = candidates[0]
+
+                if not os.path.isfile(file):
+                    logger.warning(
+                        "Skipping subset for %s: source file does not exist: %s",
+                        folder,
+                        file,
+                    )
+                    continue
+
                 # we will save a new file with the same name as the sentinel folder but only keeping the nc file we choose
                 nc_cropped = os.path.join(
                     dest_dir,
@@ -246,124 +375,129 @@ def subset(
                     + ".nc",
                 )
 
-                # now we read the file
-                # print(file)
-                nc = netCDF4.Dataset(file)
+                with netCDF4.Dataset(file) as nc:
+                    _validate_subset_source(nc, product, file)
 
-                # SciHub contains 1Hz and 20Hz variables
-                # Get index of values within AOI at both frequencies
-                # The way that variabels are accesed/called within sentinel 3 and 6 are different, so we extract the indices as needed
-                if product == "S3":
-                    freq_20 = "_20_ku"
-                    freq_01 = "_01"
+                    # SciHub contains 1Hz and 20Hz variables
+                    # Get index of values within AOI at both frequencies
+                    # The way that variabels are accesed/called within sentinel 3 and 6 are different, so we extract the indices as needed
+                    if product == "S3":
+                        freq_20 = "_20_ku"
+                        freq_01 = "_01"
 
-                    lat20 = nc["lat" + freq_20][:]
-                    lon20 = nc["lon" + freq_20][:]
+                        lat20 = nc["lat" + freq_20][:]
+                        lon20 = nc["lon" + freq_20][:]
 
-                    lat01 = nc["lat" + freq_01][:]
-                    lon01 = nc["lon" + freq_01][:]
+                        lat01 = nc["lat" + freq_01][:]
+                        lon01 = nc["lon" + freq_01][:]
 
-                elif product == "S6":
-                    freq_20 = "data_20"
-                    freq_01 = "data_01"
+                    elif product == "S6":
+                        freq_20 = "data_20"
+                        freq_01 = "data_01"
 
-                    lat = "latitude"
-                    lon = "longitude"
+                        lat = "latitude"
+                        lon = "longitude"
 
-                    lat20 = nc[freq_20]["ku"][lat][:]
-                    lon20 = nc[freq_20]["ku"][lon][:]
+                        lat20 = nc[freq_20]["ku"][lat][:]
+                        lon20 = nc[freq_20]["ku"][lon][:]
 
-                    lat01 = nc[freq_01][lat][:]
-                    lon01 = nc[freq_01][lon][:]
+                        lat01 = nc[freq_01][lat][:]
+                        lon01 = nc[freq_01][lon][:]
 
-                # Adjust the longitude
-                lon20 = center_longitude(lon20)
-                # print(min(lon20), max(lon20))
+                    # Adjust the longitude
+                    lon20 = center_longitude(lon20)
+                    lon01 = center_longitude(lon01)
 
-                min_index20 = len(lat20) + 1
-                max_index20 = 0
-                min_index01 = len(lat01) + 1
-                max_index01 = 0
+                    logger.debug(
+                        "Subset candidate %s bounds: AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f], 20Hz lon=%s lat=%s, 1Hz lon=%s lat=%s",
+                        file,
+                        ulx,
+                        lrx,
+                        lry,
+                        uly,
+                        _format_array_range(lon20),
+                        _format_array_range(lat20),
+                        _format_array_range(lon01),
+                        _format_array_range(lat01),
+                    )
 
-                # Get the indices within the bounds for 20Hz
-                selected = np.where(
-                    (lon20 <= lrx) & (lon20 >= ulx) & (lat20 >= lry) & (lat20 <= uly)
-                )[0]
-                # print(len(selected))
+                    # Get the indices within the bounds for 20Hz
+                    selected = np.where(
+                        (lon20 <= lrx)
+                        & (lon20 >= ulx)
+                        & (lat20 >= lry)
+                        & (lat20 <= uly)
+                    )[0]
 
-                if len(selected) > 0:
-                    if selected[0] < min_index20:
-                        min_index20 = selected[0]
+                    if len(selected) == 0:
+                        logger.warning(
+                            "Skipping subset for %s: no 20Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
+                            file,
+                            ulx,
+                            lrx,
+                            lry,
+                            uly,
+                            _format_array_range(lon20),
+                            _format_array_range(lat20),
+                        )
+                        continue
 
-                    if selected[-1] > max_index20:
-                        max_index20 = selected[-1]
+                    # Get the indices within the bounds for 1Hz
+                    selected01 = np.where(
+                        (lon01 <= lrx)
+                        & (lon01 >= ulx)
+                        & (lat01 >= lry)
+                        & (lat01 <= uly)
+                    )[0]
 
-                # Get the indices within the bounds for 1Hz
-                selected01 = np.where(
-                    (lon01 <= lrx) & (lon01 >= ulx) & (lat01 >= lry) & (lat01 <= uly)
-                )[0]
+                    if len(selected01) == 0:
+                        logger.warning(
+                            "Skipping subset for %s: no 1Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
+                            file,
+                            ulx,
+                            lrx,
+                            lry,
+                            uly,
+                            _format_array_range(lon01),
+                            _format_array_range(lat01),
+                        )
+                        continue
 
-                if len(selected01) > 0:
-                    if selected01[0] < min_index01:
-                        min_index01 = selected01[0]
+                    min_index20, max_index20 = selected[0], selected[-1]
+                    min_index01, max_index01 = selected01[0], selected01[-1]
 
-                    if selected01[-1] > max_index01:
-                        max_index01 = selected01[-1]
+                with (
+                    netCDF4.Dataset(file) as src,
+                    netCDF4.Dataset(nc_cropped, "w") as dst,
+                ):
+                    if product == "S3":
+                        __crop_s3(
+                            src,
+                            dst,
+                            (min_index20, max_index20),
+                            (min_index01, max_index01),
+                        )
 
-                nc.close()
+                    elif product == "S6":
+                        __crop_s6(
+                            src,
+                            dst,
+                            (min_index20, max_index20),
+                            (min_index01, max_index01),
+                        )
 
-                # if we have data within the bounds, start copying all extra data to new file
-                # print(max_index20)
-                # print(lon20)
-                # print(lat20)
-                if max_index20 > 0:
-                    # print("Copying data to new file")
-                    with (
-                        netCDF4.Dataset(file) as src,
-                        netCDF4.Dataset(nc_cropped, "w") as dst,
-                    ):
-                        if product == "S3":
-                            __crop_s3(
-                                src,
-                                dst,
-                                (min_index20, max_index20),
-                                (min_index01, max_index01),
-                            )
+                with netCDF4.Dataset(nc_cropped, "r") as dst:
+                    _validate_subset_output(dst, product, nc_cropped)
 
-                        elif product == "S6":
-                            __crop_s6(
-                                src,
-                                dst,
-                                (min_index20, max_index20),
-                                (min_index01, max_index01),
-                            )
+            except Exception:
+                logger.exception(
+                    "Subset failed for folder %s using source file %s. Continuing with next file.",
+                    folder,
+                    locals().get("file", "unresolved"),
+                )
+                continue
 
-                    # Check that everything crucial is there:
-                    with (
-                        netCDF4.Dataset(file) as src,
-                        netCDF4.Dataset(nc_cropped, "r") as dst,
-                    ):
-                        if product == "S3":
-                            for var in VARIABLES[product]:
-                                if var not in src.variables.keys():
-                                    print(f"{var} missing from copied file.")
-
-                            for att in ATTRIBUTES[product]:
-                                if att not in src.ncattrs():
-                                    print(f"{att} missing from copied file.")
-
-                        if product == "S6":
-                            for var in VARIABLES[product]:
-                                if var not in src["data_20"]["ku"].variables.keys():
-                                    print(f"{var} missing from copied file.")
-
-                            for att in ATTRIBUTES[product]:
-                                if att not in src.ncattrs():
-                                    print(f"{att} missing from copied file.")
-
-                else:
-                    # print("No data within bounds, no subsetted file created")
-                    pass
+    pbar.close()
 
 
 def __crop_s3(src, dst, index_bounds_20, index_bounds_01):

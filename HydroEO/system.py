@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import warnings
+import gc
 
 import os
 import pandas as pd
@@ -162,7 +163,9 @@ class System:
                 ]
 
                 # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
+                download_dir = os.path.join(
+                    self.dirs["icesat2"], rf"{self.type}", rf"{id}"
+                )
                 general.ifnotmakedirs(download_dir)
 
                 # query and download data
@@ -216,11 +219,11 @@ class System:
                 # make directiories for download, if needed
                 if product == "S3":
                     download_dir = os.path.join(
-                        self.dirs["sentinel3"], rf"{self.type}\{id}"
+                        self.dirs["sentinel3"], rf"{self.type}", rf"{id}"
                     )
                 if product == "S6":
                     download_dir = os.path.join(
-                        self.dirs["sentinel6"], rf"{self.type}\{id}"
+                        self.dirs["sentinel6"], rf"{self.type}", rf"{id}"
                     )
                 general.ifnotmakedirs(download_dir)
 
@@ -251,19 +254,16 @@ class System:
                 )
 
                 # subset the data so that we only keep what lies within the download geometry
-                try:
-                    sentinel.subset(
-                        aoi=coords,
-                        download_dir=download_dir,
-                        dest_dir=download_dir,
-                        product=product,
-                        show_progress=True,
-                    )
-                except Exception:
-                    print("Unable to subset data")
+                sentinel.subset(
+                    aoi=coords,
+                    download_dir=download_dir,
+                    dest_dir=download_dir,
+                    product=product,
+                    show_progress=True,
+                )
 
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
-                general.remove_non_exts(download_dir, [".nc", ".log"])
+                # general.remove_non_exts(download_dir, [".nc", ".log"]) # TODO: uncomment
 
     def get_unfiltered_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
@@ -323,7 +323,9 @@ class System:
             # concatenate everything into one dataframe
             if len(df_list) > 0:
                 df = pd.concat(df_list)
-                df["date"] = pd.to_datetime(df.date)
+                df["date"] = pd.to_datetime(
+                    df.date, format="mixed", utc=True
+                ).dt.tz_convert(None)
                 df = df.sort_values(by="date")
             else:
                 df = None  # TODO: maybe raise an error instead?
@@ -645,7 +647,9 @@ class Reservoirs(System):
                 sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
 
                 # prep export folder and paths
-                download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
+                download_dir = os.path.join(
+                    self.dirs["icesat2"], rf"{self.type}", rf"{id}"
+                )
                 if os.path.exists(download_dir):
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
@@ -667,7 +671,7 @@ class Reservoirs(System):
 
                 # prep export folder and paths
                 download_dir = os.path.join(
-                    self.dirs["sentinel3"], rf"{self.type}\{id}"
+                    self.dirs["sentinel3"], rf"{self.type}", rf"{id}"
                 )
                 if os.path.exists(download_dir):
                     dst_dir = os.path.join(
@@ -690,7 +694,7 @@ class Reservoirs(System):
 
                 # prep export folder and paths
                 download_dir = os.path.join(
-                    self.dirs["sentinel6"], rf"{self.type}\{id}"
+                    self.dirs["sentinel6"], rf"{self.type}", rf"{id}"
                 )
                 if os.path.exists(download_dir):
                     dst_dir = os.path.join(
@@ -787,7 +791,7 @@ class Reservoirs(System):
 #         for id in tqdm(self.grid.index):
 #             # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
 #             download_directory = os.path.join(
-#                 self.dirs["icesat2"], rf"{self.type}\{id}"
+#                 self.dirs["icesat2"], rf"{self.type}", rf"{id}"
 #             )
 #             if os.path.exists(download_directory):
 #                 # load date for all tracks and crossings

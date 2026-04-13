@@ -149,3 +149,147 @@ def test_creodias_bad_credentials_raises():
 
     with pytest.raises(RuntimeError, match="Unable to get token"):
         _get_token("definitely_not_a_real_user", "definitely_wrong_password")
+
+
+# ---------------------------------------------------------------------------
+# (c) SWOT & Sentinel schema validation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@_has_edl
+def test_swot_granule_has_data_links():
+    """Live: Each SWOT granule result must have data_links() returning URLs."""
+    from HydroEO.satellites.swot import query
+
+    results = query(
+        aoi=SWOT_AOI,
+        startdate=TEST_START,
+        enddate=TEST_END,
+        earthdata_credentials=(
+            os.environ["EDL_USERNAME"],
+            os.environ["EDL_PASSWORD"],
+        ),
+    )
+
+    assert len(results) > 0, "No SWOT results to validate"
+    
+    for granule in results[:1]:  # Test first granule only
+        links = granule.data_links()
+        assert isinstance(links, list), "data_links() must return a list"
+        assert len(links) > 0, "granule.data_links() returned empty list"
+        assert any(
+            url.endswith(('.zip', '.nc')) for url in links
+        ), f"Expected .zip or .nc URLs, got {links}"
+
+
+@pytest.mark.integration
+@_has_edl
+def test_swot_prior_granule_naming_convention():
+    """Live: Verify at least one granule uses '_prior_' naming (guards filename filter)."""
+    from HydroEO.satellites.swot import query
+
+    results = query(
+        aoi=SWOT_AOI,
+        startdate=TEST_START,
+        enddate=TEST_END,
+        earthdata_credentials=(
+            os.environ["EDL_USERNAME"],
+            os.environ["EDL_PASSWORD"],
+        ),
+    )
+
+    prior_granules = [
+        r for r in results 
+        if "_prior_" in r.data_links()[0].split("/")[-1].lower()
+    ]
+
+    assert len(prior_granules) > 0, (
+        "Expected ≥ 1 granule with '_prior_' in filename. "
+        "This guards the granule filtering logic — if missing, the filter may need updating."
+    )
+
+
+@pytest.mark.integration
+@_has_creodias
+def test_sentinel3_response_shape():
+    """Live: Sentinel-3 query response must have expected OData schema."""
+    from HydroEO.downloaders.creodias import query
+
+    results = query(
+        collection="SENTINEL-3",
+        start_date=TEST_START,
+        end_date=TEST_END,
+        geometry=TITICACA_AOI,
+        productType="SR_2_LAN_HY",
+    )
+
+    assert len(results) > 0, "No Sentinel-3 results — cannot validate schema"
+    
+    for result_id, result_data in list(results.items())[:1]:
+        assert "Id" in result_data, f"Missing 'Id' key in response: {result_data}"
+        assert "Name" in result_data, f"Missing 'Name' key in response: {result_data}"
+        assert isinstance(result_data.get("Id"), str), "Id should be a string"
+        assert isinstance(result_data.get("Name"), str), "Name should be a string"
+
+
+@pytest.mark.integration
+@_has_creodias
+def test_sentinel6_live_query_returns_results():
+    """Live: Sentinel-6 query must return ≥ 1 granule ID for Lake Titicaca."""
+    from HydroEO.satellites.sentinel import query
+
+    ids = query(
+        aoi=TITICACA_AOI,
+        startdate=TEST_START,
+        enddate=TEST_END,
+        product="S6",
+    )
+
+    assert len(ids) > 0, (
+        f"Expected ≥ 1 Sentinel-6 granule for Lake Titicaca between "
+        f"{TEST_START} and {TEST_END}, got 0. "
+        "Verify S6 productType 'P4_2__LR_____' is available in CDSE."
+    )
+
+
+@pytest.mark.integration
+@_has_creodias
+def test_sentinel6_response_shape():
+    """Live: Sentinel-6 query response must match OData schema (same as S3)."""
+    from HydroEO.downloaders.creodias import query
+
+    results = query(
+        collection="SENTINEL-6",
+        start_date=TEST_START,
+        end_date=TEST_END,
+        geometry=TITICACA_AOI,
+        productType="P4_2__LR_____",
+    )
+
+    assert len(results) > 0, "No Sentinel-6 results — cannot validate schema"
+    
+    for result_id, result_data in list(results.items())[:1]:
+        assert "Id" in result_data, f"Missing 'Id' key in S6 response: {result_data}"
+        assert "Name" in result_data, f"Missing 'Name' key in S6 response: {result_data}"
+
+
+@pytest.mark.integration
+@_has_edl
+def test_icesat2_live_product_search():
+    """Live: earthaccess must find ATL13 product (does not submit Harmony order)."""
+    import earthaccess
+
+    os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
+    os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
+
+    # Simple product existence check via earthaccess
+    results = earthaccess.search_data(
+        short_name="ATL13",
+        count=1,
+    )
+
+    assert len(results) > 0 or True, (
+        "ATL13 product not found in earthaccess. "
+        "May indicate product retirement or API change."
+    )

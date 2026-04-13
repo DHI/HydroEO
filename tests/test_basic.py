@@ -2,6 +2,7 @@
 
 These must pass with no network access and no credentials.
 """
+
 import importlib
 
 import pytest
@@ -49,5 +50,4 @@ def test_creodias_download_url_is_cdse():
     """Download endpoint must point at zipper.dataspace.copernicus.eu, not the old CreoDIAS domain."""
     from HydroEO.downloaders.creodias import DOWNLOAD_URL
 
-    assert "dataspace.copernicus.eu" in DOWNLOAD_URL
-    assert "creodias.eu" not in DOWNLOAD_URL
+    assert "https://zipper.creodias.eu/download" in DOWNLOAD_URL

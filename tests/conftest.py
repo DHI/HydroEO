@@ -79,3 +79,23 @@ CDSE_ONE_RESULT_RESPONSE = {
         "links": [],   # no 'next' page
     },
 }
+
+# ---------------------------------------------------------------------------
+# HydroWeb and ICESat-2 related fixtures
+# ---------------------------------------------------------------------------
+
+import os
+
+_has_hydroweb = pytest.mark.skipif(
+    not os.environ.get("HYDROWEB_API_KEY"),
+    reason="HYDROWEB_API_KEY not set — skipping HydroWeb tests",
+)
+
+# Test AOI for ICESat-2 — Lake Titicaca (shared with Sentinel tests)
+ICESAT2_AOI = [
+    (-70.5, -16.5),
+    (-68.5, -16.5),
+    (-68.5, -15.0),
+    (-70.5, -15.0),
+    (-70.5, -16.5),
+]
