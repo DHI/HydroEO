@@ -2,6 +2,7 @@
 
 import datetime
 import pytest
+import os
 
 # ---------------------------------------------------------------------------
 # Sample identifiers (fixed for Stage 1 — do NOT change without updating CI)
@@ -84,8 +85,6 @@ CDSE_ONE_RESULT_RESPONSE = {
 # ---------------------------------------------------------------------------
 # HydroWeb and ICESat-2 related fixtures
 # ---------------------------------------------------------------------------
-
-import os
 
 _has_hydroweb = pytest.mark.skipif(
     not os.environ.get("HYDROWEB_API_KEY"),
