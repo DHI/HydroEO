@@ -23,7 +23,6 @@ def query(
     aoi: list,
     startdate: datetime.date,
     enddate: datetime.date,
-    earthdata_credentials: tuple,
     product: str = SWOT_LAKE_SHORT_NAME,
 ) -> object:
     # format coordinates and extract bounds

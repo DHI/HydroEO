@@ -103,7 +103,6 @@ class System:
                 aoi=coords,
                 startdate=startdate,
                 enddate=enddate,
-                earthdata_credentials=credentials,
             )
 
             # Filter to the prior-lake sub-collection granules.

@@ -26,7 +26,6 @@ def test_swot_query_uses_baseline_d_short_name():
             aoi=SWOT_AOI,
             startdate=TEST_START,
             enddate=TEST_END,
-            earthdata_credentials=("user", "pass"),
         )
 
     assert captured.get("short_name") == SWOT_LAKE_SHORT_NAME
