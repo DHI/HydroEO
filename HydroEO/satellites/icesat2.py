@@ -13,6 +13,144 @@ import pandas as pd
 import geopandas as gpd
 
 
+ATL13_CORE_FIELDS = ["height", "lat", "lon", "date"]
+
+ATL13_SCHEMA = {
+    "ht_ortho": {
+        "column": "height",
+        "source": "track",
+        "path": "ht_ortho",
+        "description": "Orthometric water surface height for each segment.",
+    },
+    "segment_lat": {
+        "column": "lat",
+        "source": "track",
+        "path": "segment_lat",
+        "description": "Segment latitude in decimal degrees.",
+    },
+    "segment_lon": {
+        "column": "lon",
+        "source": "track",
+        "path": "segment_lon",
+        "description": "Segment longitude in decimal degrees.",
+    },
+    "delta_time": {
+        "column": "date",
+        "source": "derived_time",
+        "path": "delta_time",
+        "description": "Seconds since ATLAS SDP epoch; converted to UTC datetime.",
+    },
+    "inland_water_body_id": {
+        "column": "wb_id",
+        "source": "track",
+        "path": "inland_water_body_id",
+        "description": "Unique inland water-body identifier.",
+    },
+    "inland_water_body_size": {
+        "column": "wb_size",
+        "source": "track",
+        "path": "inland_water_body_size",
+        "description": "Estimated water-body size class.",
+    },
+    "inland_water_body_type": {
+        "column": "wb_type",
+        "source": "track",
+        "path": "inland_water_body_type",
+        "description": "Inland water-body type classification.",
+    },
+    "segment_slope_trk_bdy": {
+        "column": "wb_slope",
+        "source": "track",
+        "path": "segment_slope_trk_bdy",
+        "description": "Along-track boundary slope estimate.",
+    },
+    "err_ht_water_surf": {
+        "column": "height_err",
+        "source": "track",
+        "path": "err_ht_water_surf",
+        "description": "Estimated uncertainty of water-surface height.",
+    },
+    "segment_quality": {
+        "column": "quality_seg",
+        "source": "track",
+        "path": "segment_quality",
+        "description": "Segment-level quality flag.",
+    },
+    "segment_geoid": {
+        "column": "geoid_track",
+        "source": "track",
+        "path": "segment_geoid",
+        "description": "Geoid height along the segment track.",
+    },
+    "segment_geoid_free2mean": {
+        "column": "geoid_corr_track",
+        "source": "track",
+        "path": "segment_geoid_free2mean",
+        "description": "Free-to-mean geoid correction term.",
+    },
+    "segment_dem_ht": {
+        "column": "dem",
+        "source": "track",
+        "path": "segment_dem_ht",
+        "description": "Reference DEM elevation sampled at segment location.",
+    },
+    "segment_near_sat_fract": {
+        "column": "sat_frac_track",
+        "source": "track",
+        "path": "segment_near_sat_fract",
+        "description": "Fraction of pulses flagged as near-saturated.",
+    },
+    "orbit_number": {
+        "column": "orbit",
+        "source": "orbit_scalar",
+        "path": "orbit_number",
+        "description": "Orbit number for the granule.",
+    },
+    "rgt": {
+        "column": "rgt",
+        "source": "orbit_scalar",
+        "path": "rgt",
+        "description": "Reference ground track identifier.",
+    },
+    "cycle_number": {
+        "column": "cycle_number",
+        "source": "orbit_scalar",
+        "path": "cycle_number",
+        "description": "Repeat-cycle number for the granule.",
+    },
+    "beam": {
+        "column": "beam",
+        "source": "derived_beam",
+        "path": "beam",
+        "description": "ICESat-2 beam key used for extraction (e.g., gt1l).",
+    },
+    "file_name": {
+        "column": "file_name",
+        "source": "derived_file",
+        "path": "file_name",
+        "description": "Source ATL13 filename.",
+    },
+}
+
+# Defaults preserve prior behavior (plus core fields required for geometry/time handling).
+ATL13_DEFAULT_FIELDS = [
+    "ht_ortho",
+    "segment_lat",
+    "segment_lon",
+    "delta_time",
+    "inland_water_body_type",
+    "inland_water_body_size",
+    "inland_water_body_id",
+    "segment_dem_ht",
+    "segment_near_sat_fract",
+    "beam",
+    "orbit_number",
+    "rgt",
+    "cycle_number",
+    "file_name",
+]
+
+
 def query(
     aoi: list,
     startdate: datetime.date,
@@ -95,78 +233,102 @@ class ATL13:
     """
     ICESat-2 utility class for reading ATL13 data from .h5 files.
 
+    Extractable ATL13 fields (config key: ``icesat2.atl13_fields``):
+    - ``ht_ortho``: orthometric water surface height for each segment.
+    - ``segment_lat``: segment latitude in decimal degrees.
+    - ``segment_lon``: segment longitude in decimal degrees.
+    - ``delta_time``: seconds since ATLAS epoch, converted to UTC datetime.
+    - ``inland_water_body_id``: unique inland water-body identifier.
+    - ``inland_water_body_size``: estimated water-body size class.
+    - ``inland_water_body_type``: inland water-body classification type.
+    - ``segment_slope_trk_bdy``: along-track boundary slope.
+    - ``err_ht_water_surf``: water-surface height uncertainty estimate.
+    - ``segment_quality``: segment-level quality flag.
+    - ``segment_geoid``: along-track geoid value.
+    - ``segment_geoid_free2mean``: free-to-mean geoid correction.
+    - ``segment_dem_ht``: sampled DEM height.
+    - ``segment_near_sat_fract``: near-saturation pulse fraction.
+    - ``orbit_number``: granule orbit number.
+    - ``rgt``: reference ground track id.
+    - ``cycle_number``: repeat-cycle number.
+    - ``beam``: beam key used for extraction.
+    - ``file_name``: source filename.
+
     Arguments:
     ----------
         infile: ATL03 file path (.h5)
         track_key: ICESat-2 ground track key
+        fields: list of fields to extract (uses ATL13_DEFAULT_FIELDS if omitted)
     """
 
     infile: str
     track_key: str
+    fields: list = None
 
     def __post_init__(self):
         self.file_name = os.path.basename(self.infile)
+        self.fields = list(dict.fromkeys(self.fields or ATL13_DEFAULT_FIELDS))
+        self._field_data = {}
+        self._track_length = 0
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
             with h5py.File(self.infile, "r") as src:
-                # Segment track heights
-                self.setattr_from_file(src, "height_seg", "ht_ortho")
-                self.setattr_from_file(src, "lat_seg", "segment_lat")
-                self.setattr_from_file(src, "lon_seg", "segment_lon")
+                for field in self.fields:
+                    self._field_data[field] = self._extract_field(src, field)
 
-                # Water body information
-                self.setattr_from_file(src, "wb_id", "inland_water_body_id")
-                self.setattr_from_file(src, "wb_size", "inland_water_body_size")
-                self.setattr_from_file(src, "wb_type", "inland_water_body_type")
+        self._track_length = self._infer_track_length()
 
-                # Segment information - error and quality
-                self.setattr_from_file(src, "wb_slope", "segment_slope_trk_bdy")
-                self.setattr_from_file(src, "height_err", "err_ht_water_surf")
-                self.setattr_from_file(src, "quality_seg", "segment_quality")
+    def _extract_field(self, src: h5py.File, field: str):
+        spec = ATL13_SCHEMA[field]
+        source = spec["source"]
 
-                # Tide/DEM corrections
-                self.setattr_from_file(src, "geoid_track", "segment_geoid")
-                self.setattr_from_file(
-                    src, "geoid_corr_track", "segment_geoid_free2mean"
-                )
-                self.setattr_from_file(src, "dem_track", "segment_dem_ht")
+        if source == "track":
+            path = spec["path"]
+            if path in src[self.track_key].keys():
+                return np.asarray(src[self.track_key][path])
+            return None
 
-                # Saturation fraction - The fraction of pulses within the short segment determined to be nearly saturated based on ATL03 geosegment rate input.
-                self.setattr_from_file(src, "sat_frac_track", "segment_near_sat_fract")
+        if source == "derived_time":
+            if "delta_time" not in src[self.track_key].keys():
+                return None
 
-                # time and date attributes
-                if "delta_time" in src[self.track_key].keys():
-                    delta_time_seg = np.asarray(
-                        src[self.track_key]["delta_time"], float
-                    )
-                    atlas_offset = np.asarray(
-                        src["ancillary_data"]["atlas_sdp_gps_epoch"]
-                    )[0]
-                    self.date = [
-                        (
-                            datetime.datetime(1980, 1, 6)
-                            + datetime.timedelta(seconds=c2_time + atlas_offset)
-                        )
-                        for c2_time in delta_time_seg
-                    ]
-                else:
-                    self.date = None
+            delta_time_seg = np.asarray(src[self.track_key]["delta_time"], float)
+            atlas_offset = np.asarray(src["ancillary_data"]["atlas_sdp_gps_epoch"])[0]
+            return [
+                datetime.datetime(1980, 1, 6)
+                + datetime.timedelta(seconds=c2_time + atlas_offset)
+                for c2_time in delta_time_seg
+            ]
 
-                # orbit information (just take the first for the granule)
-                self.orbit = np.asarray(src["orbit_info"]["orbit_number"])[0]
-                self.rgt = np.asarray(src["orbit_info"]["rgt"])[0]
-                self.cycle_number = np.asarray(src["orbit_info"]["cycle_number"])[0]
+        if source == "orbit_scalar":
+            return np.asarray(src["orbit_info"][spec["path"]])[0]
 
-    def setattr_from_file(self, src: h5py.File, name: str, attribute: str):
-        if attribute in src[self.track_key].keys():
-            self.__setattr__(name, np.asarray(src[self.track_key][attribute]))
-        else:
-            self.__setattr__(name, None)
+        if source == "derived_beam":
+            return self.track_key
+
+        if source == "derived_file":
+            return self.file_name
+
+        return None
+
+    def _infer_track_length(self) -> int:
+        for field in self.fields:
+            values = self._field_data.get(field)
+            if values is None:
+                continue
+            if np.isscalar(values) or isinstance(values, str):
+                continue
+            try:
+                return len(values)
+            except TypeError:
+                continue
+        return 0
 
     def check_height_data(self) -> bool:
-        return self.height_seg is not None
+        values = self._field_data.get("ht_ortho")
+        return values is not None
 
     def read(self) -> pd.DataFrame:
         """
@@ -178,41 +340,55 @@ class ATL13:
             track_df: Dataframe with requested variables
         """
 
-        track_df = pd.DataFrame(
-            data={
-                "height": self.height_seg,
-                "lat": self.lat_seg,
-                "lon": self.lon_seg,
-                "date": self.date,
-                "wb_type": self.wb_type,
-                "wb_size": self.wb_size,
-                "wb_id": self.wb_id,
-                "dem": self.dem_track,
-                "sat_frac_track": self.sat_frac_track,
-                "beam": self.track_key,
-                "orbit": self.orbit,
-                "rgt": self.rgt,
-                "cycle_number": self.cycle_number,
-                "file_name": self.file_name,
-            },
-            index=np.arange(len(self.height_seg)),
-        )
+        track_length = self._track_length
+        if track_length == 0:
+            return pd.DataFrame()
+
+        data = {}
+        for field in self.fields:
+            spec = ATL13_SCHEMA[field]
+            col = spec["column"]
+            values = self._field_data.get(field)
+
+            if values is None:
+                data[col] = np.repeat(np.nan, track_length)
+                continue
+
+            if np.isscalar(values) or isinstance(values, str):
+                data[col] = np.repeat(values, track_length)
+            else:
+                data[col] = values
+
+        track_df = pd.DataFrame(data=data, index=np.arange(track_length))
 
         return track_df
 
 
-def extract_observations(src_dir, dst_path, features):
+def extract_observations(
+    src_dir,
+    dst_path,
+    features,
+    atl13_fields=None,
+    track_keys=None,
+):
     # read icesat data for each availble option in directory
     gdf_list = list()
     files = list(os.listdir(src_dir))
+    fields = atl13_fields or ATL13_DEFAULT_FIELDS
+    beams = track_keys or ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]
+
     for file in files:
-        for key in ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]:
+        for key in beams:
             infile = os.path.join(src_dir, file)
-            data = ATL13(infile, key)
+            data = ATL13(infile, key, fields=fields)
 
             # check if the height data is actually present
             if data.check_height_data():
                 data_df = data.read()
+                if not {"lat", "lon"}.issubset(set(data_df.columns)):
+                    raise ValueError(
+                        "ATL13 extraction requires 'segment_lat' and 'segment_lon' fields."
+                    )
                 data_gdf = gpd.GeoDataFrame(
                     data_df, geometry=gpd.points_from_xy(data_df.lon, data_df.lat)
                 )

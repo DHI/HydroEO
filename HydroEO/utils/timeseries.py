@@ -31,7 +31,9 @@ class Timeseries:
                 )
                 return
 
-    def clean(self, filters: list):
+    def clean(self, filters: list, filter_params: dict = None):
+        filter_params = filter_params or {}
+
         ##### Ensure that provided filters are supported
         supported_filters = [
             "elevation",
@@ -51,13 +53,19 @@ class Timeseries:
         ##### Apply filters
         if "elevation" in filters:
             # edits timeseries object in place
-            fltrs.elevation_filter(self, height_range=(0, 8000))
+            fltrs.elevation_filter(
+                self,
+                height_range=(
+                    filter_params.get("elevation_min_m", 0.0),
+                    filter_params.get("elevation_max_m", 8000.0),
+                ),
+            )
 
         if "daily_mean" in filters:
             fltrs.daily_mean_merge(self)
 
         if "MAD" in filters:
-            fltrs.mad_filter(self, threshold=5)
+            fltrs.mad_filter(self, threshold=filter_params.get("mad_threshold", 5.0))
 
         if "hampel" in filters:
             fltrs.hampel(self)

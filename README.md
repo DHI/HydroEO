@@ -53,6 +53,64 @@ project.create_timeseries()
 project.generate_summaries()
 ```
 
+Configuration is validated up-front. `Project.initialize()` now calls `Project.validate_config()` and reports common issues in one error message (missing keys, invalid dates, invalid optional parameter values, and missing input paths).
+
+## Configuration controls
+HydroEO exposes mission-level optional parameters with defaults that preserve prior behaviour. Existing configs continue to run unchanged.
+
+### Common per-mission processing options
+Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6`):
+- `processing_filters`: list of filters. Allowed values: `elevation`, `MAD`, `daily_mean`, `hampel`, `rolling_median`.
+- `elevation_min_m`: lower bound used by elevation filter.
+- `elevation_max_m`: upper bound used by elevation filter.
+- `mad_threshold`: MAD outlier multiplier.
+
+### SWOT
+- `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching.
+- `exclude_obs_id_values`: list of SWOT `obs_id` values to exclude during extraction.
+
+### Sentinel-3 and Sentinel-6
+- `subset_file_id`: expected source netCDF filename inside each package.
+- `sigma0_max`: maximum accepted `sigma0` during extraction.
+- `download_threads`: thread count used for CREODIAS download batching.
+
+### ICESat-2 ATL13 field selection
+Use `icesat2.atl13_fields` to request ATL13 fields. Field names are validated at config load time.
+
+Supported ATL13 field names:
+- `ht_ortho`
+- `segment_lat`
+- `segment_lon`
+- `delta_time`
+- `inland_water_body_id`
+- `inland_water_body_size`
+- `inland_water_body_type`
+- `segment_slope_trk_bdy`
+- `err_ht_water_surf`
+- `segment_quality`
+- `segment_geoid`
+- `segment_geoid_free2mean`
+- `segment_dem_ht`
+- `segment_near_sat_fract`
+- `orbit_number`
+- `rgt`
+- `cycle_number`
+- `beam`
+- `file_name`
+
+Example:
+
+```yaml
+icesat2:
+	atl13_fields:
+		- ht_ortho
+		- segment_lat
+		- segment_lon
+		- delta_time
+		- inland_water_body_id
+		- segment_quality
+```
+
 ## Available products
 HydroEO currently supports 4 products for lake/reservoir workflows:
 

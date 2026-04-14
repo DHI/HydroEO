@@ -244,6 +244,9 @@ class System:
                     creodias_credentials=credentials,
                     token=session_token,
                     session_start_time=session_start_time,
+                    threads=getattr(self, "mission_options", {})
+                    .get("sentinel3" if product == "S3" else "sentinel6", {})
+                    .get("download_threads", 1),
                 )
 
                 # once we have finished downloading all data for the aoi, we need to unzip the files keeping only .nc files
@@ -256,6 +259,9 @@ class System:
                     aoi=coords,
                     download_dir=download_dir,
                     dest_dir=download_dir,
+                    file_id=getattr(self, "mission_options", {})
+                    .get("sentinel3" if product == "S3" else "sentinel6", {})
+                    .get("subset_file_id", "enhanced_measurement.nc"),
                     product=product,
                     show_progress=True,
                 )
@@ -285,17 +291,42 @@ class System:
 
         return df
 
-    def clean_product_timeseries(self, products: list, filters: list):
+    def clean_product_timeseries(
+        self, products: list, filter_options_by_product: dict = None
+    ):
+        filter_options_by_product = filter_options_by_product or {}
+
         for id in tqdm(self.download_gdf[self.id_key]):
             for product in products:
                 # get timeseries for id and each product to clean individually
                 df = self.get_unfiltered_product_timeseries(id, [product])
                 if df is not None:
+                    product_options = filter_options_by_product.get(
+                        product,
+                        {
+                            "processing_filters": ["elevation", "MAD"],
+                            "elevation_min_m": 0.0,
+                            "elevation_max_m": 8000.0,
+                            "mad_threshold": 5.0,
+                        },
+                    )
+
                     # create a timeseries object
                     ts = timeseries.Timeseries(df, date_key="date", height_key="height")
 
                     # run all filters on timeseries
-                    ts.clean(filters)
+                    ts.clean(
+                        product_options.get("processing_filters", ["elevation", "MAD"]),
+                        filter_params={
+                            "elevation_min_m": product_options.get(
+                                "elevation_min_m", 0.0
+                            ),
+                            "elevation_max_m": product_options.get(
+                                "elevation_max_m", 8000.0
+                            ),
+                            "mad_threshold": product_options.get("mad_threshold", 5.0),
+                        },
+                    )
 
                     # save filtered timeseries
                     export_dir = os.path.join(
@@ -657,7 +688,15 @@ class Reservoirs(System):
 
                     # extract observations within bounds and save as timeseries csv
                     icesat2.extract_observations(
-                        src_dir=download_dir, dst_path=dst_path, features=sub_gdf
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=sub_gdf,
+                        atl13_fields=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("atl13_fields"),
+                        track_keys=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("track_keys"),
                     )
 
         if "sentinel3" in products:
@@ -680,7 +719,12 @@ class Reservoirs(System):
 
                     # extract observations within bounds and save as timeseries csv
                     sentinel.extract_observations(
-                        src_dir=download_dir, dst_path=dst_path, features=sub_gdf
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=sub_gdf,
+                        sigma0_max=getattr(self, "mission_options", {})
+                        .get("sentinel3", {})
+                        .get("sigma0_max", 1e5),
                     )
 
         if "sentinel6" in products:
@@ -703,7 +747,12 @@ class Reservoirs(System):
 
                     # extract observations within bounds and save as timeseries csv
                     sentinel.extract_observations(
-                        src_dir=download_dir, dst_path=dst_path, features=sub_gdf
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=sub_gdf,
+                        sigma0_max=getattr(self, "mission_options", {})
+                        .get("sentinel6", {})
+                        .get("sigma0_max", 1e5),
                     )
 
         if "swot" in products:
@@ -716,6 +765,9 @@ class Reservoirs(System):
                 dst_file_name="swot.shp",
                 features=self.download_gdf,
                 id_key=self.id_key,
+                exclude_obs_id_values=getattr(self, "mission_options", {})
+                .get("swot", {})
+                .get("exclude_obs_id_values", ["no_data"]),
             )
 
 

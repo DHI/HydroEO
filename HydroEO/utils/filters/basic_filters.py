@@ -8,8 +8,9 @@ from datetime import datetime
 
 
 def elevation_filter(timeseries, height_range):
-    timeseries.df = timeseries.df.loc[timeseries.df[timeseries.height_key] > 0]
-    timeseries.df = timeseries.df.loc[timeseries.df[timeseries.height_key] < 8000]
+    min_height, max_height = height_range
+    timeseries.df = timeseries.df.loc[timeseries.df[timeseries.height_key] > min_height]
+    timeseries.df = timeseries.df.loc[timeseries.df[timeseries.height_key] < max_height]
 
     timeseries.df = timeseries.df.reset_index(drop=True)
     timeseries.df.sort_values(by=timeseries.date_key)

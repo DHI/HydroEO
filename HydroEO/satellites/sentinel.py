@@ -227,6 +227,7 @@ def download(
     creodias_credentials: tuple,
     token: str = None,
     session_start_time: str = None,
+    threads: int = 1,
 ):
     # Check if we have a progress log file in this directory, if not make it
     log_path = os.path.join(download_directory, "downloaded.log")
@@ -255,7 +256,7 @@ def download(
         session_start_time=session_start_time,
         outdir=download_directory,
         log_file=log_path,
-        threads=1,
+        threads=threads,
     )
 
     """ # Code using the single download function which generates a token for each download and hits the session limit
@@ -899,7 +900,7 @@ class Sentinel6(Sentinel):
         return vs
 
 
-def extract_observations(src_dir, dst_path, features):
+def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
     # read data for each availble option in directory
     gdf_list = list()
     files = list(os.listdir(src_dir))
@@ -940,9 +941,9 @@ def extract_observations(src_dir, dst_path, features):
                     ].reset_index(drop=True)
                     if len(data_gdf) > 0:
                         # filter by sigma0
-                        data_gdf = data_gdf.loc[data_gdf.sigma0 < 1e5].reset_index(
-                            drop=True
-                        )
+                        data_gdf = data_gdf.loc[
+                            data_gdf.sigma0 < sigma0_max
+                        ].reset_index(drop=True)
 
                         # add platform by satellite type
                         data_gdf["platform"] = platform
