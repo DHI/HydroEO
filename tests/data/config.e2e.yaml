@@ -1,0 +1,40 @@
+project:
+  main_dir: "/tmp/hydroeo-e2e"
+
+gis:
+  global_crs: "EPSG:4326"
+
+reservoirs:
+  path: "notebooks/example_data/example_res.shp"
+  id_key: "project"
+
+hydroweb:
+  PLD_path: "/tmp/hydroeo-e2e/PLD_subset.shp"
+
+swot:
+  download: true
+  process: true
+  download_dir: "/tmp/hydroeo-e2e/swot"
+  startdate: [2024, 1, 1]
+  enddate: [2024, 2, 1]
+
+icesat2:
+  download: true
+  process: true
+  download_dir: "/tmp/hydroeo-e2e/icesat2"
+  startdate: [2024, 1, 1]
+  enddate: [2024, 2, 1]
+
+sentinel3:
+  download: true
+  process: true
+  download_dir: "/tmp/hydroeo-e2e/sentinel3"
+  startdate: [2024, 1, 1]
+  enddate: [2024, 2, 1]
+
+sentinel6:
+  download: true
+  process: true
+  download_dir: "/tmp/hydroeo-e2e/sentinel6"
+  startdate: [2024, 1, 1]
+  enddate: [2024, 2, 1]

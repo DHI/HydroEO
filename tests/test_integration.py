@@ -48,7 +48,7 @@ TITICACA_AOI = [
 
 _has_edl = pytest.mark.skipif(
     not (os.environ.get("EDL_USERNAME") and os.environ.get("EDL_PASSWORD")),
-    reason="EDL_USERNAME / EDL_PASSWORD not set — skipping live SWOT test",
+    reason="EDL_USERNAME / EDL_PASSWORD not set — skipping EDL-backed live tests",
 )
 
 _has_creodias = pytest.mark.skipif(
@@ -272,20 +272,30 @@ def test_sentinel6_response_shape():
 
 @pytest.mark.integration
 @_has_edl
-def test_icesat2_live_product_search():
-    """Live: earthaccess must find ATL13 product (does not submit Harmony order)."""
-    import earthaccess
+def test_icesat2_live_harmony_query_downloads_atl13(tmp_path):
+    """Live: ATL13 request should run through Harmony and download at least one file."""
+    from HydroEO.satellites import icesat2
 
     os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
     os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
 
-    # Simple product existence check via earthaccess
-    results = earthaccess.search_data(
-        short_name="ATL13",
-        count=1,
+    download_dir = tmp_path / "icesat2_harmony"
+    download_dir.mkdir(parents=True, exist_ok=True)
+
+    _ = icesat2.query(
+        aoi=TITICACA_AOI,
+        startdate=TEST_START,
+        enddate=TEST_END,
+        earthdata_credentials=(
+            os.environ["EDL_USERNAME"],
+            os.environ["EDL_PASSWORD"],
+        ),
+        download_directory=str(download_dir),
+        product="ATL13",
     )
 
-    assert len(results) > 0 or True, (
-        "ATL13 product not found in earthaccess. "
-        "May indicate product retirement or API change."
+    downloaded_files = [p for p in download_dir.rglob("*") if p.is_file()]
+    assert len(downloaded_files) > 0, (
+        "Harmony ATL13 query completed but no files were downloaded. "
+        "Check Harmony availability, ATL13 coverage, or auth configuration."
     )
