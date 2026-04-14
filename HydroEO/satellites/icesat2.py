@@ -5,7 +5,7 @@ import datetime
 
 from HydroEO.utils import geometry
 
-from harmony import WKT, Client, Collection, Request
+from harmony import WKT, BBox, Client, Collection, Request
 
 import h5py
 import numpy as np
@@ -21,6 +21,8 @@ def query(
     download_directory: str,
     product: str = "ATL13",
 ) -> object:
+    aoi = geometry.format_coord_list(aoi)
+
     # check for credentials, then token then netrc
     token = os.getenv("EDL_TOKEN")
     if earthdata_credentials is not None:
@@ -33,7 +35,7 @@ def query(
     else:
         harmony_client = Client(token=token)
 
-    # make the hamony request
+    # make the harmony request (WKT keeps the exact polygon footprint)
     request = Request(
         collection=Collection(id=product),
         spatial=WKT(geometry.poly_coord_list_to_wkt(aoi)),
@@ -46,7 +48,27 @@ def query(
     # check if the request is valide
     if request.is_valid():
         # submit the job
-        job_id = harmony_client.submit(request)
+        try:
+            job_id = harmony_client.submit(request)
+        except Exception as exc:
+            # Compatibility fallback for harmony-py/server combinations where
+            # EDR requests fail with: body parameter "forceAsync" should be string.
+            if "forceAsync" in str(exc) and "should be string" in str(exc):
+                lons = [coord[0] for coord in aoi]
+                lats = [coord[1] for coord in aoi]
+                west, east = min(lons), max(lons)
+                south, north = min(lats), max(lats)
+                request = Request(
+                    collection=Collection(id=product),
+                    spatial=BBox(w=west, s=south, e=east, n=north),
+                    temporal={
+                        "start": startdate,
+                        "stop": enddate,
+                    },
+                )
+                job_id = harmony_client.submit(request)
+            else:
+                raise
 
         # wait for job to be processed
         print(f"Processing Jobid: {job_id}, please wait...")

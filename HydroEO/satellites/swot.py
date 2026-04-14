@@ -15,12 +15,15 @@ import datetime
 from HydroEO.utils import general, geometry
 
 
+# Baseline D short name (supersedes Version C / 2.0)
+SWOT_LAKE_SHORT_NAME = "SWOT_L2_HR_LakeSP_D"
+
+
 def query(
     aoi: list,
     startdate: datetime.date,
     enddate: datetime.date,
-    earthdata_credentials: tuple,
-    product: str = "SWOT_L2_HR_LakeSP_2.0",
+    product: str = SWOT_LAKE_SHORT_NAME,
 ) -> object:
     # format coordinates and extract bounds
     aoi = geometry.format_coord_list(aoi)
@@ -60,14 +63,15 @@ def download(results, download_directory: str):
         if file_name not in downloaded_ids:
             to_download.append(result)
 
-    print(f"{len(results)-len(to_download)} files shown as downloaded in log")
+    print(f"{len(results) - len(to_download)} files shown as downloaded in log")
     print(f"{len(to_download)} will be downloaded")
     if to_download:
         files = earthaccess.download(to_download, download_directory)
 
         with open(log_path, "a") as log:
             for file in files:
-                log.write(file.split("\\")[-1].split(".zip")[0] + "\n")
+                file_name = str(file).replace("\\", "/").split("/")[-1]
+                log.write(file_name.split(".zip")[0] + "\n")
 
         return files
 
@@ -145,7 +149,7 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
             # if we have observations for this reservoir export it
             if len(observations) > 0:
                 observations["platform"] = "swot"
-                observations["product"] = "SWOT_L2_HR_LakeSP_2.0"
+                observations["product"] = SWOT_LAKE_SHORT_NAME
                 observations["height"] = observations.wse
                 observations["date"] = pd.to_datetime(observations.time_str)
                 observations["orbit"] = (

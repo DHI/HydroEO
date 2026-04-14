@@ -43,6 +43,7 @@ class System:
 
         # check if the requested product is supported
         product = product.upper()
+
         if product not in supported_products:
             raise ValueError(
                 f'"{product}" is not accepted as a valid download product. Please provide a valid product.'
@@ -94,28 +95,27 @@ class System:
                 for x, y in self.download_gdf.unary_union.envelope.exterior.coords
             ]
 
-            # query all available data
+            # query all available data — uses baseline D product (SWOT_L2_HR_LakeSP_D)
             print(
-                f"Searching for SWOT_L2_HR_LakeSP_2.0 for aoi from {startdate} to {enddate}"
+                f"Searching for {swot.SWOT_LAKE_SHORT_NAME} for aoi from {startdate} to {enddate}"
             )
             results = swot.query(
                 aoi=coords,
                 startdate=startdate,
                 enddate=enddate,
-                earthdata_credentials=credentials,
-                product="SWOT_L2_HR_LakeSP_2.0",
             )
 
-            # loop through results and check if it is the product we want (right now it must include "Prior"), later we can try and get the observed water bodies and match them
+            # Filter to the prior-lake sub-collection granules.
+            # Baseline D file names end with "_prior_*" (lower-case); baseline C
+            # used "_Prior_*" (title-case). We match both for robustness.
             print(f"{len(results)} products returned from query")
             to_download = list()
             for result in results:
-                # just based on that we know where to find the long product name and download link, may need to change if naming conventions change!
-                product_pieces = result.data_links()[0].split("/")[-1].split("_")
-
-                if "Prior" in product_pieces:
+                link = result.data_links()[0]
+                filename = link.split("/")[-1].lower()
+                if "_prior_" in filename or "prior" in filename.split("_"):
                     to_download.append(result)
-            print(f"{len(to_download)} products of 'Prior' type")
+            print(f"{len(to_download)} prior-lake granules selected for download")
 
             # download the individual file
             _ = swot.download(to_download, download_directory=download_dir)
@@ -161,7 +161,9 @@ class System:
                 ]
 
                 # define and if needed create directory for each download geometry
-                download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
+                download_dir = os.path.join(
+                    self.dirs["icesat2"], rf"{self.type}", rf"{id}"
+                )
                 general.ifnotmakedirs(download_dir)
 
                 # query and download data
@@ -215,11 +217,11 @@ class System:
                 # make directiories for download, if needed
                 if product == "S3":
                     download_dir = os.path.join(
-                        self.dirs["sentinel3"], rf"{self.type}\{id}"
+                        self.dirs["sentinel3"], rf"{self.type}", rf"{id}"
                     )
                 if product == "S6":
                     download_dir = os.path.join(
-                        self.dirs["sentinel6"], rf"{self.type}\{id}"
+                        self.dirs["sentinel6"], rf"{self.type}", rf"{id}"
                     )
                 general.ifnotmakedirs(download_dir)
 
@@ -232,6 +234,7 @@ class System:
                     startdate=startdate,
                     enddate=enddate,
                     product=product,
+                    creodias_credentials=credentials,
                 )
 
                 # download granules that havent already been logged as downloaded
@@ -249,19 +252,16 @@ class System:
                 )
 
                 # subset the data so that we only keep what lies within the download geometry
-                try:
-                    sentinel.subset(
-                        aoi=coords,
-                        download_dir=download_dir,
-                        dest_dir=download_dir,
-                        product=product,
-                        show_progress=True,
-                    )
-                except Exception:
-                    print("Unable to subset data")
+                sentinel.subset(
+                    aoi=coords,
+                    download_dir=download_dir,
+                    dest_dir=download_dir,
+                    product=product,
+                    show_progress=True,
+                )
 
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
-                general.remove_non_exts(download_dir, [".nc", ".log"])
+                # general.remove_non_exts(download_dir, [".nc", ".log"]) # TODO: uncomment
 
     def get_unfiltered_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
@@ -321,7 +321,9 @@ class System:
             # concatenate everything into one dataframe
             if len(df_list) > 0:
                 df = pd.concat(df_list)
-                df["date"] = pd.to_datetime(df.date)
+                df["date"] = pd.to_datetime(
+                    df.date, format="mixed", utc=True
+                ).dt.tz_convert(None)
                 df = df.sort_values(by="date")
             else:
                 df = None  # TODO: maybe raise an error instead?
@@ -616,8 +618,19 @@ class Reservoirs(System):
         present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
         missing = self.gdf.loc[self.gdf.prior_lake_id < 0].reset_index(drop=True)
 
-        present.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
-        missing.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
+        # ESRI Shapefile limits field names to 10 chars. Rename explicitly so
+        # writes are deterministic and avoid pyogrio truncation warnings.
+        shp_field_map = {
+            "index_right": "idx_right",
+            "prior_lake_id": "prior_lake",
+            "prior_res_id": "prior_res",
+            "dist_to_pld": "dist_pld",
+        }
+        present_out = present.rename(columns=shp_field_map)
+        missing_out = missing.rename(columns=shp_field_map)
+
+        present_out.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
+        missing_out.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
 
         print(
             f"Out of the {len(self.gdf)} reservoirs, {len(present)} are present and {len(missing)} are missing from the PLD."
@@ -632,7 +645,9 @@ class Reservoirs(System):
                 sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
 
                 # prep export folder and paths
-                download_dir = os.path.join(self.dirs["icesat2"], rf"{self.type}\{id}")
+                download_dir = os.path.join(
+                    self.dirs["icesat2"], rf"{self.type}", rf"{id}"
+                )
                 if os.path.exists(download_dir):
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
@@ -654,7 +669,7 @@ class Reservoirs(System):
 
                 # prep export folder and paths
                 download_dir = os.path.join(
-                    self.dirs["sentinel3"], rf"{self.type}\{id}"
+                    self.dirs["sentinel3"], rf"{self.type}", rf"{id}"
                 )
                 if os.path.exists(download_dir):
                     dst_dir = os.path.join(
@@ -677,7 +692,7 @@ class Reservoirs(System):
 
                 # prep export folder and paths
                 download_dir = os.path.join(
-                    self.dirs["sentinel6"], rf"{self.type}\{id}"
+                    self.dirs["sentinel6"], rf"{self.type}", rf"{id}"
                 )
                 if os.path.exists(download_dir):
                     dst_dir = os.path.join(
@@ -774,7 +789,7 @@ class Reservoirs(System):
 #         for id in tqdm(self.grid.index):
 #             # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
 #             download_directory = os.path.join(
-#                 self.dirs["icesat2"], rf"{self.type}\{id}"
+#                 self.dirs["icesat2"], rf"{self.type}", rf"{id}"
 #             )
 #             if os.path.exists(download_directory):
 #                 # load date for all tracks and crossings

@@ -4,185 +4,149 @@
 Repo to allow users with little EO (Earth Observation) knowledge to access and download altimetry over reservoirs and lakes for integration into larger water resource projects.
 
 > [!CAUTION]
-> HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/rk-altimetry/issues
+> HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/HydroEO/issues
 
 ## Installation
-> Note: Ensure that `pip` and `git` are installed on your system before running the following command.
+> Note: Ensure that `uv` and `git` are installed on your system before running the following command.
+
+**System dependency:** If you plan to download SWOT data, you must have **spatialite** installed at the OS level for spatial SQLite query support:
+
 ```sh
-pip install git+https://github.com/DHI/rk-altimetry.git
+# macOS (Homebrew)
+brew install spatialite
+
+# Ubuntu/Debian
+sudo apt-get install libspatialite-dev libspatialite7
+
+# Fedora/RHEL
+sudo dnf install spatialite-libs spatialite-devel
+```
+
+Then install HydroEO:
+
+```sh
+git clone https://github.com/DHI/HydroEO.git
+cd HydroEO
+uv sync
 ```
 #### Python versions
 HydroEO currently runs on Python 3.9 - 3.12.
 
-## How to get started
-> Users can find usage examples in the [`notebooks`](./notebooks) directory.
+## Quick start
+Usage examples are available in [notebooks](./notebooks), and a complete sample configuration is in [notebooks/example_config.yaml](./notebooks/example_config.yaml).
 
-The altimetry project is initialized entirely from information within the provided config file. You can find an example configuration file in `notebooks/example_config.yaml`.
-The configuration file includes information on the project directory, reservoir shape file location, gis info as well as credentials for downloading data from various locations. Importantly, this is also where you will specify which satellite products you wish to download and process and for which dates to download. The following will walk you through the different components of the configuration file and explain what is needed when specifying each aspect.
+HydroEO projects are configured with:
+- project output location and CRS
+- reservoir polygons and unique reservoir ID key
+- provider credentials (Earthdata, CREODIAS, HydroWeb API key)
+- per-product download/process flags and date ranges
 
+Minimal workflow:
 
-
-1) General project information
-
-Each project must be initialized with a main directory which is where the processed data and timeseries will be stored. This allows for a previously initialized project to be loaded and updated with new data
-```
-project :
-  main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
-
-gis :
-  global_crs : 'EPSG:4326'
-```
-
-2) Reservoir polygon shapefile
-
-Reservoir information must be provided within a single shapefile that is specified within the config file. A column must be specified in which a waterbodies unique id is provided. The project will automatically process data for all provided polygons.
-```
-reservoirs :
-  path : "C:\\Users\\username\\altimetry_project\\reservoirs.shp" # path to the shapefile holding one or more resevoirs per feature
-  id_key : 'project' # the key within the shapefile to the column that holds the unique reservoir ids
-```
-
-3) Login credentials for data providers
-
-In order to download data, an account must be made with the appropriate providers. Here you can find information on which providers are needed for each satellite product and how to specify your credentials either in the configuration file or your environment
-
-##### SWOT and ICESat-2
-Data provided by NASA (SWOT and ICESat-2) is accessed through the earthaccess python package which allows for easy downloads using your Earth Data Login credentials. You can register for a free Earth Data Login account at [https://urs.earthdata.nasa.gov/](https://urs.earthdata.nasa.gov/). By default, earthaccess will look for your Earth Data Login credentials in a .netrc file, or in environment variables EARTHDATA_USERNAME and EARTHDATA_PASSWORD. If you do not set one of these before running, your credentials must be provided within the config file, which will set the environment variables for you. 
-```
-earthaccess:
-  username : ""
-  password : ""
-```
-
-If wishing to download SWOT data, reference to the Prior Lake Database (PLD) must be made. If you do not already have a downloaded version, a subset of the PLD will be downloaded from Hydroweb. If you do not have an account already, you should create an account here: [https://hydroweb.next.theia-land.fr/](https://hydroweb.next.theia-land.fr/). Once your account is made, navigate to the User settings and create an API key. Copy this key and add it to the corresponding spot within the config file.
-```
-hydroweb:
-  api_key : "" # you may set the api key directly in the environment rather than in the config file (this helps keep it secret) do so by setting 'EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY=YOURAPIKEY'
-  PLD_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp" # path to which the downloaded SWOT PLD file will be saved or loaded from if it already exists
-```
-
-##### Sentinel-3 and Sentinel-6
-Data provided by ESA (Sentinel 3 and Sentinel 6) is accessed through the copernicus data space. Create a free account here: https://dataspace.copernicus.eu/. Credentials must be provided in the config file directly.
-```
-creodias:
-  username : ""
-  password : ""
-```
-
-4) Specifying which date and product information
-
-You can choose which products you wish to download and provide specific dates for individual products. You may wish to set a specific location for where to save the raw data. When running the typical workflow, the raw data will be deleted after subsetting to the reservoir boundary. The configuration file for downloading all data would be completed as follows:
-
-```
-swot:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\swot"
-  startdate : [2023, 1, 1] # [year, month, day] format
-  enddate   : [2025, 01, 01]
-
-icesat2:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2"
-  startdate : [2019, 1, 1] # [year, month, day] format
-  enddate   : [2025, 01, 01]
-
-sentinel3:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel3"
-  startdate : [2016, 1, 1] # [year, month, day] format
-  enddate   : [2025, 01, 01]
-
-sentinel6:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel6"
-  startdate : [2021, 1, 1] # [year, month, day] format
-  enddate   : [2025, 01, 01]
-```
-
-Please see the example configuration file in the notebooks folder for a complete example to download all support products
-
-
-5) Make your first downloads
-
-Downloading, cleaning and viewing data for your reservoirs can be as simple as a couple lines. See the example notebook for more options and a complete overview.
-
-```
+```python
 from HydroEO.project import Project
-altimetry_project = Project(name="my_altimetry_project", config="config.yaml")
-altimetry_project.initialize()
-altimetry_project.download()
-altimetry_project.create_timeseries()
-altimetry_project.generate_summaries()
+
+project = Project(name="my_altimetry_project", config="config.yaml")
+project.initialize()
+project.download()
+project.create_timeseries()
+project.generate_summaries()
 ```
 
-## More details into available satellite products
-You can find an overview of the different satellites and products support here. It may be helpful to familiarize yourself with mission details and repeat orbits to understand the benefits and shortcomings of each product. Typically it will be beneficial to download data from all available satellites as this will provide the best temporal coverage.
+## Available products
+HydroEO currently supports 4 products for lake/reservoir workflows:
 
-### Surface Water Ocean and Topography (SWOT) mission
+| Product key | Source mission | Typical coverage | Key retrievable parameters |
+| --- | --- | --- | --- |
+| `SWOT_LAKE` | SWOT | 2023-present | water surface elevation, water area/storage-related metrics, quality flags |
+| `ATL13` | ICESat-2 | 2018-present | inland water surface elevation, along-track geometry, quality metadata |
+| `S3` | Sentinel-3A/B | 2016-present | latitude, longitude, elevation, waveform, backscatter (`sig0`), time, altitude, tracker/range variables, geoid |
+| `S6` | Sentinel-6 | 2020-present | latitude, longitude, altitude, `range_ocog`, wet/dry tropospheric corrections, backscatter, time, geoid |
 
-The Surface Water and Ocean Topography (SWOT) mission will be NASA's first global survey of Earth's surface water, tackling pressing issues such as availability of Earth's freshwater resources, our changing ocean and coasts, and much more. Their studies will be essential for achieving societal goals of clean air and water, preparedness for extreme events, and adaptation to long-term environmental changes on continental scales. Using state-of-the-art "radar interferometry" technology to measure the elevation of water, SWOT will observe major lakes, rivers and wetlands while detecting ocean features with unprecedented resolution. SWOT data will provide critical information that is needed to assess water resources on land, track regional sea level changes, monitor coastal processes, and observe small-scale ocean currents and eddies. Using JPL-developed instrument technology, radar interferometry, KaRIn will measure ocean and surface water levels over a 120-km (75-mi) wide swath with a ~20 km (~12 mi) gap along nadir.
+Common across products: geolocation, observation time, water level/elevation-style measurements, and quality metadata.
 
+## Running tests
+The development environment with all testing tools is set up via:
 
-### ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13)
-![](images/icesat2-hqprint.jpg)
-https://science.nasa.gov/wp-content/uploads/2023/06/icesat2-hqprint-print.jpg?w=4096&format=jpeg
+```sh
+uv sync --all-extras
+```
 
-ICESat-2 is the second of NASA's "Ice, Cloud, and Land Elevation Satellites" carrying a photon-counting laser altimeter called "ATLAS". While the satellite is originally intended to monitor changes in the cryosphere, it has proven extremely useful for inland water applications. The ATLAS instrument has six beams organized into 3 pairs. The distance between two beams within a pair is 90 meters and 3.3km between pairs. The 6 beam design increases the chances of capturing waterbodies and allows a user to infer the slope of a river reach from the 6 nearby crossing, which proves useful in 1D hydrodynamic modelling (https://www.nature.com/articles/s41597-023-02215-x). Given its intended use, the orbit design for ICESat-2 prioritizes latitudes closer to the poles, meaning that if your area of interest is closer to the equator you can expect a more temporally sparse timeseries for a given crossing. The satellite operates with a repeat cycle of 91 days meaning that you can expect a maximum of 91 days between water surface height observations, though if two orbits cross nearby the target, you can have more frequent observations. 
+Once set up, run test suites with:
 
-The ATLAS/ICESat-2 L3A Inland Water Surface Height (ATL13 - https://nsidc.org/data/atl13/versions/6) product provides along-track water surface heights and descriptive statistics for inland water bodies. Inland water bodies include lakes, reservoirs, rivers, bays, estuaries and a 7km near-shore buffer. This product is a good start for the development of an interal altimetry utility because the product is already processed and provides reliable levels without much expert inspection. The downside being the sparse temporal series making its use for creating virtual stations along rivers limited. For more information on this satellite see: https://nsidc.org/data/icesat-2 and https://icesat-2.gsfc.nasa.gov/.
+```sh
+# Run all tests
+make test
 
-Summary of mission details:
-- Dates: October 2018 to present
-- Spatial bounds: [N:90 S:-90 E:180 W:-180 degrees]
-- Repeat orbit: 91-days
-- 6 beams per pass
+# Unit tests (fast, mocked)
+uv run pytest -m unit
 
-Example of ground track and beam setup for ICESat-2:
-![](images/ICESat2BeamPattern.png)
-[https://icesat-2.gsfc.nasa.gov/science/specs](https://icesat-2.gsfc.nasa.gov/science/specs)
+# API contract tests (endpoint/schema checks)
+uv run pytest -m api_contract
 
+# Integration tests (live API calls)
+uv run pytest -m integration -v
 
-### Sentinel-3A, 3B
-![](images/S3_instruments.png)
-([https://sentiwiki.copernicus.eu/web/s3-mission], Figure 2)(https://sentiwiki.copernicus.eu/web/s3-mission)
+# Coverage report
+make coverage
+```
 
-ESA's Sentinel-3 satellites carry 3 instruments (OLCI, SLSTR and an altimetry payload) designed to serve a range of applications within the scope of understanding and monitoring global climatic phenomena. Inland water applications rely on the Altimetry Surface Topography Mission (STM) payload, which includes the dual frequency Sentinel-3 Radar Altimeter (SRAL). The altimeter operates by emitting and receiving a single across-track pulse every ca. 2 km.
+For just the core package (without dev/test/notebook dependencies), use `uv sync` as shown in Installation.
 
-![](images/S3_swaths.png)
-([https://sentiwiki.copernicus.eu/web/s3-mission], Figure 3)(https://sentiwiki.copernicus.eu/web/s3-mission)
+### Pytest markers in this repo
+Markers are defined in [pyproject.toml](./pyproject.toml):
 
-Sentinel 3-A and Sentinel 3-B operate on the same orbit +/- 140 degrees, in order to increase spatial coverage of data. The repeat cycle for both satellites is of 27 days.
+- `unit`: fast mocked tests with no external network dependency.
+- `integration`: live tests that call external services and require valid credentials.
+- `api_contract`: tests focused on endpoint reachability and response schema expectations.
 
-Summary of Altimetry Surface Topography Mission details:
-- Dates: Sentinel 3-A: 2016 to present, Sentinel 3-B: 2018 to present
-- Spatial bounds: [N:90 S:-90 E:180 W:-180 degrees]
-- Repeat orbit: 27-days
-- 52 km inter-track separation between the two satellites
+### Credentials for tests
+Both Earthdata variable naming schemes are needed in practice:
+- some tests and wrappers use `EDL_USERNAME` / `EDL_PASSWORD`
+- earthaccess login paths use `EARTHDATA_USERNAME` / `EARTHDATA_PASSWORD`
 
-The sentinel series can therefore provide more temporally dense inland water observations. Currently there is no support for downloading and including this data within virtual stations.
+Set both pairs to the same values when running the full suite:
 
+```sh
+export EDL_USERNAME="your_earthdata_username"
+export EDL_PASSWORD="your_earthdata_password"
+export EARTHDATA_USERNAME="$EDL_USERNAME"
+export EARTHDATA_PASSWORD="$EDL_PASSWORD"
+export CREODIAS_USERNAME="your_creodias_username"
+export CREODIAS_PASSWORD="your_creodias_password"
+export HYDROWEB_API_KEY="your_hydroweb_api_key"
+```
 
-### Sentinel-6
-![](images/sentinel-6-instruments-payload.jpg)
-[https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-6/instrument-payload](https://sentinels.copernicus.eu/web/sentinel/missions/sentinel-6/instrument-payload)
+## Project structure
+Key modules:
+- `HydroEO/project.py`: high-level project workflow orchestration.
+- `HydroEO/system.py`: core system and reservoir handling.
+- `HydroEO/satellites/swot.py`: SWOT query/download/subset handling.
+- `HydroEO/satellites/icesat2.py`: ICESat-2 query/download/subset handling.
+- `HydroEO/satellites/sentinel.py`: Sentinel-3 and Sentinel-6 handling.
+- `HydroEO/downloaders/creodias.py`: CREODIAS/CDSE queries and download helpers.
+- `HydroEO/downloaders/hydroweb.py`: HydroWeb integration and PLD support.
 
-The Sentinel-6 mission, also known as the Jason Continuity of Service (Jason-CS) mission, is a collaboration between ESA, NASA, NOAA, and EUMETSAT. The mission's primary objective is to measure sea surface height with high accuracy, but it also provides valuable data for inland water applications. The satellite carries the Poseidon-4 radar altimeter, which operates in a low-resolution mode (LRM) and a synthetic aperture radar mode (SAR). The first satellite, Sentinel-6 Michael Freilich has been launched in November 2020, while the second satellite of the mission is expected to be launched in 2025.
+## More resources
+- Notebooks: [notebooks](./notebooks)
 
-Summary of Sentinel-6 mission details:
-- Dates: Sentinel-6 Michael Freilich: November 2020 to present
-- Spatial bounds: [N:66 S:-66 E:180 W:-180 degrees]
-- Repeat orbit: 10 days
-- High-resolution measurements with SAR mode
+## CI/CD and GitHub setup
 
-The Sentinel-6 mission provides high-resolution altimetry data that can be used to monitor inland water bodies, including lakes and reservoirs. The 10-day repeat cycle allows for frequent observations, making it a valuable addition to the suite of satellite products for water resource applications.
+**Automated checks** run on every push and pull request via GitHub Actions (see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
-Example of ground track for Sentinel-6:
-![](images/Sentinel-6_tracks.jpg)
-[https://www.esa.int/ESA_Multimedia/Images/2020/11/Copernicus_Sentinel-6_orbital_tracks](https://www.esa.int/ESA_Multimedia/Images/2020/11/Copernicus_Sentinel-6_orbital_tracks)
+1. **Lint** (ruff) — checks code style and imports
+2. **Unit tests** — runs on Ubuntu and Windows, Python 3.9 and 3.12; publishes coverage to Codecov
+3. **Integration tests** — runs live API calls (only on official repo when enabled)
 
+**For repo maintainers:** To enable live integration tests, set these GitHub secrets and variables:
 
-Combining data from Sentinel-6 with other missions like SWOT, ICESat-2, and Sentinel-3 can enhance the temporal and spatial coverage of water level observations. This multi-mission approach provides a more comprehensive understanding of water dynamics.
+*Secrets:*
+- `EDL_USERNAME` — Earthdata Login username for NASA SWOT/ICESat-2 access
+- `EDL_PASSWORD` — Earthdata Login password
+- `CREODIAS_USERNAME` — Copernicus CDSE username for Sentinel-3/6 access
+- `CREODIAS_PASSWORD` — Copernicus CDSE password
+
+*Repository variables:*
+- `RUN_INTEGRATION_TESTS` = `true` — enables integration tests on push (forks and PRs will skip them automatically)
+
+Integration tests require live credentials and are gated to prevent exposure on untrusted branches.

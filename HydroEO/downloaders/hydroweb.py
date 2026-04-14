@@ -28,6 +28,8 @@ For more documentation about how to use the py-hydroweb lib, please refer to htt
 
 
 def download_PLD(download_dir: str, file_name: str, bounds: list):
+    # TODO: add check that .zip exists and is not empty before downloading, to avoid unnecessary downloads and unzipping.
+
     # create download directory if needed
     general.ifnotmakedirs(download_dir)
 

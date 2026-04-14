@@ -52,30 +52,56 @@ class Project:
             raise Warning("Project directory must be defined within configuration file")
 
         ##### Set credentials and access keys
-        if "hydroweb" in self.config.keys():
-            if "api_key" in self.config["hydroweb"]:
-                # os.environ["EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY"] = (
-                #     self.config["hydroweb"]["api_key"]
-                # )
-                os.environ["HYDROWEB_API_KEY"] = self.config["hydroweb"]["api_key"]
+        hydroweb_cfg = self.config.get("hydroweb", {})
+        hydroweb_api_key = hydroweb_cfg.get("api_key") or os.environ.get(
+            "HYDROWEB_API_KEY"
+        )
+        if hydroweb_api_key:
+            os.environ["HYDROWEB_API_KEY"] = hydroweb_api_key
 
-            if "PLD_path" in self.config["hydroweb"]:
-                self.dirs["pld"] = self.config["hydroweb"]["PLD_path"]
+        if "PLD_path" in hydroweb_cfg:
+            self.dirs["pld"] = hydroweb_cfg["PLD_path"]
 
-        if "earthaccess" in self.config.keys():
-            if "username" in self.config["earthaccess"].keys():
-                self.earthdata_user = self.config["earthaccess"]["username"]
-                self.earthdata_pass = self.config["earthaccess"]["password"]
+        earthaccess_cfg = self.config.get("earthaccess", {})
+        self.earthdata_user = (
+            earthaccess_cfg.get("username")
+            or os.environ.get("EARTHDATA_USERNAME")
+            or os.environ.get("EDL_USERNAME")
+        )
+        self.earthdata_pass = (
+            earthaccess_cfg.get("password")
+            or os.environ.get("EARTHDATA_PASSWORD")
+            or os.environ.get("EDL_PASSWORD")
+        )
 
-                os.environ["EDL_USERNAME"] = self.earthdata_user
-                os.environ["EDL_PASSWORD"] = self.earthdata_pass
+        if self.earthdata_user:
+            os.environ["EARTHDATA_USERNAME"] = self.earthdata_user
+            os.environ["EDL_USERNAME"] = self.earthdata_user
+        if self.earthdata_pass:
+            os.environ["EARTHDATA_PASSWORD"] = self.earthdata_pass
+            os.environ["EDL_PASSWORD"] = self.earthdata_pass
 
-            if "token" in self.config["earthaccess"].keys():
-                os.environ["EDL_TOKEN"] = self.config["earthaccess"]["token"]
+        earthdata_token = (
+            earthaccess_cfg.get("token")
+            or os.environ.get("EARTHDATA_TOKEN")
+            or os.environ.get("EDL_TOKEN")
+        )
+        if earthdata_token:
+            os.environ["EARTHDATA_TOKEN"] = earthdata_token
+            os.environ["EDL_TOKEN"] = earthdata_token
 
-        if "creodias" in self.config.keys():
-            self.creodias_user = self.config["creodias"]["username"]
-            self.creodias_pass = self.config["creodias"]["password"]
+        creodias_cfg = self.config.get("creodias", {})
+        self.creodias_user = creodias_cfg.get("username") or os.environ.get(
+            "CREODIAS_USERNAME"
+        )
+        self.creodias_pass = creodias_cfg.get("password") or os.environ.get(
+            "CREODIAS_PASSWORD"
+        )
+
+        if self.creodias_user:
+            os.environ["CREODIAS_USERNAME"] = self.creodias_user
+        if self.creodias_pass:
+            os.environ["CREODIAS_PASSWORD"] = self.creodias_pass
 
         ##### Set attributes for each satellite to be downloaded or processed
         self.__sat_init("swot")
@@ -155,6 +181,14 @@ class Project:
         if hasattr(self, "reservoirs"):
             self.reservoirs.report()
 
+    def _require_creodias_credentials(self):
+        if not (self.creodias_user and self.creodias_pass):
+            raise ValueError(
+                "Missing CREODIAS credentials. Provide config['creodias']['username'/'password'] "
+                "or set CREODIAS_USERNAME and CREODIAS_PASSWORD in the environment."
+            )
+        return (self.creodias_user, self.creodias_pass)
+
     def initialize(self):
         # Checks that we have all information needed for downloads
         if hasattr(self, "reservoirs"):
@@ -176,7 +210,7 @@ class Project:
         if hasattr(self, "reservoirs"):
             if "swot" in self.to_download:
                 self.reservoirs.download_altimetry(
-                    product="SWOT_Lake",
+                    product="SWOT_LAKE",
                     startdate=self.startdates["swot"],
                     enddate=self.enddates["swot"],
                     update_existing=False,
@@ -188,22 +222,25 @@ class Project:
                     startdate=self.startdates["icesat2"],
                     enddate=self.enddates["icesat2"],
                     update_existing=False,
+                    credentials=(self.earthdata_user, self.earthdata_pass),
                 )
 
             if "sentinel3" in self.to_download:
+                sentinel_creds = self._require_creodias_credentials()
                 self.reservoirs.download_altimetry(
                     product="S3",
                     startdate=self.startdates["sentinel3"],
                     enddate=self.enddates["sentinel3"],
-                    credentials=(self.creodias_user, self.creodias_pass),
+                    credentials=sentinel_creds,
                     update_existing=False,
                 )
             if "sentinel6" in self.to_download:
+                sentinel_creds = self._require_creodias_credentials()
                 self.reservoirs.download_altimetry(
                     product="S6",
                     startdate=self.startdates["sentinel6"],
                     enddate=self.enddates["sentinel6"],
-                    credentials=(self.creodias_user, self.creodias_pass),
+                    credentials=sentinel_creds,
                     update_existing=False,
                 )
 
@@ -230,22 +267,24 @@ class Project:
                     enddate=current_date,
                     update_existing=True,
                 )
-            if "sentinel3":
+            if "sentinel3" in self.to_download:
                 print("Updating Sentinel-3 Hydro product")
+                sentinel_creds = self._require_creodias_credentials()
                 self.reservoirs.download_altimetry(
                     product="S3",
                     startdate=self.startdates["sentinel3"],
                     enddate=current_date,
-                    credentials=(self.creodias_user, self.creodias_pass),
+                    credentials=sentinel_creds,
                     update_existing=True,
                 )
-            if "sentinel6":
+            if "sentinel6" in self.to_download:
                 print("Updating Sentinel-6 Hydro product")
+                sentinel_creds = self._require_creodias_credentials()
                 self.reservoirs.download_altimetry(
                     product="S6",
                     startdate=self.startdates["sentinel6"],
                     enddate=current_date,
-                    credentials=(self.creodias_user, self.creodias_pass),
+                    credentials=sentinel_creds,
                     update_existing=True,
                 )
 
