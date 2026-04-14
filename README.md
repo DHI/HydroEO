@@ -7,9 +7,27 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 > HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/HydroEO/issues
 
 ## Installation
-> Note: Ensure that `pip` and `git` are installed on your system before running the following command.
+> Note: Ensure that `uv` and `git` are installed on your system before running the following command.
+
+**System dependency:** If you plan to download SWOT data, you must have **spatialite** installed at the OS level for spatial SQLite query support:
+
 ```sh
-pip install git+https://github.com/DHI/HydroEO.git
+# macOS (Homebrew)
+brew install spatialite
+
+# Ubuntu/Debian
+sudo apt-get install libspatialite-dev libspatialite7
+
+# Fedora/RHEL
+sudo dnf install spatialite-libs spatialite-devel
+```
+
+Then install HydroEO:
+
+```sh
+git clone https://github.com/DHI/HydroEO.git
+cd HydroEO
+uv sync
 ```
 #### Python versions
 HydroEO currently runs on Python 3.9 - 3.12.
@@ -35,8 +53,6 @@ project.create_timeseries()
 project.generate_summaries()
 ```
 
-For a full setup walkthrough, see [docs/getting_started.md](./docs/getting_started.md).
-
 ## Available products
 HydroEO currently supports 4 products for lake/reservoir workflows:
 
@@ -50,13 +66,13 @@ HydroEO currently supports 4 products for lake/reservoir workflows:
 Common across products: geolocation, observation time, water level/elevation-style measurements, and quality metadata.
 
 ## Running tests
-Install development dependencies first:
+The development environment with all testing tools is set up via:
 
 ```sh
-pip install -e ".[dev]"
+uv sync --all-extras
 ```
 
-Run test suites:
+Once set up, run test suites with:
 
 ```sh
 # Run all tests
@@ -74,6 +90,8 @@ uv run pytest -m integration -v
 # Coverage report
 make coverage
 ```
+
+For just the core package (without dev/test/notebook dependencies), use `uv sync` as shown in Installation.
 
 ### Pytest markers in this repo
 Markers are defined in [pyproject.toml](./pyproject.toml):
@@ -111,4 +129,24 @@ Key modules:
 
 ## More resources
 - Notebooks: [notebooks](./notebooks)
-- API reference source page: [docs/reference.md](./docs/reference.md)
+
+## CI/CD and GitHub setup
+
+**Automated checks** run on every push and pull request via GitHub Actions (see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
+
+1. **Lint** (ruff) — checks code style and imports
+2. **Unit tests** — runs on Ubuntu and Windows, Python 3.9 and 3.12; publishes coverage to Codecov
+3. **Integration tests** — runs live API calls (only on official repo when enabled)
+
+**For repo maintainers:** To enable live integration tests, set these GitHub secrets and variables:
+
+*Secrets:*
+- `EDL_USERNAME` — Earthdata Login username for NASA SWOT/ICESat-2 access
+- `EDL_PASSWORD` — Earthdata Login password
+- `CREODIAS_USERNAME` — Copernicus CDSE username for Sentinel-3/6 access
+- `CREODIAS_PASSWORD` — Copernicus CDSE password
+
+*Repository variables:*
+- `RUN_INTEGRATION_TESTS` = `true` — enables integration tests on push (forks and PRs will skip them automatically)
+
+Integration tests require live credentials and are gated to prevent exposure on untrusted branches.
