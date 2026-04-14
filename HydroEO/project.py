@@ -289,6 +289,7 @@ class Project:
                 )
 
     def create_timeseries(self):
+        warnings.filterwarnings("ignore", module="pyogrio\\..*")
         if hasattr(self, "reservoirs"):
             # extract the data
             self.reservoirs.extract_product_timeseries(self.to_process)
@@ -302,6 +303,7 @@ class Project:
             self.reservoirs.merge_product_timeseries(products=self.to_process)
 
     def generate_summaries(self, show=False, save=True):
+        warnings.filterwarnings("ignore", module="pandas\\..*")
         if hasattr(self, "reservoirs"):
             for id in self.reservoirs.download_gdf[self.reservoirs.id_key]:
                 self.reservoirs.summarize_crossings_by_id(id, show=show, save=save)
