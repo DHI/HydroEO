@@ -68,14 +68,13 @@ def test_swot_live_query_returns_results():
     """Live SWOT query for Lake Geneva AOI must return ≥ 1 baseline-D granule."""
     from HydroEO.satellites.swot import SWOT_LAKE_SHORT_NAME, query
 
+    os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
+    os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
+
     results = query(
         aoi=SWOT_AOI,
         startdate=TEST_START,
         enddate=TEST_END,
-        earthdata_credentials=(
-            os.environ["EDL_USERNAME"],
-            os.environ["EDL_PASSWORD"],
-        ),
     )
 
     assert len(results) > 0, (
@@ -91,14 +90,13 @@ def test_swot_live_prior_granules_present():
     """At least one prior-lake granule must be present in the baseline-D results."""
     from HydroEO.satellites.swot import query
 
+    os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
+    os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
+
     results = query(
         aoi=SWOT_AOI,
         startdate=TEST_START,
         enddate=TEST_END,
-        earthdata_credentials=(
-            os.environ["EDL_USERNAME"],
-            os.environ["EDL_PASSWORD"],
-        ),
     )
 
     prior_results = [
@@ -161,14 +159,13 @@ def test_swot_granule_has_data_links():
     """Live: Each SWOT granule result must have data_links() returning URLs."""
     from HydroEO.satellites.swot import query
 
+    os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
+    os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
+
     results = query(
         aoi=SWOT_AOI,
         startdate=TEST_START,
         enddate=TEST_END,
-        earthdata_credentials=(
-            os.environ["EDL_USERNAME"],
-            os.environ["EDL_PASSWORD"],
-        ),
     )
 
     assert len(results) > 0, "No SWOT results to validate"
@@ -188,14 +185,13 @@ def test_swot_prior_granule_naming_convention():
     """Live: Verify at least one granule uses '_prior_' naming (guards filename filter)."""
     from HydroEO.satellites.swot import query
 
+    os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
+    os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
+
     results = query(
         aoi=SWOT_AOI,
         startdate=TEST_START,
         enddate=TEST_END,
-        earthdata_credentials=(
-            os.environ["EDL_USERNAME"],
-            os.environ["EDL_PASSWORD"],
-        ),
     )
 
     prior_granules = [
