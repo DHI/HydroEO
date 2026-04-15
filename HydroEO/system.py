@@ -10,6 +10,7 @@ import seaborn as sns
 
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 import datetime
 
@@ -448,6 +449,7 @@ class System:
 
         # loop through each product in file and plot
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
+        plotted_products = set()
         for file_name in os.listdir(data_dir):
             if file_name.endswith(".shp"):
                 path_to_file = os.path.join(data_dir, file_name)
@@ -467,9 +469,40 @@ class System:
                     zorder=zorder,
                     label=product,
                 )
+                plotted_products.add(product)
 
-        ax.legend()
-        fig.tight_layout()
+        legend_handles = [
+            Line2D(
+                [],
+                [],
+                color="black",
+                linewidth=1.0,
+                label="Reservoir outline",
+            )
+        ]
+
+        for product in sorted(plotted_products):
+            if product in colors:
+                legend_handles.append(
+                    Line2D(
+                        [],
+                        [],
+                        marker="o",
+                        linestyle="None",
+                        color=colors[product],
+                        label=product,
+                        alpha=0.1 if product == "swot" else 0.5,
+                    )
+                )
+
+        if legend_handles:
+            ax.legend(
+                handles=legend_handles,
+                loc="center left",
+                bbox_to_anchor=(1.02, 0.5),
+                borderaxespad=0.0,
+            )
+        fig.tight_layout(rect=(0, 0, 0.82, 1))
         if save:
             plt.savefig(
                 os.path.join(self.dirs["output"], f"{id}", "crossing_summary.png")
@@ -510,7 +543,13 @@ class System:
                     label=platform,
                 )
 
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                ax.legend(
+                    loc="center left",
+                    bbox_to_anchor=(1.02, 0.5),
+                    borderaxespad=0.0,
+                )
             ax.tick_params(axis="x", rotation=45)
 
             # now plot cleaned timeseries
@@ -529,7 +568,13 @@ class System:
                     label=platform,
                 )
 
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                ax.legend(
+                    loc="center left",
+                    bbox_to_anchor=(1.02, 0.5),
+                    borderaxespad=0.0,
+                )
             ax.tick_params(axis="x", rotation=45)
 
         # now plot merged timeseries
@@ -539,12 +584,18 @@ class System:
 
             ax = main_ax[2]
             ax.set_title("Merged Timeseries")
-            df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
+            df.plot(ax=ax, x="date", y="height", c="k", kind="scatter", label="merged")
 
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                ax.legend(
+                    loc="center left",
+                    bbox_to_anchor=(1.02, 0.5),
+                    borderaxespad=0.0,
+                )
             ax.tick_params(axis="x", rotation=45)
 
-            fig.tight_layout()
+            fig.tight_layout(rect=(0, 0, 0.82, 1))
             if save:
                 plt.savefig(
                     os.path.join(self.dirs["output"], f"{id}", "cleaning_summary.png")

@@ -314,6 +314,13 @@ def subset(
     product = product.upper()
 
     EXTENSION = {"S3": ".SEN3", "S6": ".SEN6"}
+    deferred_warnings = []
+
+    def _defer_warning(message, *args):
+        if args:
+            deferred_warnings.append(message % args)
+        else:
+            deferred_warnings.append(message)
 
     # loop through the downloads folder and subset any products with the right extention
     pbar = tqdm(
@@ -333,7 +340,7 @@ def subset(
                 if product == "S3":
                     file = _find_subset_file(folder_path, product, file_id)
                     if file is None:
-                        logger.warning(
+                        _defer_warning(
                             "Skipping subset for %s: source file %s is missing.",
                             folder,
                             os.path.join(folder_path, file_id),
@@ -343,14 +350,14 @@ def subset(
                 elif product == "S6":
                     candidates = _find_subset_file(folder_path, product, file_id)
                     if len(candidates) == 0:
-                        logger.warning(
+                        _defer_warning(
                             "Skipping subset for %s: no Sentinel-6 STD netCDF found in %s.",
                             folder,
                             folder_path,
                         )
                         continue
                     if len(candidates) > 1:
-                        logger.warning(
+                        _defer_warning(
                             "Multiple Sentinel-6 subset candidates found for %s: %s. Using %s.",
                             folder,
                             ", ".join(
@@ -361,7 +368,7 @@ def subset(
                     file = candidates[0]
 
                 if not os.path.isfile(file):
-                    logger.warning(
+                    _defer_warning(
                         "Skipping subset for %s: source file does not exist: %s",
                         folder,
                         file,
@@ -431,7 +438,7 @@ def subset(
                     )[0]
 
                     if len(selected) == 0:
-                        logger.warning(
+                        _defer_warning(
                             "Skipping subset for %s: no 20Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
                             file,
                             ulx,
@@ -452,7 +459,7 @@ def subset(
                     )[0]
 
                     if len(selected01) == 0:
-                        logger.warning(
+                        _defer_warning(
                             "Skipping subset for %s: no 1Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
                             file,
                             ulx,
@@ -499,6 +506,9 @@ def subset(
                 continue
 
     pbar.close()
+
+    for warning in deferred_warnings:
+        logger.warning(warning)
 
 
 def __crop_s3(src, dst, index_bounds_20, index_bounds_01):
@@ -954,10 +964,34 @@ def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
         except Exception:
             print("Unable to open sentinel file")
 
+    def _to_shapefile_safe_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        # ESRI Shapefile field names are limited to 10 chars.
+        rename_map = {}
+        used = set()
+
+        for col in gdf.columns:
+            if col == "geometry":
+                continue
+
+            base = str(col)[:10]
+            candidate = base
+            suffix = 1
+            while candidate in used:
+                suffix_str = str(suffix)
+                candidate = f"{base[: 10 - len(suffix_str)]}{suffix_str}"
+                suffix += 1
+
+            used.add(candidate)
+            if candidate != col:
+                rename_map[col] = candidate
+
+        return gdf.rename(columns=rename_map)
+
     # once all tracks are processed combine them and save in the destination dir
     if len(gdf_list) > 0:
         observations = pd.concat(gdf_list).reset_index(drop=True)
         observations = observations.set_crs(features.crs)
+        observations = _to_shapefile_safe_columns(observations)
         observations.to_file(dst_path)
 
 

@@ -215,12 +215,26 @@ def query(
         _ = harmony_client.result_urls(job_id, show_progress=False)
 
         print("Job processed, downloading data...")
-        results = harmony_client.download_all(
-            job_id,
-            directory=download_directory,
-            overwrite=False,
-        )
-        print(f"Downloaded {len(list(results))} files.")
+        prev_verbose = os.environ.get("VERBOSE")
+        os.environ["VERBOSE"] = "FALSE"
+        try:
+            futures = list(
+                harmony_client.download_all(
+                    job_id,
+                    directory=download_directory,
+                    overwrite=False,
+                )
+            )
+        finally:
+            if prev_verbose is None:
+                os.environ.pop("VERBOSE", None)
+            else:
+                os.environ["VERBOSE"] = prev_verbose
+
+        # download_all returns concurrent futures; resolve them to block until
+        # all files are fully downloaded before the pipeline continues.
+        downloaded_files = [future.result() for future in futures]
+        print(f"Downloaded {len(downloaded_files)} files.")
 
     else:
         print(
@@ -402,12 +416,36 @@ def extract_observations(
                 if len(data_gdf) > 0:
                     gdf_list.append(data_gdf)
 
+    def _to_shapefile_safe_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+        # ESRI Shapefile field names are limited to 10 chars.
+        rename_map = {}
+        used = set()
+
+        for col in gdf.columns:
+            if col == "geometry":
+                continue
+
+            base = str(col)[:10]
+            candidate = base
+            suffix = 1
+            while candidate in used:
+                suffix_str = str(suffix)
+                candidate = f"{base[: 10 - len(suffix_str)]}{suffix_str}"
+                suffix += 1
+
+            used.add(candidate)
+            if candidate != col:
+                rename_map[col] = candidate
+
+        return gdf.rename(columns=rename_map)
+
     # once all tracks are processed combine them and save in the destination dir
     if len(gdf_list) > 0:
         observations = pd.concat(gdf_list).reset_index(drop=True)
         observations["platform"] = "icesat2"
         observations["product"] = "ATL13"
         observations = observations.set_crs(features.crs)
+        observations = _to_shapefile_safe_columns(observations)
         observations.to_file(dst_path)
 
 

@@ -6,6 +6,7 @@ import pandas as pd
 import os
 import shutil
 import zipfile
+import warnings
 import earthaccess
 
 from tqdm import tqdm
@@ -38,8 +39,16 @@ def query(
         "bounding_box": shapely.Polygon(aoi).bounds,
     }
 
-    # make the search
-    results = earthaccess.search_data(**params)
+    # Silence a known earthaccess deprecation warning until upstream migrates
+    # DataGranule.size() to DataGranule.size attribute access.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
+            category=FutureWarning,
+            module=r"earthaccess\.results",
+        )
+        results = earthaccess.search_data(**params)
 
     return results
 
@@ -66,7 +75,14 @@ def download(results, download_directory: str):
     print(f"{len(results) - len(to_download)} files shown as downloaded in log")
     print(f"{len(to_download)} will be downloaded")
     if to_download:
-        files = earthaccess.download(to_download, download_directory)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
+                category=FutureWarning,
+                module=r"earthaccess\.(results|store)",
+            )
+            files = earthaccess.download(to_download, download_directory)
 
         with open(log_path, "a") as log:
             for file in files:
