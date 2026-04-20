@@ -6,6 +6,7 @@ import pandas as pd
 import os
 import shutil
 import zipfile
+import warnings
 import earthaccess
 
 from tqdm import tqdm
@@ -38,8 +39,16 @@ def query(
         "bounding_box": shapely.Polygon(aoi).bounds,
     }
 
-    # make the search
-    results = earthaccess.search_data(**params)
+    # Silence a known earthaccess deprecation warning until upstream migrates
+    # DataGranule.size() to DataGranule.size attribute access.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
+            category=FutureWarning,
+            module=r"earthaccess\.results",
+        )
+        results = earthaccess.search_data(**params)
 
     return results
 
@@ -66,7 +75,14 @@ def download(results, download_directory: str):
     print(f"{len(results) - len(to_download)} files shown as downloaded in log")
     print(f"{len(to_download)} will be downloaded")
     if to_download:
-        files = earthaccess.download(to_download, download_directory)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
+                category=FutureWarning,
+                module=r"earthaccess\.(results|store)",
+            )
+            files = earthaccess.download(to_download, download_directory)
 
         with open(log_path, "a") as log:
             for file in files:
@@ -129,9 +145,17 @@ def merge_shps(dir):
     return gdf
 
 
-def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
+def extract_observations(
+    src_dir,
+    dst_dir,
+    dst_file_name,
+    features,
+    id_key,
+    exclude_obs_id_values=None,
+):
     # load in combined observations from individual files in download directory
     data_gdf = merge_shps(src_dir)
+    excluded_obs_ids = set(exclude_obs_id_values or ["no_data"])
 
     # now loop through the ids in the features gdf to extract the observations from the main one
     for i in tqdm(features.index, desc="Extracting SWOT Lake SP product"):
@@ -145,6 +169,11 @@ def extract_observations(src_dir, dst_dir, dst_file_name, features, id_key):
                 .reset_index(drop=True)
                 .sort_values(by="time")
             )
+
+            if "obs_id" in observations.columns and excluded_obs_ids:
+                observations = observations.loc[
+                    ~observations["obs_id"].astype(str).isin(excluded_obs_ids)
+                ].reset_index(drop=True)
 
             # if we have observations for this reservoir export it
             if len(observations) > 0:

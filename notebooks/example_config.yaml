@@ -23,6 +23,12 @@ swot:
   download_dir : "C:\\Users\\username\\altimetry_project\\data\\swot" # directory in which to store raw SWOT files (if not provided, a directory will be made within the project directory)
   startdate : [2024, 1, 1] # [year, month, day] format
   enddate   : [2024, 11, 01]
+  pld_match_max_distance_m : 100.0 # maximum nearest-neighbour distance (meters) used when matching your reservoirs to PLD prior lakes
+  exclude_obs_id_values : ["no_data"] # SWOT obs_id values to drop during extraction; provide a list of strings
+  processing_filters : ["elevation", "MAD"] # allowed filters: elevation, MAD, daily_mean, hampel, rolling_median
+  elevation_min_m : 0.0 # lower bound for elevation filter (meters)
+  elevation_max_m : 8000.0 # upper bound for elevation filter (meters)
+  mad_threshold : 5.0 # outlier threshold multiplier for MAD filter (>0)
 
 icesat2:
   download : True
@@ -30,6 +36,21 @@ icesat2:
   download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
   startdate : [2024, 1, 1] # [year, month, day] format
   enddate   : [2024, 11, 01]
+  atl13_fields : # optional ATL13 fields to extract in addition to required core fields
+    - ht_ortho
+    - segment_lat
+    - segment_lon
+    - delta_time
+    - inland_water_body_type
+    - inland_water_body_size
+    - inland_water_body_id
+    - segment_dem_ht
+    - segment_near_sat_fract
+  track_keys : ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"] # subset beams if needed; allowed values are the six ATL13 beam keys
+  processing_filters : ["elevation", "MAD"] # allowed filters: elevation, MAD, daily_mean, hampel, rolling_median
+  elevation_min_m : 0.0 # lower bound for elevation filter (meters)
+  elevation_max_m : 8000.0 # upper bound for elevation filter (meters)
+  mad_threshold : 5.0 # outlier threshold multiplier for MAD filter (>0)
 
 ##### A creodias username and password must be provided if downloading Sentinel data
 creodias:
@@ -42,6 +63,13 @@ sentinel3:
   download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel3" # directory in which to store raw ICESat-2 files (if not provided, a directory will be made within the project directory)
   startdate : [2024, 1, 1] # [year, month, day] format
   enddate   : [2024, 11, 01]
+  subset_file_id : "enhanced_measurement.nc" # source netCDF filename expected inside each Sentinel package
+  sigma0_max : 100000.0 # maximum accepted sigma0 during observation extraction
+  download_threads : 1 # parallel threads for CREODIAS downloads (positive integer)
+  processing_filters : ["elevation", "MAD"] # allowed filters: elevation, MAD, daily_mean, hampel, rolling_median
+  elevation_min_m : 0.0 # lower bound for elevation filter (meters)
+  elevation_max_m : 8000.0 # upper bound for elevation filter (meters)
+  mad_threshold : 5.0 # outlier threshold multiplier for MAD filter (>0)
 
 sentinel6:
   download : True
@@ -49,3 +77,10 @@ sentinel6:
   download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel6"
   startdate : [2024, 1, 1] # [year, month, day] format
   enddate   : [2024, 11, 01]
+  subset_file_id : "enhanced_measurement.nc" # retained for consistency across Sentinel missions; S6 auto-selects standard netCDF granules
+  sigma0_max : 100000.0 # maximum accepted sigma0 during observation extraction
+  download_threads : 1 # parallel threads for CREODIAS downloads (positive integer)
+  processing_filters : ["elevation", "MAD"] # allowed filters: elevation, MAD, daily_mean, hampel, rolling_median
+  elevation_min_m : 0.0 # lower bound for elevation filter (meters)
+  elevation_max_m : 8000.0 # upper bound for elevation filter (meters)
+  mad_threshold : 5.0 # outlier threshold multiplier for MAD filter (>0)

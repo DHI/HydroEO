@@ -10,6 +10,7 @@ import seaborn as sns
 
 
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 import datetime
 
@@ -244,6 +245,9 @@ class System:
                     creodias_credentials=credentials,
                     token=session_token,
                     session_start_time=session_start_time,
+                    threads=getattr(self, "mission_options", {})
+                    .get("sentinel3" if product == "S3" else "sentinel6", {})
+                    .get("download_threads", 1),
                 )
 
                 # once we have finished downloading all data for the aoi, we need to unzip the files keeping only .nc files
@@ -256,6 +260,9 @@ class System:
                     aoi=coords,
                     download_dir=download_dir,
                     dest_dir=download_dir,
+                    file_id=getattr(self, "mission_options", {})
+                    .get("sentinel3" if product == "S3" else "sentinel6", {})
+                    .get("subset_file_id", "enhanced_measurement.nc"),
                     product=product,
                     show_progress=True,
                 )
@@ -285,17 +292,42 @@ class System:
 
         return df
 
-    def clean_product_timeseries(self, products: list, filters: list):
+    def clean_product_timeseries(
+        self, products: list, filter_options_by_product: dict = None
+    ):
+        filter_options_by_product = filter_options_by_product or {}
+
         for id in tqdm(self.download_gdf[self.id_key]):
             for product in products:
                 # get timeseries for id and each product to clean individually
                 df = self.get_unfiltered_product_timeseries(id, [product])
                 if df is not None:
+                    product_options = filter_options_by_product.get(
+                        product,
+                        {
+                            "processing_filters": ["elevation", "MAD"],
+                            "elevation_min_m": 0.0,
+                            "elevation_max_m": 8000.0,
+                            "mad_threshold": 5.0,
+                        },
+                    )
+
                     # create a timeseries object
                     ts = timeseries.Timeseries(df, date_key="date", height_key="height")
 
                     # run all filters on timeseries
-                    ts.clean(filters)
+                    ts.clean(
+                        product_options.get("processing_filters", ["elevation", "MAD"]),
+                        filter_params={
+                            "elevation_min_m": product_options.get(
+                                "elevation_min_m", 0.0
+                            ),
+                            "elevation_max_m": product_options.get(
+                                "elevation_max_m", 8000.0
+                            ),
+                            "mad_threshold": product_options.get("mad_threshold", 5.0),
+                        },
+                    )
 
                     # save filtered timeseries
                     export_dir = os.path.join(
@@ -417,6 +449,7 @@ class System:
 
         # loop through each product in file and plot
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
+        plotted_products = set()
         for file_name in os.listdir(data_dir):
             if file_name.endswith(".shp"):
                 path_to_file = os.path.join(data_dir, file_name)
@@ -436,9 +469,40 @@ class System:
                     zorder=zorder,
                     label=product,
                 )
+                plotted_products.add(product)
 
-        ax.legend()
-        fig.tight_layout()
+        legend_handles = [
+            Line2D(
+                [],
+                [],
+                color="black",
+                linewidth=1.0,
+                label="Reservoir outline",
+            )
+        ]
+
+        for product in sorted(plotted_products):
+            if product in colors:
+                legend_handles.append(
+                    Line2D(
+                        [],
+                        [],
+                        marker="o",
+                        linestyle="None",
+                        color=colors[product],
+                        label=product,
+                        alpha=0.1 if product == "swot" else 0.5,
+                    )
+                )
+
+        if legend_handles:
+            ax.legend(
+                handles=legend_handles,
+                loc="center left",
+                bbox_to_anchor=(1.02, 0.5),
+                borderaxespad=0.0,
+            )
+        fig.tight_layout(rect=(0, 0, 0.82, 1))
         if save:
             plt.savefig(
                 os.path.join(self.dirs["output"], f"{id}", "crossing_summary.png")
@@ -479,7 +543,13 @@ class System:
                     label=platform,
                 )
 
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                ax.legend(
+                    loc="center left",
+                    bbox_to_anchor=(1.02, 0.5),
+                    borderaxespad=0.0,
+                )
             ax.tick_params(axis="x", rotation=45)
 
             # now plot cleaned timeseries
@@ -498,7 +568,13 @@ class System:
                     label=platform,
                 )
 
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                ax.legend(
+                    loc="center left",
+                    bbox_to_anchor=(1.02, 0.5),
+                    borderaxespad=0.0,
+                )
             ax.tick_params(axis="x", rotation=45)
 
         # now plot merged timeseries
@@ -508,12 +584,18 @@ class System:
 
             ax = main_ax[2]
             ax.set_title("Merged Timeseries")
-            df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
+            df.plot(ax=ax, x="date", y="height", c="k", kind="scatter", label="merged")
 
-            ax.legend()
+            handles, labels = ax.get_legend_handles_labels()
+            if labels:
+                ax.legend(
+                    loc="center left",
+                    bbox_to_anchor=(1.02, 0.5),
+                    borderaxespad=0.0,
+                )
             ax.tick_params(axis="x", rotation=45)
 
-            fig.tight_layout()
+            fig.tight_layout(rect=(0, 0, 0.82, 1))
             if save:
                 plt.savefig(
                     os.path.join(self.dirs["output"], f"{id}", "cleaning_summary.png")
@@ -657,7 +739,15 @@ class Reservoirs(System):
 
                     # extract observations within bounds and save as timeseries csv
                     icesat2.extract_observations(
-                        src_dir=download_dir, dst_path=dst_path, features=sub_gdf
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=sub_gdf,
+                        atl13_fields=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("atl13_fields"),
+                        track_keys=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("track_keys"),
                     )
 
         if "sentinel3" in products:
@@ -680,7 +770,12 @@ class Reservoirs(System):
 
                     # extract observations within bounds and save as timeseries csv
                     sentinel.extract_observations(
-                        src_dir=download_dir, dst_path=dst_path, features=sub_gdf
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=sub_gdf,
+                        sigma0_max=getattr(self, "mission_options", {})
+                        .get("sentinel3", {})
+                        .get("sigma0_max", 1e5),
                     )
 
         if "sentinel6" in products:
@@ -703,7 +798,12 @@ class Reservoirs(System):
 
                     # extract observations within bounds and save as timeseries csv
                     sentinel.extract_observations(
-                        src_dir=download_dir, dst_path=dst_path, features=sub_gdf
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=sub_gdf,
+                        sigma0_max=getattr(self, "mission_options", {})
+                        .get("sentinel6", {})
+                        .get("sigma0_max", 1e5),
                     )
 
         if "swot" in products:
@@ -716,253 +816,7 @@ class Reservoirs(System):
                 dst_file_name="swot.shp",
                 features=self.download_gdf,
                 id_key=self.id_key,
+                exclude_obs_id_values=getattr(self, "mission_options", {})
+                .get("swot", {})
+                .get("exclude_obs_id_values", ["no_data"]),
             )
-
-
-# Rivers are not yet implemented
-# @dataclass
-# class Rivers(System):
-#     buffer_width: float
-#     grid_res: float
-
-#     def __post_init__(self):
-#         self.type = "rivers"
-
-#         self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
-#         utils.ifnotmakedirs(self.dirs["output"])
-
-#     def make_buffer(self, local_crs):
-#         # make a buffered version of the rivers for use later on
-#         self.buffered_gdf = self.gdf.copy()
-#         self.buffered_gdf.geometry = self.buffered_gdf.to_crs(local_crs).buffer(
-#             self.buffer_width
-#         )
-#         self.buffered_gdf = self.buffered_gdf.to_crs(
-#             self.gdf.crs
-#         )  # return the crs to that of the rivers file
-
-#     def make_grid(self):
-#         # break down large river system into grid for download and search
-#         area_bounds = self.buffered_gdf.unary_union.bounds
-
-#         # make a dataframe from a list of grid polygons
-#         grids = geometry.grid_bounds(area_bounds, self.grid_res)
-#         grid_gdf = gpd.GeoDataFrame(geometry=grids, crs=self.buffered_gdf.crs)
-
-#         # keep only the grids that intersect with the river line
-#         grid_gdf = grid_gdf.loc[
-#             grid_gdf.intersects(self.buffered_gdf.unary_union)
-#         ].reset_index(drop=True)
-#         grid_gdf["dl_id"] = (
-#             grid_gdf.index
-#         )  # set a grid id based on the remaing grids TODO: consider how to handle the download ids when using river, perhaps can use SWORD id
-
-#         # save grid and set attribute
-#         grid_gdf.to_file(os.path.join(self.dirs["output"], "grid.shp"))
-#         self.grid = grid_gdf
-
-#     def load_grid(self):
-#         self.grid = gpd.read_file(os.path.join(self.dirs["output"], "grid.shp"))
-
-#     def visualize_grid(self):
-#         fig, ax = plt.subplots()
-#         self.gdf.plot(ax=ax)
-#         self.grid.plot(ax=ax, edgecolor="black", facecolor="None")
-#         ax.set_title("Full River System")
-#         fig.tight_layout()
-#         plt.show()
-
-#     def extract_crossings(self):
-#         """Method to take all available icesat2 data and find the singular value to use for the river crossing.
-#         Currently takes the closest ATL13 value to the river centerline. River crossings are saved as a geopandas geodataframe.
-
-#         Raises
-#         ------
-#         Warning
-#             _description_
-#         """
-
-#         # list to hold the filtered center points and heights
-#         center_points = list()
-
-#         # process crossings by grid id
-#         for id in tqdm(self.grid.index):
-#             # make sure that we have downloaded data for this grid cell, if not skip and process only what we have
-#             download_directory = os.path.join(
-#                 self.dirs["icesat2"], rf"{self.type}", rf"{id}"
-#             )
-#             if os.path.exists(download_directory):
-#                 # load date for all tracks and crossings
-#                 files = list(os.listdir(download_directory))
-#                 for file in files:
-#                     for key in ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]:
-#                         infile = os.path.join(download_directory, file)
-#                         data = icesat2.ATL13(infile, key)
-
-#                         # make sure we have height data within the icesat file
-#                         if data.check_height_data():
-#                             # read data, turn into dataframe and filter by whats in the buffered river region
-#                             data_df = data.read()
-#                             data_gdf = gpd.GeoDataFrame(
-#                                 data_df,
-#                                 geometry=gpd.points_from_xy(data_df.lon, data_df.lat),
-#                             )
-#                             data_gdf = data_gdf.loc[
-#                                 data_gdf.within(self.buffered_gdf.unary_union)
-#                             ].reset_index(drop=True)
-#                             data_gdf["dl_id"] = id
-
-#                             # ensure that we have at least two points in the river zone to process and centerline value
-#                             if len(data_gdf) > 1:
-#                                 # take a line of the crossing and calculate its intersection with the river centerline
-#                                 representative_line = shapely.LineString(
-#                                     [
-#                                         (
-#                                             data_gdf["geometry"].iloc[0].x,
-#                                             data_gdf["geometry"].iloc[0].y,
-#                                         ),
-#                                         (
-#                                             data_gdf["geometry"].iloc[-1].x,
-#                                             data_gdf["geometry"].iloc[-1].y,
-#                                         ),
-#                                     ]
-#                                 )
-#                                 crossing_point = shapely.intersection(
-#                                     representative_line, self.gdf.unary_union
-#                                 )
-
-#                                 # there are a number of things that can happen when runnign the intersection so try to account for these
-#                                 if crossing_point.is_empty:
-#                                     # then there was not a clean intersection, and we should do nothing with the data
-#                                     pass
-
-#                                 elif crossing_point.geom_type == "Point":
-#                                     # proceed as expected, one clear crossing means we can grab the data value at the point closest to the centerline or take the mean of the crossing
-#                                     index, _, _ = geometry.find_closest_geom(
-#                                         crossing_point, data_gdf.geometry.values
-#                                     )
-#                                     center_points.append(data_gdf.loc[[index]])
-
-#                                 elif crossing_point.geom_type == "MultiPoint":
-#                                     # It is possible that a passing crosses multiple points in a bending rivers so we grab each point clossest to the centerline at each respective crossing
-#                                     for point in crossing_point.geoms:
-#                                         index, _, _ = geometry.find_closest_geom(
-#                                             point, data_gdf.geometry.values
-#                                         )
-#                                         center_points.append(data_gdf.loc[[index]])
-
-#                                 else:
-#                                     # something is not as expected to raise a warning to be investigated
-#                                     raise Warning(
-#                                         "crossing_point is not a point or multilinestring warrenting investigation"
-#                                     )
-
-#                             # if only one valid observation then take this (TODO: Consider dropping this, we could have one value on the edge of the river thats not really representative of the centerline)
-#                             elif len(data_gdf) > 0:
-#                                 center_points.append(data_gdf.iloc[[0]])
-
-#         # push all of the crossing centerpoints into one geodataframe and reset the index
-#         self.crossings = pd.concat(center_points).reset_index(drop=True)
-#         self.crossings = self.crossings.set_crs(self.gdf.crs)
-
-#         # save copy of river crossings so we dont have to repeat the process
-#         self.crossings.to_file(
-#             os.path.join(self.dirs["output"], rf"icesat2_crossings.shp")
-#         )
-
-#     def map_crossings_by_grid(self, id):
-#         # start figure
-#         fig, ax = plt.subplots()
-
-#         # set bounds
-#         xmin, ymin, xmax, ymax = self.grid.loc[id, "geometry"].bounds
-#         ax.set_xlim([xmin - 0.1, xmax + 0.1])
-#         ax.set_ylim([ymin - 0.1, ymax + 0.1])
-
-#         # plot grid and river
-#         self.grid.loc[[id]].plot(ax=ax, edgecolor="black", facecolor="None")
-#         self.gdf.plot(ax=ax)
-
-#         # extract this grids crossings from the main river crossing dataframe
-#         data_gdf = self.crossings.loc[self.crossings.dl_id == id]
-
-#         if len(data_gdf) > 0:
-#             data_gdf["color"] = [int(date2num(i)) for i in data_gdf["date"].values]
-#             data_gdf.plot(
-#                 ax=ax,
-#                 column="color",
-#                 vmin=int(date2num(datetime.datetime(2019, 1, 1))),
-#                 vmax=int(date2num(datetime.datetime(2024, 12, 31))),
-#                 cmap=cm.batlow,
-#                 alpha=0.5,
-#                 legend=True,
-#             )
-
-#         fig.tight_layout()
-#         plt.show()
-
-#     def crossings_to_rivers(self, riv_key):
-#         # add the river name (or id) to the closest crossing point
-#         self.crossings = gpd.sjoin_nearest(
-#             self.crossings, self.gdf[[riv_key, "geometry"]], how="left"
-#         )
-
-#     def plot_river_profile(self, riv_key, name, delta):
-#         # extract the river associated with the name
-#         river = self.gdf.loc[self.gdf[riv_key] == name]
-
-#         # extract the crossings matching the river key name
-#         crossings = self.crossings.loc[
-#             self.crossings[riv_key] == name
-#         ]  # this should be a gdf
-
-#         #### Start the figure
-#         # now plot the river profile by distance downriver
-#         fig, main_ax = plt.subplots(1, 2, figsize=(10, 5))
-
-#         ax = main_ax[0]
-#         river.plot(ax=ax)
-#         crossings.plot(
-#             ax=ax,
-#             column="height",
-#             cmap=cm.batlow,
-#             legend=True,
-#             legend_kwds={"label": "Height (m)"},
-#         )
-
-#         # Now we convert to local crs and do the calculateions for where on the river the crossing is
-#         river = river.to_crs(river.estimate_utm_crs())
-#         river_line = river.geometry.values[0]
-
-#         crossings = crossings.to_crs(crossings.estimate_utm_crs())
-
-#         # interpolate the river linestring into points
-#         if river_line.geom_type == "MultiLinesString":
-#             # TODO: convert to linestring somehow?
-#             pass
-
-#         # now assume we are dealing with a linestring
-#         # use shapely interpolate to get the points at a known interval downstream
-#         river_points, point_dist = geometry.line_to_points(river_line, delta)
-
-#         # find the nearest linepoint to the crossings and record the distance along the river
-#         for i in crossings.index:
-#             point = crossings.loc[i, "geometry"]
-#             index, _, _ = geometry.find_closest_geom(point, river_points)
-#             crossings.loc[i, "dist"] = point_dist[index]
-
-#         # make the 1d profile
-#         ax = main_ax[1]
-#         plot = ax.scatter(
-#             crossings.dist / 1000,
-#             crossings.height,
-#             c=[d.month for d in crossings.date],
-#             cmap=cm.brocO,
-#         )
-#         # plot = crossings.plot(ax=ax, x='dist', y='height', kind='scatter', c=[d.month for d in crossings.date], cmap=cm.batlow, legend=True)
-#         cbar = fig.colorbar(plot, label="Month")
-#         ax.set_xlabel("Distance downriver (km)")
-#         ax.set_ylabel("Height (m)")
-
-#         fig.tight_layout()
-#         plt.show()

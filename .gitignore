@@ -152,3 +152,4 @@ dmypy.json
 .env
 run.py
 config.yaml
+notebooks/SWOT_Download.ipynb
