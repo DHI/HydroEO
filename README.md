@@ -74,16 +74,51 @@ Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6
 - `sigma0_max`: maximum accepted `sigma0` during extraction.
 - `download_threads`: thread count used for CREODIAS download batching.
 
-### ICESat-2 ATL13 field selection
-Use `icesat2.atl13_fields` to request ATL13 fields. Field names are validated at config load time.
+### ICESat-2 ATL13 (SlideRule)
 
-Configuration uses canonical ATL13 field names. Extracted tabular and shapefile outputs use the column names shown below.
+ICESat-2 ATL13 data is downloaded via [SlideRule](https://slideruleearth.io) using its
+`atl13x` endpoint.  SlideRule streams results directly as a GeoDataFrame — no local HDF5
+files are written.
 
-Supported ATL13 field names:
-- `ht_ortho`
-- `segment_lat`
-- `segment_lon`
-- `delta_time`
+**Important:** `atl13x` is **water-body-centric**, not polygon-centric.  SlideRule uses
+an internal ATL13 Metadata Service (AMS) to identify which granules contain a given water
+body.  The polygon centroid is passed as `atl13.coord` for the AMS lookup — this is the
+only spatial parameter sent to the server.  The polygon is **not** passed as a spatial
+filter (doing so causes empty results in SlideRule v5 because track segments that cross
+outside a tight bounding box are excluded).  Precise spatial filtering is applied
+client-side in `extract_observations()` using `gdf.within()` after download.
+The reservoir must be registered in HydroLAKES or GRWL for the download to return data.
+
+SlideRule does **not** require Earthdata authentication — no credentials are needed for
+the ICESat-2 download path.
+
+If `download_dir` is provided, the returned GeoDataFrame is cached as `atl13.parquet`
+inside that directory.  If `download_dir` is omitted, the directory defaults to
+`{main_dir}/icesat2/` and no extra cache is written between download and process steps.
+
+#### Column changes from prior Harmony-based pipeline
+
+| Column | Status | Notes |
+| --- | --- | --- |
+| `height` | ✅ present | From `ht_ortho` (EGM2008 geoid-corrected server-side — do **not** apply a second correction) |
+| `cycle_number` | ✅ present | From SlideRule `cycle` column |
+| `beam` | ✅ present | From SlideRule `gt` column |
+| `rgt` | ✅ present | Unchanged |
+| `ht_water_surf` | 🆕 new | Instantaneous water surface height |
+| `stdev_water_surf` | 🆕 new | Standard deviation of water surface height |
+| `water_depth` | 🆕 new | Estimated water depth |
+| `spot` | 🆕 new | ICESat-2 spot number |
+| `srcid` | 🆕 new | Source granule ID (map to name via `gdf.attrs["meta"]["srctbl"]`) |
+| `orbit_number` | ❌ removed | Not available from `atl13x`; use `rgt + cycle_number` as equivalent orbit identifier |
+| `file_name` | ❌ removed | No local files; use `gdf.attrs["meta"]["srctbl"][srcid]` if the granule name is needed |
+
+#### Supported `atl13_fields` values
+
+Use `icesat2.atl13_fields` to request additional ancillary beam-group fields from
+SlideRule.  These are fetched server-side and returned as extra columns.
+Field names are validated at config load time.
+
+Supported ancillary field names:
 - `inland_water_body_id`
 - `inland_water_body_size`
 - `inland_water_body_type`
@@ -94,20 +129,11 @@ Supported ATL13 field names:
 - `segment_geoid_free2mean`
 - `segment_dem_ht`
 - `segment_near_sat_fract`
-- `orbit_number`
-- `rgt`
-- `cycle_number`
-- `beam`
-- `file_name`
 
 Field mapping from config key to output column:
 
 | Config field name | Output column | Description |
 | --- | --- | --- |
-| `ht_ortho` | `height` | Orthometric water surface height for each segment. |
-| `segment_lat` | `lat` | Segment latitude in decimal degrees. |
-| `segment_lon` | `lon` | Segment longitude in decimal degrees. |
-| `delta_time` | `date` | Seconds since ATLAS SDP epoch, converted to UTC datetime. |
 | `inland_water_body_id` | `wb_id` | Unique inland water-body identifier. |
 | `inland_water_body_size` | `wb_size` | Estimated water-body size class. |
 | `inland_water_body_type` | `wb_type` | Inland water-body type classification. |
@@ -118,26 +144,19 @@ Field mapping from config key to output column:
 | `segment_geoid_free2mean` | `geoid_corr_track` | Free-to-mean geoid correction term. |
 | `segment_dem_ht` | `dem` | Reference DEM elevation sampled at segment location. |
 | `segment_near_sat_fract` | `sat_frac_track` | Fraction of pulses flagged as near-saturated. |
-| `orbit_number` | `orbit` | Orbit number for the granule. |
-| `rgt` | `rgt` | Reference ground track identifier. |
-| `cycle_number` | `cycle_number` | Repeat-cycle number for the granule. |
-| `beam` | `beam` | ICESat-2 beam key used for extraction, for example `gt1l`. |
-| `file_name` | `file_name` | Source ATL13 filename. |
 
 Example:
 
 ```yaml
 icesat2:
-	atl13_fields:
-		- ht_ortho
-		- segment_lat
-		- segment_lon
-		- delta_time
-		- inland_water_body_id
-		- segment_quality
+  atl13_fields:
+    - inland_water_body_id
+    - segment_quality
+  atl13:
+    pass_invalid: false
+    beams: ["gt1l", "gt2l", "gt3l"]  # left beams only
+    spots: []
 ```
-
-If you request `inland_water_body_type`, `inland_water_body_size`, and `inland_water_body_id` in config, the final output columns will appear as `wb_type`, `wb_size`, and `wb_id`.
 
 ## Available products
 HydroEO currently supports 4 products for lake/reservoir workflows:

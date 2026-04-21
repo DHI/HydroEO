@@ -11,7 +11,10 @@ import geopandas as gpd
 import datetime
 
 from HydroEO.system import Reservoirs
-from HydroEO.satellites.icesat2 import ATL13_DEFAULT_FIELDS, ATL13_SCHEMA
+from HydroEO.satellites.icesat2 import (
+    ATL13_DEFAULT_FIELDS,
+    SR_ATL13_VALID_ANCILLARY_FIELDS,
+)
 from HydroEO.utils import general
 
 
@@ -33,6 +36,7 @@ MISSION_DEFAULTS = {
         "download": False,
         "process": False,
         "atl13_fields": ATL13_DEFAULT_FIELDS,
+        "atl13": {"pass_invalid": False, "beams": [], "spots": []},
         "track_keys": SUPPORTED_TRACK_KEYS,
         "processing_filters": ["elevation", "MAD"],
         "elevation_min_m": 0.0,
@@ -63,17 +67,9 @@ MISSION_DEFAULTS = {
     },
 }
 
-ICESAT2_REQUIRED_FIELDS = [
-    "ht_ortho",
-    "segment_lat",
-    "segment_lon",
-    "delta_time",
-    "beam",
-    "orbit_number",
-    "rgt",
-    "cycle_number",
-    "file_name",
-]
+# SlideRule's atl13x always returns the core fields (height, lat/lon in geometry,
+# date index, beam, rgt, cycle_number) — no forced field merging is needed.
+ICESAT2_REQUIRED_FIELDS: list[str] = []
 
 
 @dataclass
@@ -252,6 +248,7 @@ class Project:
                 for k, v in self.config[name].items()
                 if k
                 in [
+                    "atl13",
                     "atl13_fields",
                     "track_keys",
                     "subset_file_id",
@@ -263,7 +260,9 @@ class Project:
             }
 
             self.processing_options[name] = {
-                "processing_filters": self.config[name].get("processing_filters", ["elevation", "MAD"]),
+                "processing_filters": self.config[name].get(
+                    "processing_filters", ["elevation", "MAD"]
+                ),
                 "elevation_min_m": self.config[name].get("elevation_min_m", 0.0),
                 "elevation_max_m": self.config[name].get("elevation_max_m", 8000.0),
                 "mad_threshold": self.config[name].get("mad_threshold", 5.0),
@@ -281,13 +280,8 @@ class Project:
                 if key not in self.config[mission]:
                     self.config[mission][key] = deepcopy(value)
 
-        # Ensure ATL13 core fields are always present for downstream geometry/time operations.
-        if "icesat2" in self.config and isinstance(self.config["icesat2"], dict):
-            fields = self.config["icesat2"].get("atl13_fields", ATL13_DEFAULT_FIELDS)
-            if isinstance(fields, list):
-                self.config["icesat2"]["atl13_fields"] = list(
-                    dict.fromkeys(ICESAT2_REQUIRED_FIELDS + fields)
-                )
+        # SlideRule returns core fields (height, lat/lon, date, rgt, cycle_number, beam)
+        # by default — no forced field merging required.
 
     @staticmethod
     def _is_valid_date_tuple(value):
@@ -330,7 +324,9 @@ class Project:
 
             mission_cfg = cfg[mission]
             if not isinstance(mission_cfg, dict):
-                issues.append(f"Section '{mission}' must be a mapping of key/value pairs.")
+                issues.append(
+                    f"Section '{mission}' must be a mapping of key/value pairs."
+                )
                 continue
 
             for key in ["download", "process"]:
@@ -347,21 +343,27 @@ class Project:
                         f"'{mission}.{key}' must be [year, month, day] with valid integer values."
                     )
 
-            if self._is_valid_date_tuple(mission_cfg.get("startdate")) and self._is_valid_date_tuple(
-                mission_cfg.get("enddate")
-            ):
+            if self._is_valid_date_tuple(
+                mission_cfg.get("startdate")
+            ) and self._is_valid_date_tuple(mission_cfg.get("enddate")):
                 if datetime.date(*mission_cfg["startdate"]) > datetime.date(
                     *mission_cfg["enddate"]
                 ):
-                    issues.append(f"'{mission}.startdate' cannot be after '{mission}.enddate'.")
+                    issues.append(
+                        f"'{mission}.startdate' cannot be after '{mission}.enddate'."
+                    )
 
             filters = mission_cfg.get("processing_filters", ["elevation", "MAD"])
             if not isinstance(filters, list) or any(
                 not isinstance(v, str) for v in filters
             ):
-                issues.append(f"'{mission}.processing_filters' must be a list of strings.")
+                issues.append(
+                    f"'{mission}.processing_filters' must be a list of strings."
+                )
             else:
-                invalid_filters = [v for v in filters if v not in SUPPORTED_CLEAN_FILTERS]
+                invalid_filters = [
+                    v for v in filters if v not in SUPPORTED_CLEAN_FILTERS
+                ]
                 if invalid_filters:
                     issues.append(
                         f"Invalid filters in '{mission}.processing_filters': {invalid_filters}. "
@@ -370,10 +372,16 @@ class Project:
 
             min_h = mission_cfg.get("elevation_min_m", 0.0)
             max_h = mission_cfg.get("elevation_max_m", 8000.0)
-            if not isinstance(min_h, (int, float)) or not isinstance(max_h, (int, float)):
-                issues.append(f"'{mission}.elevation_min_m' and '{mission}.elevation_max_m' must be numeric.")
+            if not isinstance(min_h, (int, float)) or not isinstance(
+                max_h, (int, float)
+            ):
+                issues.append(
+                    f"'{mission}.elevation_min_m' and '{mission}.elevation_max_m' must be numeric."
+                )
             elif min_h >= max_h:
-                issues.append(f"'{mission}.elevation_min_m' must be smaller than '{mission}.elevation_max_m'.")
+                issues.append(
+                    f"'{mission}.elevation_min_m' must be smaller than '{mission}.elevation_max_m'."
+                )
 
             mad_threshold = mission_cfg.get("mad_threshold", 5.0)
             if not isinstance(mad_threshold, (int, float)) or mad_threshold <= 0:
@@ -382,13 +390,17 @@ class Project:
             if mission == "swot":
                 max_distance = mission_cfg.get("pld_match_max_distance_m", 100.0)
                 if not isinstance(max_distance, (int, float)) or max_distance < 0:
-                    issues.append("'swot.pld_match_max_distance_m' must be a non-negative number.")
+                    issues.append(
+                        "'swot.pld_match_max_distance_m' must be a non-negative number."
+                    )
 
                 excluded_obs = mission_cfg.get("exclude_obs_id_values", ["no_data"])
                 if not isinstance(excluded_obs, list) or any(
                     not isinstance(v, str) for v in excluded_obs
                 ):
-                    issues.append("'swot.exclude_obs_id_values' must be a list of strings.")
+                    issues.append(
+                        "'swot.exclude_obs_id_values' must be a list of strings."
+                    )
 
             if mission == "icesat2":
                 track_keys = mission_cfg.get("track_keys", SUPPORTED_TRACK_KEYS)
@@ -397,7 +409,9 @@ class Project:
                 ):
                     issues.append("'icesat2.track_keys' must be a list of strings.")
                 else:
-                    invalid_track_keys = [k for k in track_keys if k not in SUPPORTED_TRACK_KEYS]
+                    invalid_track_keys = [
+                        k for k in track_keys if k not in SUPPORTED_TRACK_KEYS
+                    ]
                     if invalid_track_keys:
                         issues.append(
                             f"Invalid entries in 'icesat2.track_keys': {invalid_track_keys}. "
@@ -405,29 +419,59 @@ class Project:
                         )
 
                 fields = mission_cfg.get("atl13_fields", ATL13_DEFAULT_FIELDS)
-                if not isinstance(fields, list) or any(not isinstance(v, str) for v in fields):
+                if not isinstance(fields, list) or any(
+                    not isinstance(v, str) for v in fields
+                ):
                     issues.append("'icesat2.atl13_fields' must be a list of strings.")
                 else:
-                    invalid_fields = [v for v in fields if v not in ATL13_SCHEMA]
+                    invalid_fields = [
+                        v for v in fields if v not in SR_ATL13_VALID_ANCILLARY_FIELDS
+                    ]
                     if invalid_fields:
-                        valid_fields = sorted(ATL13_SCHEMA.keys())
+                        valid_fields = sorted(SR_ATL13_VALID_ANCILLARY_FIELDS)
                         issues.append(
                             "Invalid ATL13 fields in 'icesat2.atl13_fields': "
                             f"{invalid_fields}. Valid options are: {valid_fields}."
                         )
+
+                atl13_cfg = mission_cfg.get("atl13", {})
+                if not isinstance(atl13_cfg, dict):
+                    issues.append(
+                        "'icesat2.atl13' must be a mapping of key/value pairs."
+                    )
+                else:
+                    if "pass_invalid" in atl13_cfg and not isinstance(
+                        atl13_cfg["pass_invalid"], bool
+                    ):
+                        issues.append("'icesat2.atl13.pass_invalid' must be a boolean.")
+                    for _beam_key in ("beams", "spots"):
+                        if _beam_key in atl13_cfg:
+                            _v = atl13_cfg[_beam_key]
+                            if not isinstance(_v, list) or any(
+                                not isinstance(x, str) for x in _v
+                            ):
+                                issues.append(
+                                    f"'icesat2.atl13.{_beam_key}' must be a list of strings."
+                                )
 
             if mission in ["sentinel3", "sentinel6"]:
                 sigma0_max = mission_cfg.get("sigma0_max", 1e5)
                 if not isinstance(sigma0_max, (int, float)) or sigma0_max <= 0:
                     issues.append(f"'{mission}.sigma0_max' must be a positive number.")
 
-                subset_file_id = mission_cfg.get("subset_file_id", "enhanced_measurement.nc")
+                subset_file_id = mission_cfg.get(
+                    "subset_file_id", "enhanced_measurement.nc"
+                )
                 if not isinstance(subset_file_id, str) or subset_file_id.strip() == "":
-                    issues.append(f"'{mission}.subset_file_id' must be a non-empty string.")
+                    issues.append(
+                        f"'{mission}.subset_file_id' must be a non-empty string."
+                    )
 
                 download_threads = mission_cfg.get("download_threads", 1)
                 if not isinstance(download_threads, int) or download_threads <= 0:
-                    issues.append(f"'{mission}.download_threads' must be a positive integer.")
+                    issues.append(
+                        f"'{mission}.download_threads' must be a positive integer."
+                    )
 
         if issues:
             raise ValueError("Invalid configuration:\n - " + "\n - ".join(issues))
@@ -572,6 +616,11 @@ class Project:
         warnings.filterwarnings("ignore", module="pandas\\..*")
         if hasattr(self, "reservoirs"):
             for id in self.reservoirs.download_gdf[self.reservoirs.id_key]:
+                print("Summarizing crossings")
                 self.reservoirs.summarize_crossings_by_id(id, show=show, save=save)
+
+                print("Summarizing cleaning results")
                 self.reservoirs.summarize_cleaning_by_id(id, show=show, save=save)
+
+                print("Summarizing merged results")
                 self.reservoirs.summarize_merging_by_id(id, show=show, save=save)

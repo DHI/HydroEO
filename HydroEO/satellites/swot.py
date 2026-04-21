@@ -139,6 +139,9 @@ def merge_shps(dir):
         if file.endswith(".shp"):
             gdf_list.append(gpd.read_file(os.path.join(dir, file)))
 
+    if not gdf_list:
+        return None
+
     # return the combined gdf
     gdf = pd.concat(gdf_list).reset_index(drop=True)
 
@@ -155,13 +158,17 @@ def extract_observations(
 ):
     # load in combined observations from individual files in download directory
     data_gdf = merge_shps(src_dir)
+    if data_gdf is None:
+        return
     excluded_obs_ids = set(exclude_obs_id_values or ["no_data"])
 
     # now loop through the ids in the features gdf to extract the observations from the main one
-    for i in tqdm(features.index, desc="Extracting SWOT Lake SP product"):
-        dl_id = str(features.loc[i, id_key])
-        if not np.isnan(features.loc[i, "prior_lake_id"]):
-            lake_id = str(int(features.loc[i, "prior_lake_id"]))
+    for _, feat in tqdm(
+        features.iterrows(), total=len(features), desc="Extracting SWOT Lake SP product"
+    ):
+        dl_id = str(feat[id_key])
+        if not np.isnan(feat["prior_lake_id"]):
+            lake_id = str(int(feat["prior_lake_id"]))
 
             # filter observations to keep only the ones associated with this lake/reservoir
             observations = (

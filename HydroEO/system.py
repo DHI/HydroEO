@@ -5,6 +5,11 @@ import os
 import pandas as pd
 import geopandas as gpd
 
+
+class HydroEODownloadError(RuntimeError):
+    """Raised when a HydroEO download routine fails or returns no usable data."""
+
+
 from cmcrameri import cm
 import seaborn as sns
 
@@ -133,8 +138,8 @@ class System:
 
         elif product in ["ATL13"]:
             # loop through download geometry and download data
-            for i in self.download_gdf.index:
-                id = self.download_gdf.loc[i, self.id_key]
+            for _, row in self.download_gdf.iterrows():
+                id = row[self.id_key]
                 print(f"\nDowloading data for id {id}:")
 
                 ##### Check if we should edit search date parameters
@@ -153,13 +158,12 @@ class System:
                         )  # put back into list because download_altimetry expects this
                         startdate = datetime.date(*latest_obs)
 
-                # grab coordinates of geometry
-                coords = [
-                    (x, y)
-                    for x, y in self.download_gdf.loc[
-                        i, "geometry"
-                    ].envelope.exterior.coords
-                ]
+                # Grab coordinates of the actual reservoir geometry (not the envelope)
+                # so the polygon centroid passed to the SlideRule AMS is accurate.
+                geom = row["geometry"]
+                if hasattr(geom, "geoms"):
+                    geom = geom.geoms[0]  # MultiPolygon -> use first polygon
+                coords = list(geom.exterior.coords)
 
                 # define and if needed create directory for each download geometry
                 download_dir = os.path.join(
@@ -167,7 +171,7 @@ class System:
                 )
                 general.ifnotmakedirs(download_dir)
 
-                # query and download data
+                # query and download data via SlideRule atl13x
                 print(
                     f"Searching for Icesat2 ATL13 for aoi from {startdate} to {enddate}"
                 )
@@ -175,9 +179,14 @@ class System:
                     aoi=coords,
                     startdate=startdate,
                     enddate=enddate,
-                    earthdata_credentials=credentials,
                     download_directory=download_dir,
-                    product="ATL13",
+                    atl13_options=getattr(self, "mission_options", {})
+                    .get("icesat2", {})
+                    .get("atl13", {}),
+                    atl13_fields=getattr(self, "mission_options", {})
+                    .get("icesat2", {})
+                    .get("atl13_fields")
+                    or None,
                 )
 
         elif product in ["S3", "S6"]:
@@ -186,9 +195,9 @@ class System:
             session_start_time = None
 
             # loop through download geometry
-            for i in self.download_gdf.index:
+            for _, row in self.download_gdf.iterrows():
                 # extract id for saving data
-                id = self.download_gdf.loc[i, self.id_key]
+                id = row[self.id_key]
                 print(f"\nDowloading data for id {id}:")
 
                 ##### Check if we should edit search date parameters
@@ -208,12 +217,8 @@ class System:
                         startdate = datetime.date(*latest_obs)
 
                 # grab coordinates of geometry
-                coords = [
-                    (x, y)
-                    for x, y in self.download_gdf.loc[
-                        i, "geometry"
-                    ].envelope.exterior.coords
-                ]
+                geom = row["geometry"]
+                coords = [(x, y) for x, y in geom.envelope.exterior.coords]
 
                 # make directiories for download, if needed
                 if product == "S3":
@@ -432,8 +437,10 @@ class System:
         # extract item shape
         indx = self.gdf.loc[self.gdf[self.id_key] == id].index[0]
 
-        # set boudns
-        xmin, ymin, xmax, ymax = self.gdf.loc[indx, "geometry"].bounds
+        # set bounds
+        xmin, ymin, xmax, ymax = (
+            self.gdf.loc[self.gdf[self.id_key] == id].iloc[0]["geometry"].bounds
+        )
 
         ax.set_xlim([xmin - 0.1, xmax + 0.1])
         ax.set_ylim([ymin - 0.1, ymax + 0.1])
@@ -682,6 +689,14 @@ class Reservoirs(System):
             distance_col="dist_to_pld",
         )
         joined_gdf = joined_gdf.to_crs(self.gdf.crs)
+
+        # sjoin_nearest can return multiple rows per reservoir when more than one
+        # PLD feature falls within max_distance.  Keep only the closest match.
+        joined_gdf = (
+            joined_gdf.sort_values("dist_to_pld")
+            .drop_duplicates(subset=[self.id_key], keep="first")
+            .reset_index(drop=True)
+        )
 
         # rename the joined columns to keep it clear
         joined_gdf = joined_gdf.rename(
