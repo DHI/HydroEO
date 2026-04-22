@@ -159,9 +159,10 @@ def extract_observations(
     # load in combined observations from individual files in download directory
     data_gdf = merge_shps(src_dir)
     if data_gdf is None:
-        return
+        return []
     excluded_obs_ids = set(exclude_obs_id_values or ["no_data"])
 
+    empty_ids = []
     # now loop through the ids in the features gdf to extract the observations from the main one
     for _, feat in tqdm(
         features.iterrows(), total=len(features), desc="Extracting SWOT Lake SP product"
@@ -197,6 +198,10 @@ def extract_observations(
                 dst_path = os.path.join(dst_sub_dir, dst_file_name)
 
                 observations.to_file(dst_path)
+            else:
+                empty_ids.append(dl_id)
+
+    return empty_ids
 
 
 def get_latest_obs_date(data_dir):

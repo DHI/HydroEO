@@ -142,51 +142,28 @@ def query(
     """
     from HydroEO.system import HydroEODownloadError
 
-    # Build the reservoir polygon from the AOI coordinate list.
     poly = Polygon(aoi)
+    centroid = poly.representative_point()
 
-    # atl13.coord is REQUIRED — without it the server returns a 400 error.
-    # It identifies the water body in the AMS (ATL13 Metadata Service) and is
-    # always derived from the reservoir polygon centroid at runtime; it is not
-    # a config key that users set directly.
-    centroid = poly.centroid
-
-    # Build the atl13 sub-dict.  coord must always be set from the centroid.
     atl13_sub: dict = {"coord": {"lon": centroid.x, "lat": centroid.y}}
+    # atl13_sub: dict = {"coord": {"lon": 100.32201928690762, "lat": 22.858474628948642}}   # TODO
     atl13_sub.update(atl13_options or {})
 
-    # Note: we intentionally do NOT pass "poly" here.  In SlideRule v5, combining
-    # atl13.coord with a polygon spatial filter causes the server to return no data
-    # when the ICESat-2 track segments fall outside the supplied bounding box (common
-    # for small/medium lakes where tracks may cross outside a tight polygon).
-    # The atl13.coord lookup already scopes results to the specific water body.
-    # Precise spatial filtering is performed in extract_observations() using
-    # gdf.within() after the full water-body dataset has been retrieved.
     parms: dict = {
         "atl13": atl13_sub,  # required — water-body AMS lookup
         "t0": startdate.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "t1": enddate.strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
-    # atl13_fields requests additional ancillary HDF5 beam-group fields
-    # server-side.  It is a top-level parms key, not inside the atl13 sub-dict.
     if atl13_fields:
         parms["atl13_fields"] = atl13_fields
 
     try:
         gdf = sliderule.run("atl13x", parms)
     except FileNotFoundError as exc:
-        # When the AMS lookup fails (HTTP 400 from the server), SlideRule logs
-        # the error as an alert and then attempts to read a temp parquet file
-        # that was never written, raising FileNotFoundError on a /tmp/ path.
-        # Surface a diagnostic message pointing to the AMS registration issue.
         raise HydroEODownloadError(
-            f"SlideRule AMS lookup failed for centroid "
-            f"(lon={centroid.x:.4f}, lat={centroid.y:.4f}). "
-            "The server returned a 400 error, which usually means this water body "
-            "is not registered in the AMS database (GRWL / HydroLAKES). "
-            "Verify that the reservoir appears in HydroLAKES and that the polygon "
-            "centroid falls inside the water body."
+            f"SlideRule lookup failed for centroid "
+            f"(lon={centroid.x:.4f}, lat={centroid.y:.4f})."
         ) from exc
     except Exception as exc:
         raise HydroEODownloadError(f"SlideRule atl13x request failed: {exc}") from exc
@@ -198,26 +175,6 @@ def query(
             "This usually means the reservoir is not registered in the AMS "
             "database (GRWL / HydroLAKES). Verify that the water body appears "
             "in HydroLAKES and that the polygon centroid falls inside it."
-        )
-
-    # ── Client-side date range filter ─────────────────────────────────────────
-    # SlideRule's atl13x AMS lookup identifies the water body by granule, not by
-    # segment timestamp.  The server may return observations from outside the
-    # requested t0/t1 window when a granule spans the boundary.  Apply an explicit
-    # client-side cutoff so the cached parquet always covers exactly the configured
-    # date range.
-    start_ts = pd.Timestamp(startdate)
-    end_ts = pd.Timestamp(enddate)
-    if gdf.index.tzinfo is not None:
-        start_ts = start_ts.tz_localize("UTC")
-        end_ts = end_ts.tz_localize("UTC")
-    gdf = gdf.loc[(gdf.index >= start_ts) & (gdf.index < end_ts)].copy()
-
-    if gdf.empty:
-        raise HydroEODownloadError(
-            f"SlideRule atl13x returned no data in the requested date range "
-            f"({startdate} to {enddate}) for centroid "
-            f"(lon={centroid.x:.4f}, lat={centroid.y:.4f})."
         )
 
     # ── Apply HydroEO column schema ───────────────────────────────────────────
@@ -240,10 +197,16 @@ def query(
     # file_name is not returned (no local files); use
     # gdf.attrs["meta"]["srctbl"][srcid] to map srcid -> granule name if needed.
 
-    # Extract the datetime index as an explicit "date" column for downstream
-    # timeseries compatibility.  SlideRule sets observation timestamp as index.
     gdf["date"] = gdf.index
     gdf = gdf.reset_index(drop=True)
+
+    # ── Date filter ───────────────────────────────────────────────────────────
+    # SlideRule t0/t1 may not be enforced server-side; filter client-side so
+    # only observations within [startdate, enddate] are cached and returned.
+    start_dt = pd.Timestamp(startdate).tz_localize("UTC")
+    end_dt = pd.Timestamp(enddate).tz_localize("UTC")
+    date_col = pd.to_datetime(gdf["date"], utc=True)
+    gdf = gdf.loc[(date_col >= start_dt) & (date_col <= end_dt)].reset_index(drop=True)
 
     # ── Optional Parquet cache ────────────────────────────────────────────────
     if download_directory is not None:

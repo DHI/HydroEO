@@ -138,8 +138,8 @@ class System:
 
         elif product in ["ATL13"]:
             # loop through download geometry and download data
-            for _, row in self.download_gdf.iterrows():
-                id = row[self.id_key]
+            for i in self.download_gdf.index:
+                id = self.download_gdf.loc[i, self.id_key]
                 print(f"\nDowloading data for id {id}:")
 
                 ##### Check if we should edit search date parameters
@@ -160,7 +160,7 @@ class System:
 
                 # Grab coordinates of the actual reservoir geometry (not the envelope)
                 # so the polygon centroid passed to the SlideRule AMS is accurate.
-                geom = row["geometry"]
+                geom = self.download_gdf.loc[i, "geometry"]
                 if hasattr(geom, "geoms"):
                     geom = geom.geoms[0]  # MultiPolygon -> use first polygon
                 coords = list(geom.exterior.coords)
@@ -175,19 +175,22 @@ class System:
                 print(
                     f"Searching for Icesat2 ATL13 for aoi from {startdate} to {enddate}"
                 )
-                _ = icesat2.query(
-                    aoi=coords,
-                    startdate=startdate,
-                    enddate=enddate,
-                    download_directory=download_dir,
-                    atl13_options=getattr(self, "mission_options", {})
-                    .get("icesat2", {})
-                    .get("atl13", {}),
-                    atl13_fields=getattr(self, "mission_options", {})
-                    .get("icesat2", {})
-                    .get("atl13_fields")
-                    or None,
-                )
+                try:
+                    _ = icesat2.query(
+                        aoi=coords,
+                        startdate=startdate,
+                        enddate=enddate,
+                        download_directory=download_dir,
+                        atl13_options=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("atl13", {}),
+                        atl13_fields=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("atl13_fields")
+                        or None,
+                    )
+                except HydroEODownloadError as exc:
+                    print(f"  WARNING: ICESat-2 download skipped for {id}: {exc}")
 
         elif product in ["S3", "S6"]:
             # set empty variables because no session has been started yet, this will occur at the first download and sessions will refresh automatically
@@ -195,9 +198,9 @@ class System:
             session_start_time = None
 
             # loop through download geometry
-            for _, row in self.download_gdf.iterrows():
+            for i in self.download_gdf.index:
                 # extract id for saving data
-                id = row[self.id_key]
+                id = self.download_gdf.loc[i, self.id_key]
                 print(f"\nDowloading data for id {id}:")
 
                 ##### Check if we should edit search date parameters
@@ -217,8 +220,12 @@ class System:
                         startdate = datetime.date(*latest_obs)
 
                 # grab coordinates of geometry
-                geom = row["geometry"]
-                coords = [(x, y) for x, y in geom.envelope.exterior.coords]
+                coords = [
+                    (x, y)
+                    for x, y in self.download_gdf.loc[
+                        i, "geometry"
+                    ].envelope.exterior.coords
+                ]
 
                 # make directiories for download, if needed
                 if product == "S3":
@@ -278,6 +285,9 @@ class System:
     def get_unfiltered_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
 
+        if not os.path.exists(data_dir):
+            return None
+
         # loop through raw directory and load in all raw observations
         df_list = list()
         for file in os.listdir(data_dir):
@@ -302,7 +312,20 @@ class System:
     ):
         filter_options_by_product = filter_options_by_product or {}
 
-        for id in tqdm(self.download_gdf[self.id_key]):
+        ids_with_raw = [
+            id
+            for id in self.download_gdf[self.id_key]
+            if os.path.exists(
+                os.path.join(self.dirs["output"], f"{id}", "raw_observations")
+            )
+        ]
+        if not ids_with_raw:
+            print(
+                "  WARNING: No raw observations found for any reservoir; skipping timeseries cleaning."
+            )
+            return
+
+        for id in tqdm(ids_with_raw, desc="Cleaning product timeseries"):
             for product in products:
                 # get timeseries for id and each product to clean individually
                 df = self.get_unfiltered_product_timeseries(id, [product])
@@ -371,7 +394,20 @@ class System:
         return df
 
     def merge_product_timeseries(self, products: list):
-        for id in tqdm(self.download_gdf[self.id_key]):
+        ids_with_cleaned = [
+            id
+            for id in self.download_gdf[self.id_key]
+            if os.path.exists(
+                os.path.join(self.dirs["output"], f"{id}", "cleaned_observations")
+            )
+        ]
+        if not ids_with_cleaned:
+            print(
+                "  WARNING: No cleaned observations found for any reservoir; skipping timeseries merging."
+            )
+            return
+
+        for id in tqdm(ids_with_cleaned, desc="Merging product timeseries"):
             if id not in []:
                 # ["Lower Se San 2 + Lower Sre Pok 2"]:  # TODO: REMOVE THIS LINE!
                 ts_list = list()
@@ -437,10 +473,8 @@ class System:
         # extract item shape
         indx = self.gdf.loc[self.gdf[self.id_key] == id].index[0]
 
-        # set bounds
-        xmin, ymin, xmax, ymax = (
-            self.gdf.loc[self.gdf[self.id_key] == id].iloc[0]["geometry"].bounds
-        )
+        # set boudns
+        xmin, ymin, xmax, ymax = self.gdf.loc[indx, "geometry"].bounds
 
         ax.set_xlim([xmin - 0.1, xmax + 0.1])
         ax.set_ylim([ymin - 0.1, ymax + 0.1])
@@ -690,14 +724,6 @@ class Reservoirs(System):
         )
         joined_gdf = joined_gdf.to_crs(self.gdf.crs)
 
-        # sjoin_nearest can return multiple rows per reservoir when more than one
-        # PLD feature falls within max_distance.  Keep only the closest match.
-        joined_gdf = (
-            joined_gdf.sort_values("dist_to_pld")
-            .drop_duplicates(subset=[self.id_key], keep="first")
-            .reset_index(drop=True)
-        )
-
         # rename the joined columns to keep it clear
         joined_gdf = joined_gdf.rename(
             columns={"lake_id": "prior_lake_id", "res_id": "prior_res_id"}
@@ -735,17 +761,28 @@ class Reservoirs(System):
 
     def extract_product_timeseries(self, products: list):
         if "icesat2" in products:
-            for id in tqdm(
-                self.download_gdf[self.id_key], desc="Extracting ICESat-2 ATL13 product"
-            ):
-                # filter gdf to only row with id
-                sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
-
-                # prep export folder and paths
-                download_dir = os.path.join(
-                    self.dirs["icesat2"], rf"{self.type}", rf"{id}"
+            available_ids = [
+                id
+                for id in self.download_gdf[self.id_key]
+                if os.path.exists(
+                    os.path.join(
+                        self.dirs["icesat2"], rf"{self.type}", rf"{id}", "atl13.parquet"
+                    )
                 )
-                if os.path.exists(download_dir):
+            ]
+            if not available_ids:
+                print(
+                    "  WARNING: No ICESat-2 downloads found; skipping timeseries extraction."
+                )
+            else:
+                empty_ids = []
+                for id in tqdm(available_ids, desc="Extracting ICESat-2 ATL13 product"):
+                    sub_gdf = self.download_gdf.loc[
+                        self.download_gdf[self.id_key] == id
+                    ]
+                    download_dir = os.path.join(
+                        self.dirs["icesat2"], rf"{self.type}", rf"{id}"
+                    )
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
                     )
@@ -765,18 +802,36 @@ class Reservoirs(System):
                         .get("track_keys"),
                     )
 
-        if "sentinel3" in products:
-            for id in tqdm(
-                self.download_gdf[self.id_key], desc="Extracting Sentinel-3 product"
-            ):
-                # filter gdf to only row with id
-                sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
+                    if not os.path.exists(dst_path):
+                        empty_ids.append(id)
 
-                # prep export folder and paths
-                download_dir = os.path.join(
-                    self.dirs["sentinel3"], rf"{self.type}", rf"{id}"
+                if empty_ids:
+                    print(
+                        f"  WARNING: ICESat-2 timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
+                        "(no observations passed the spatial filter or the download returned no data)"
+                    )
+
+        if "sentinel3" in products:
+            available_ids = [
+                id
+                for id in self.download_gdf[self.id_key]
+                if os.path.exists(
+                    os.path.join(self.dirs["sentinel3"], rf"{self.type}", rf"{id}")
                 )
-                if os.path.exists(download_dir):
+            ]
+            if not available_ids:
+                print(
+                    "  WARNING: No Sentinel-3 downloads found; skipping timeseries extraction."
+                )
+            else:
+                empty_ids = []
+                for id in tqdm(available_ids, desc="Extracting Sentinel-3 product"):
+                    sub_gdf = self.download_gdf.loc[
+                        self.download_gdf[self.id_key] == id
+                    ]
+                    download_dir = os.path.join(
+                        self.dirs["sentinel3"], rf"{self.type}", rf"{id}"
+                    )
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
                     )
@@ -793,18 +848,36 @@ class Reservoirs(System):
                         .get("sigma0_max", 1e5),
                     )
 
-        if "sentinel6" in products:
-            for id in tqdm(
-                self.download_gdf[self.id_key], desc="Extracting Sentinel-6 product"
-            ):
-                # filter gdf to only row with id
-                sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
+                    if not os.path.exists(dst_path):
+                        empty_ids.append(id)
 
-                # prep export folder and paths
-                download_dir = os.path.join(
-                    self.dirs["sentinel6"], rf"{self.type}", rf"{id}"
+                if empty_ids:
+                    print(
+                        f"  WARNING: Sentinel-3 timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
+                        "(no observations passed the spatial filter or the download returned no data)"
+                    )
+
+        if "sentinel6" in products:
+            available_ids = [
+                id
+                for id in self.download_gdf[self.id_key]
+                if os.path.exists(
+                    os.path.join(self.dirs["sentinel6"], rf"{self.type}", rf"{id}")
                 )
-                if os.path.exists(download_dir):
+            ]
+            if not available_ids:
+                print(
+                    "  WARNING: No Sentinel-6 downloads found; skipping timeseries extraction."
+                )
+            else:
+                empty_ids = []
+                for id in tqdm(available_ids, desc="Extracting Sentinel-6 product"):
+                    sub_gdf = self.download_gdf.loc[
+                        self.download_gdf[self.id_key] == id
+                    ]
+                    download_dir = os.path.join(
+                        self.dirs["sentinel6"], rf"{self.type}", rf"{id}"
+                    )
                     dst_dir = os.path.join(
                         self.dirs["output"], f"{id}", "raw_observations"
                     )
@@ -821,17 +894,35 @@ class Reservoirs(System):
                         .get("sigma0_max", 1e5),
                     )
 
+                    if not os.path.exists(dst_path):
+                        empty_ids.append(id)
+
+                if empty_ids:
+                    print(
+                        f"  WARNING: Sentinel-6 timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
+                        "(no observations passed the spatial filter or the download returned no data)"
+                    )
+
         if "swot" in products:
             download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
-
-            # extract observations within bounds and save as timeseries csv, slightly differnt format for downloading here due to the natrure of swot data
-            swot.extract_observations(
-                src_dir=download_dir,
-                dst_dir=self.dirs["output"],
-                dst_file_name="swot.shp",
-                features=self.download_gdf,
-                id_key=self.id_key,
-                exclude_obs_id_values=getattr(self, "mission_options", {})
-                .get("swot", {})
-                .get("exclude_obs_id_values", ["no_data"]),
-            )
+            if not os.path.exists(download_dir):
+                print(
+                    "  WARNING: No SWOT downloads found; skipping timeseries extraction."
+                )
+            else:
+                # extract observations within bounds and save as timeseries csv, slightly differnt format for downloading here due to the natrure of swot data
+                empty_ids = swot.extract_observations(
+                    src_dir=download_dir,
+                    dst_dir=self.dirs["output"],
+                    dst_file_name="swot.shp",
+                    features=self.download_gdf,
+                    id_key=self.id_key,
+                    exclude_obs_id_values=getattr(self, "mission_options", {})
+                    .get("swot", {})
+                    .get("exclude_obs_id_values", ["no_data"]),
+                )
+                if empty_ids:
+                    print(
+                        f"  WARNING: SWOT timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
+                        "(no observations matched the prior lake ID or all were excluded)"
+                    )

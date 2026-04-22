@@ -42,7 +42,13 @@ def test_query_parms_construction(monkeypatch):
 
     monkeypatch.setattr(icesat2.sliderule, "run", fake_run)
 
-    aoi = [(36.28, -0.87), (36.43, -0.87), (36.43, -0.72), (36.28, -0.72), (36.28, -0.87)]
+    aoi = [
+        (36.28, -0.87),
+        (36.43, -0.87),
+        (36.43, -0.72),
+        (36.28, -0.72),
+        (36.28, -0.87),
+    ]
     startdate = datetime.date(2019, 1, 1)
     enddate = datetime.date(2019, 12, 31)
     fields = ["segment_quality"]
@@ -64,7 +70,9 @@ def test_query_parms_construction(monkeypatch):
     assert "coord" in parms["atl13"]
     assert abs(parms["atl13"]["coord"]["lon"] - expected_centroid.x) < 1e-9
     assert abs(parms["atl13"]["coord"]["lat"] - expected_centroid.y) < 1e-9
-    assert "poly" not in parms, "poly must not be passed (causes empty results in SR v5)"
+    assert "poly" not in parms, (
+        "poly must not be passed (causes empty results in SR v5)"
+    )
     assert parms["t0"] == "2019-01-01T00:00:00Z"
     assert parms["t1"] == "2019-12-31T00:00:00Z"
     assert parms.get("atl13_fields") == fields
@@ -73,7 +81,10 @@ def test_query_parms_construction(monkeypatch):
 @pytest.mark.unit
 def test_column_mapping():
     """SlideRule column names must be renamed to HydroEO schema names."""
-    from HydroEO.satellites.icesat2 import SR_ANCILLARY_COLUMN_MAP, SR_DEFAULT_COLUMN_MAP
+    from HydroEO.satellites.icesat2 import (
+        SR_ANCILLARY_COLUMN_MAP,
+        SR_DEFAULT_COLUMN_MAP,
+    )
 
     raw = gpd.GeoDataFrame(
         {
@@ -111,7 +122,13 @@ def test_empty_result_raises(monkeypatch):
 
     monkeypatch.setattr(icesat2.sliderule, "run", lambda *a, **kw: gpd.GeoDataFrame())
 
-    aoi = [(36.28, -0.87), (36.43, -0.87), (36.43, -0.72), (36.28, -0.72), (36.28, -0.87)]
+    aoi = [
+        (36.28, -0.87),
+        (36.43, -0.87),
+        (36.43, -0.72),
+        (36.28, -0.72),
+        (36.28, -0.87),
+    ]
     with pytest.raises(HydroEODownloadError, match="HydroLAKES"):
         icesat2.query(
             aoi=aoi,
@@ -132,7 +149,13 @@ def test_connection_error_raises(monkeypatch):
 
     monkeypatch.setattr(icesat2.sliderule, "run", bad_run)
 
-    aoi = [(36.28, -0.87), (36.43, -0.87), (36.43, -0.72), (36.28, -0.72), (36.28, -0.87)]
+    aoi = [
+        (36.28, -0.87),
+        (36.43, -0.87),
+        (36.43, -0.72),
+        (36.28, -0.72),
+        (36.28, -0.87),
+    ]
     with pytest.raises(HydroEODownloadError, match="SlideRule atl13x request failed"):
         icesat2.query(
             aoi=aoi,
@@ -154,8 +177,14 @@ def test_ams_400_raises_descriptive_error(monkeypatch):
 
     monkeypatch.setattr(icesat2.sliderule, "run", ams_failure)
 
-    aoi = [(36.28, -0.87), (36.43, -0.87), (36.43, -0.72), (36.28, -0.72), (36.28, -0.87)]
-    with pytest.raises(HydroEODownloadError, match="AMS lookup failed"):
+    aoi = [
+        (36.28, -0.87),
+        (36.43, -0.87),
+        (36.43, -0.72),
+        (36.28, -0.72),
+        (36.28, -0.87),
+    ]
+    with pytest.raises(HydroEODownloadError, match="SlideRule lookup failed"):
         icesat2.query(
             aoi=aoi,
             startdate=datetime.date(2019, 1, 1),
@@ -185,7 +214,10 @@ def test_invalid_atl13_field_name_raises_descriptive_error(tmp_path):
             "process": False,
             "startdate": [2019, 1, 1],
             "enddate": [2019, 12, 31],
-            "atl13_fields": ["segment_quality", "photon_rate"],  # photon_rate is invalid
+            "atl13_fields": [
+                "segment_quality",
+                "photon_rate",
+            ],  # photon_rate is invalid
         },
     }
     cfg_path = tmp_path / "config.yaml"
