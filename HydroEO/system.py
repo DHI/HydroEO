@@ -4,19 +4,10 @@ import warnings
 import os
 import pandas as pd
 import geopandas as gpd
-
-
-class HydroEODownloadError(RuntimeError):
-    """Raised when a HydroEO download routine fails or returns no usable data."""
-
-
 from cmcrameri import cm
 import seaborn as sns
-
-
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-
 import datetime
 
 from HydroEO.satellites import swot, icesat2, sentinel
@@ -24,6 +15,10 @@ from HydroEO.utils import general, timeseries
 from HydroEO.downloaders import hydroweb
 
 from tqdm import tqdm
+
+
+class HydroEODownloadError(RuntimeError):
+    """Raised when a HydroEO download routine fails or returns no usable data."""
 
 
 @dataclass

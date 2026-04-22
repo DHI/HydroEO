@@ -16,7 +16,6 @@ To run locally with credentials:
 
 import datetime
 import os
-import re
 
 import pytest
 
