@@ -419,15 +419,6 @@ def _run_svr_rbf(dates, heights, err=1, rbf_c=10000, gamma=0.0000438, epsilon=0.
     # Kalman heights
     y = heights
     x = np.vstack([x, np.ones(len(x))]).T
-    # y = np.vstack([y, np.ones(len(y))]).T
-
-    # Scale values:
-    # std_x = StandardScaler()
-    # std_y = StandardScaler()
-    # x2 = std_x.fit_transform(x)
-    # y2 = std_y.fit_transform(y)[:,0]
-
-    # Extend x data to contain another row vector of 1s
 
     svr_rbf = SVR(kernel="rbf", C=rbf_c, gamma=gamma, epsilon=epsilon)
     rbf = svr_rbf.fit(x, y)
@@ -451,7 +442,6 @@ def svr_radial(timeseries):
     df = timeseries.df.copy()
     date_key = timeseries.date_key
     height_key = timeseries.height_key
-    # error_key = timeseries.error_key
 
     rbf_filter = _run_svr_rbf(
         df[date_key].values,
@@ -463,14 +453,8 @@ def svr_radial(timeseries):
     )  # these are the default values as in DAHITI with error changed from 1 to 0.1m for lakes
 
     nb_obs = df.groupby(date_key).count().reset_index()
-    # pass_ = df.groupby(date_key).first().reset_index()
-    # coords = df.loc[df.groupby(date_key)[error_key].idxmin()].reset_index()
 
     nb_obs["nb_obs"] = nb_obs[date_key]
-    # nb_obs[["relative orbit", "orbit", "platform"]] = pass_[
-    #     ["relative_orbit", "orbit", "platform"]
-    # ]
-    # nb_obs[["lat", "lon"]] = coords[["lat", "lon"]]
 
     # Create new dataframe:
     vs = pd.DataFrame(
@@ -479,18 +463,5 @@ def svr_radial(timeseries):
             height_key: df[height_key].values[rbf_filter],
         }
     )
-    # vs = pd.merge(
-    #     nb_obs[["day", "nb_obs", "relative orbit", "orbit", "platform", "lat", "lon"]],
-    #     vs,
-    #     left_on="day",
-    #     right_on="date",
-    # )
-
-    # vs["decimal year"] = [
-    #     str(round(_year_fraction(pd.to_datetime(uniq_d)), 8)) for uniq_d in vs.date
-    # ]
-    # vs["date"] = [
-    #     datetime.strftime(pd.to_datetime(uniq_d), "%Y/%m/%d") for uniq_d in vs.date
-    # ]
 
     return vs

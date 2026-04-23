@@ -1,20 +1,20 @@
 from dataclasses import dataclass
+import logging
 import warnings
 
 import os
 import pandas as pd
 import geopandas as gpd
-from cmcrameri import cm
-import seaborn as sns
-import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 import datetime
 
 from HydroEO.satellites import swot, icesat2, sentinel
 from HydroEO.utils import general, timeseries
 from HydroEO.downloaders import hydroweb
+from HydroEO import plotting
 
 from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 class HydroEODownloadError(RuntimeError):
@@ -28,7 +28,7 @@ class System:
     dirs: dict
 
     def report(self):
-        print(f"Number of {self.type}: {len(self.gdf)}")
+        logger.info("Number of %s: %s", self.type, len(self.gdf))
         return self.gdf.head()
 
     def download_altimetry(  # TODO: this function has gotten a bit complex and should maybe be refacotred and broken down
@@ -49,18 +49,6 @@ class System:
             raise ValueError(
                 f'"{product}" is not accepted as a valid download product. Please provide a valid product.'
             )
-
-        ### Set the download geometry for the search bounds
-        # set grid as download bounds if needed TODO: add the setting of the download geometries outside of download function
-        # if grid:
-        #     if hasattr(self, "grid"):
-        #         download_gdf = self.grid.copy()
-        #     else:
-        #         raise NameError(
-        #             "Object has no atttribute: grid. Make sure to create grid before enabling this option"
-        #         )
-        # else:
-        #     self.download_gdf = self.gdf
 
         # unpack and format the download dates
         startdate = datetime.date(*startdate)
@@ -97,8 +85,11 @@ class System:
             ]
 
             # query all available data — uses baseline D product (SWOT_L2_HR_LakeSP_D)
-            print(
-                f"Searching for {swot.SWOT_LAKE_SHORT_NAME} for aoi from {startdate} to {enddate}"
+            logger.info(
+                "Searching for %s for aoi from %s to %s",
+                swot.SWOT_LAKE_SHORT_NAME,
+                startdate,
+                enddate,
             )
             results = swot.query(
                 aoi=coords,
@@ -109,14 +100,16 @@ class System:
             # Filter to the prior-lake sub-collection granules.
             # Baseline D file names end with "_prior_*" (lower-case); baseline C
             # used "_Prior_*" (title-case). We match both for robustness.
-            print(f"{len(results)} products returned from query")
+            logger.info("%s products returned from query", len(results))
             to_download = list()
             for result in results:
                 link = result.data_links()[0]
                 filename = link.split("/")[-1].lower()
                 if "_prior_" in filename or "prior" in filename.split("_"):
                     to_download.append(result)
-            print(f"{len(to_download)} prior-lake granules selected for download")
+            logger.info(
+                "%s prior-lake granules selected for download", len(to_download)
+            )
 
             # download the individual file
             _ = swot.download(to_download, download_directory=download_dir)
@@ -135,7 +128,7 @@ class System:
             # loop through download geometry and download data
             for i in self.download_gdf.index:
                 id = self.download_gdf.loc[i, self.id_key]
-                print(f"\nDowloading data for id {id}:")
+                logger.info("Downloading data for id %s", id)
 
                 ##### Check if we should edit search date parameters
                 startdate = provided_start_date  # keep track of provided start date so we can refresh with each reservoir query
@@ -167,8 +160,10 @@ class System:
                 general.ifnotmakedirs(download_dir)
 
                 # query and download data via SlideRule atl13x
-                print(
-                    f"Searching for Icesat2 ATL13 for aoi from {startdate} to {enddate}"
+                logger.info(
+                    "Searching for Icesat2 ATL13 for aoi from %s to %s",
+                    startdate,
+                    enddate,
                 )
                 try:
                     _ = icesat2.query(
@@ -185,7 +180,7 @@ class System:
                         or None,
                     )
                 except HydroEODownloadError as exc:
-                    print(f"  WARNING: ICESat-2 download skipped for {id}: {exc}")
+                    logger.warning("ICESat-2 download skipped for %s: %s", id, exc)
 
         elif product in ["S3", "S6"]:
             # set empty variables because no session has been started yet, this will occur at the first download and sessions will refresh automatically
@@ -196,7 +191,7 @@ class System:
             for i in self.download_gdf.index:
                 # extract id for saving data
                 id = self.download_gdf.loc[i, self.id_key]
-                print(f"\nDowloading data for id {id}:")
+                logger.info("Downloading data for id %s", id)
 
                 ##### Check if we should edit search date parameters
                 startdate = provided_start_date  # keep track of provided start date so we can refresh with each reservoir query
@@ -234,8 +229,11 @@ class System:
                 general.ifnotmakedirs(download_dir)
 
                 # query copernicus for download ids
-                print(
-                    f"Searching for Sentinel-{product} for aoi from {startdate} to {enddate}"
+                logger.info(
+                    "Searching for Sentinel-%s for aoi from %s to %s",
+                    product,
+                    startdate,
+                    enddate,
                 )
                 ids = sentinel.query(
                     aoi=coords,
@@ -275,7 +273,6 @@ class System:
                 )
 
                 # clean up zip and unzipped folders keeping only the remaining subsetted data
-                # general.remove_non_exts(download_dir, [".nc", ".log"]) # TODO: uncomment
 
     def get_unfiltered_product_timeseries(self, id, products: list = []):
         data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
@@ -315,8 +312,8 @@ class System:
             )
         ]
         if not ids_with_raw:
-            print(
-                "  WARNING: No raw observations found for any reservoir; skipping timeseries cleaning."
+            logger.warning(
+                "No raw observations found for any reservoir; skipping timeseries cleaning."
             )
             return
 
@@ -397,14 +394,13 @@ class System:
             )
         ]
         if not ids_with_cleaned:
-            print(
-                "  WARNING: No cleaned observations found for any reservoir; skipping timeseries merging."
+            logger.warning(
+                "No cleaned observations found for any reservoir; skipping timeseries merging."
             )
             return
 
         for id in tqdm(ids_with_cleaned, desc="Merging product timeseries"):
             if id not in []:
-                # ["Lower Se San 2 + Lower Sre Pok 2"]:  # TODO: REMOVE THIS LINE!
                 ts_list = list()
                 for product in products:
                     # get timeseries for id and each product to clean individually
@@ -452,232 +448,39 @@ class System:
             return None
 
     def summarize_crossings_by_id(self, id, show=True, save=False):
-        sns.set()
-        cmap = cm.batlow.resampled(5)
-        colors = {
-            "icesat2": cmap(0),
-            "sentinel3": cmap(1),
-            "sentinel6": cmap(3),
-            "swot": cmap(4),
-        }
-
-        # start figure
-        fig, ax = plt.subplots()
-        fig.suptitle(f"{self.type}: {id}")
-
-        # extract item shape
-        indx = self.gdf.loc[self.gdf[self.id_key] == id].index[0]
-
-        # set boudns
-        xmin, ymin, xmax, ymax = self.gdf.loc[indx, "geometry"].bounds
-
-        ax.set_xlim([xmin - 0.1, xmax + 0.1])
-        ax.set_ylim([ymin - 0.1, ymax + 0.1])
-
-        # plot reservoir
-        self.gdf.loc[[indx]].plot(
-            ax=ax,
-            edgecolor="black",
-            facecolor="None",
-            zorder=5,
-            label="Reservoir outline",
+        """Plot raw observations crossing for a reservoir."""
+        return plotting.plot_crossings(
+            gdf=self.gdf,
+            id_key=self.id_key,
+            reservoir_id=id,
+            output_dir=self.dirs["output"],
+            reservoir_type=self.type,
+            show=show,
+            save=save,
         )
 
-        # loop through each product in file and plot
-        data_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
-        plotted_products = set()
-        for file_name in os.listdir(data_dir):
-            if file_name.endswith(".shp"):
-                path_to_file = os.path.join(data_dir, file_name)
-                product = file_name.split(".")[0]
-                gdf = gpd.read_file(path_to_file)
-                if product == "swot":
-                    zorder = 0
-                    alpha = 0.1
-                else:
-                    zorder = 10
-                    alpha = 0.5
-                gdf.plot(
-                    ax=ax,
-                    color=colors[product],
-                    edgecolor="none",
-                    alpha=alpha,
-                    zorder=zorder,
-                    label=product,
-                )
-                plotted_products.add(product)
-
-        legend_handles = [
-            Line2D(
-                [],
-                [],
-                color="black",
-                linewidth=1.0,
-                label="Reservoir outline",
-            )
-        ]
-
-        for product in sorted(plotted_products):
-            if product in colors:
-                legend_handles.append(
-                    Line2D(
-                        [],
-                        [],
-                        marker="o",
-                        linestyle="None",
-                        color=colors[product],
-                        label=product,
-                        alpha=0.1 if product == "swot" else 0.5,
-                    )
-                )
-
-        if legend_handles:
-            ax.legend(
-                handles=legend_handles,
-                loc="center left",
-                bbox_to_anchor=(1.02, 0.5),
-                borderaxespad=0.0,
-            )
-        fig.tight_layout(rect=(0, 0, 0.82, 1))
-        if save:
-            plt.savefig(
-                os.path.join(self.dirs["output"], f"{id}", "crossing_summary.png")
-            )
-        if show:
-            plt.show()
-
-        return None
-
     def summarize_cleaning_by_id(self, id, show=True, save=False):
-        sns.set()
-        cmap = cm.batlow.resampled(5)
-        colors = {
-            "icesat2": cmap(0),
-            "S3A": cmap(1),
-            "S3B": cmap(2),
-            "S6A": cmap(3),
-            "swot": cmap(4),
-        }
-
-        fig, main_ax = plt.subplots(3, 1, figsize=(10, 10))
-        fig.suptitle(f"{self.type}: {id}")
-
-        # plot unfiltered timeseries
-        df = self.get_unfiltered_product_timeseries(id)
-        if df is not None:
-            df = df[["date", "height", "platform", "product"]]
-
-            ax = main_ax[0]
-            ax.set_title("Unfiltered Products")
-            for platform in df.platform.unique():
-                df.loc[df.platform == platform].plot(
-                    ax=ax,
-                    x="date",
-                    y="height",
-                    c=colors[platform],
-                    kind="scatter",
-                    label=platform,
-                )
-
-            handles, labels = ax.get_legend_handles_labels()
-            if labels:
-                ax.legend(
-                    loc="center left",
-                    bbox_to_anchor=(1.02, 0.5),
-                    borderaxespad=0.0,
-                )
-            ax.tick_params(axis="x", rotation=45)
-
-            # now plot cleaned timeseries
-            df = self.get_cleaned_product_timeseries(id)
-            df = df[["date", "height", "platform", "product"]]
-
-            ax = main_ax[1]
-            ax.set_title("Cleaned Products")
-            for platform in df.platform.unique():
-                df.loc[df.platform == platform].plot(
-                    ax=ax,
-                    x="date",
-                    y="height",
-                    c=colors[platform],
-                    kind="scatter",
-                    label=platform,
-                )
-
-            handles, labels = ax.get_legend_handles_labels()
-            if labels:
-                ax.legend(
-                    loc="center left",
-                    bbox_to_anchor=(1.02, 0.5),
-                    borderaxespad=0.0,
-                )
-            ax.tick_params(axis="x", rotation=45)
-
-        # now plot merged timeseries
-        df = self.get_merged_timeseries(id)
-        if df is not None:
-            df = df[["date", "height"]]
-
-            ax = main_ax[2]
-            ax.set_title("Merged Timeseries")
-            df.plot(ax=ax, x="date", y="height", c="k", kind="scatter", label="merged")
-
-            handles, labels = ax.get_legend_handles_labels()
-            if labels:
-                ax.legend(
-                    loc="center left",
-                    bbox_to_anchor=(1.02, 0.5),
-                    borderaxespad=0.0,
-                )
-            ax.tick_params(axis="x", rotation=45)
-
-            fig.tight_layout(rect=(0, 0, 0.82, 1))
-            if save:
-                plt.savefig(
-                    os.path.join(self.dirs["output"], f"{id}", "cleaning_summary.png")
-                )
-            if show:
-                plt.show()
+        """Plot cleaning progression (unfiltered, cleaned, merged timeseries)."""
+        return plotting.plot_cleaning(
+            reservoir_id=id,
+            output_dir=self.dirs["output"],
+            get_unfiltered_fn=self.get_unfiltered_product_timeseries,
+            get_cleaned_fn=self.get_cleaned_product_timeseries,
+            get_merged_fn=self.get_merged_timeseries,
+            reservoir_type=self.type,
+            show=show,
+            save=save,
+        )
 
     def summarize_merging_by_id(self, id, show=True, save=False):
-        merged_dir = os.path.join(self.dirs["output"], str(id), "merged_progress")
-
-        if os.path.exists(merged_dir):
-            file_names = os.listdir(merged_dir)
-            num_files = len(file_names)
-
-            sns.set()
-            fig, main_ax = plt.subplots(num_files, 1, figsize=(10, 10))
-            fig.suptitle(f"{self.type}: {id}")
-
-            def _plot_file(i, fig, main_ax, file_name, file_names, dir):
-                if file_name in file_names:
-                    i = i + 1
-                    ax = main_ax.flat[i]
-                    df = pd.read_csv(os.path.join(dir, file_name))
-                    df["date"] = pd.to_datetime(df.date)
-                    df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
-                    ax.set_title(file_name)
-                return i
-
-            i = -1
-            i = _plot_file(i, fig, main_ax, "svr_linear.csv", file_names, merged_dir)
-            i = _plot_file(i, fig, main_ax, "mad_filter.csv", file_names, merged_dir)
-            i = _plot_file(
-                i, fig, main_ax, "daily_mad_error.csv", file_names, merged_dir
-            )
-            i = _plot_file(i, fig, main_ax, "kalman.csv", file_names, merged_dir)
-            i = _plot_file(i, fig, main_ax, "svr_radial.csv", file_names, merged_dir)
-
-            fig.tight_layout()
-            if save:
-                plt.savefig(
-                    os.path.join(self.dirs["output"], f"{id}", "merging_summary.png")
-                )
-            if show:
-                plt.show()
-
-        return
+        """Plot merging progression showing intermediate processing steps."""
+        return plotting.plot_merging(
+            reservoir_id=id,
+            output_dir=self.dirs["output"],
+            reservoir_type=self.type,
+            show=show,
+            save=save,
+        )
 
 
 @dataclass
@@ -695,7 +498,7 @@ class Reservoirs(System):
 
         # determine if we need to download or simply load the pld
         if (not os.path.exists(pld_path)) or (overwrite):
-            print("Downloading PLD")
+            logger.info("Downloading PLD")
             download_dir = os.path.dirname(pld_path)
             file_name = os.path.basename(pld_path)
             bounds = list(self.gdf.unary_union.bounds)
@@ -703,7 +506,7 @@ class Reservoirs(System):
                 download_dir=download_dir, file_name=file_name, bounds=bounds
             )
         else:
-            print("PLD located")
+            logger.info("PLD located")
 
     def assign_pld_id(self, local_crs, max_distance):
         # load the pld
@@ -750,8 +553,11 @@ class Reservoirs(System):
         present_out.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
         missing_out.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
 
-        print(
-            f"Out of the {len(self.gdf)} reservoirs, {len(present)} are present and {len(missing)} are missing from the PLD."
+        logger.info(
+            "Out of the %s reservoirs, %s are present and %s are missing from the PLD.",
+            len(self.gdf),
+            len(present),
+            len(missing),
         )
 
     def extract_product_timeseries(self, products: list):
@@ -766,8 +572,8 @@ class Reservoirs(System):
                 )
             ]
             if not available_ids:
-                print(
-                    "  WARNING: No ICESat-2 downloads found; skipping timeseries extraction."
+                logger.warning(
+                    "No ICESat-2 downloads found; skipping timeseries extraction."
                 )
             else:
                 empty_ids = []
@@ -801,9 +607,9 @@ class Reservoirs(System):
                         empty_ids.append(id)
 
                 if empty_ids:
-                    print(
-                        f"  WARNING: ICESat-2 timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
-                        "(no observations passed the spatial filter or the download returned no data)"
+                    logger.warning(
+                        "ICESat-2 timeseries empty for: %s (no observations passed the spatial filter or the download returned no data)",
+                        ", ".join(str(i) for i in empty_ids),
                     )
 
         if "sentinel3" in products:
@@ -815,8 +621,8 @@ class Reservoirs(System):
                 )
             ]
             if not available_ids:
-                print(
-                    "  WARNING: No Sentinel-3 downloads found; skipping timeseries extraction."
+                logger.warning(
+                    "No Sentinel-3 downloads found; skipping timeseries extraction."
                 )
             else:
                 empty_ids = []
@@ -847,9 +653,9 @@ class Reservoirs(System):
                         empty_ids.append(id)
 
                 if empty_ids:
-                    print(
-                        f"  WARNING: Sentinel-3 timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
-                        "(no observations passed the spatial filter or the download returned no data)"
+                    logger.warning(
+                        "Sentinel-3 timeseries empty for: %s (no observations passed the spatial filter or the download returned no data)",
+                        ", ".join(str(i) for i in empty_ids),
                     )
 
         if "sentinel6" in products:
@@ -861,8 +667,8 @@ class Reservoirs(System):
                 )
             ]
             if not available_ids:
-                print(
-                    "  WARNING: No Sentinel-6 downloads found; skipping timeseries extraction."
+                logger.warning(
+                    "No Sentinel-6 downloads found; skipping timeseries extraction."
                 )
             else:
                 empty_ids = []
@@ -893,16 +699,16 @@ class Reservoirs(System):
                         empty_ids.append(id)
 
                 if empty_ids:
-                    print(
-                        f"  WARNING: Sentinel-6 timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
-                        "(no observations passed the spatial filter or the download returned no data)"
+                    logger.warning(
+                        "Sentinel-6 timeseries empty for: %s (no observations passed the spatial filter or the download returned no data)",
+                        ", ".join(str(i) for i in empty_ids),
                     )
 
         if "swot" in products:
             download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
             if not os.path.exists(download_dir):
-                print(
-                    "  WARNING: No SWOT downloads found; skipping timeseries extraction."
+                logger.warning(
+                    "No SWOT downloads found; skipping timeseries extraction."
                 )
             else:
                 # extract observations within bounds and save as timeseries csv, slightly differnt format for downloading here due to the natrure of swot data
@@ -917,7 +723,7 @@ class Reservoirs(System):
                     .get("exclude_obs_id_values", ["no_data"]),
                 )
                 if empty_ids:
-                    print(
-                        f"  WARNING: SWOT timeseries empty for: {', '.join(str(i) for i in empty_ids)} "
-                        "(no observations matched the prior lake ID or all were excluded)"
+                    logger.warning(
+                        "SWOT timeseries empty for: %s (no observations matched the prior lake ID or all were excluded)",
+                        ", ".join(str(i) for i in empty_ids),
                     )

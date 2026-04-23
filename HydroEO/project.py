@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from copy import deepcopy
+import logging
 
 import os
 import yaml
@@ -15,7 +16,10 @@ from HydroEO.satellites.icesat2 import (
     ATL13_DEFAULT_FIELDS,
     SR_ATL13_VALID_ANCILLARY_FIELDS,
 )
+from HydroEO.flows import DownloadFlow, PlottingFlow, PreprocessFlow
 from HydroEO.utils import general
+
+logger = logging.getLogger(__name__)
 
 
 SUPPORTED_TRACK_KEYS = ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]
@@ -191,13 +195,6 @@ class Project:
         ### load in elements for download and processing
         if "rivers" in self.config.keys():
             warnings.warn("Rivers system is not yet implemented, input will be ignored")
-            # self.rivers = Rivers(
-            #     gdf=gpd.read_file(self.config["rivers"]["path"]),
-            #     dirs=self.dirs,
-            #     buffer_width=self.config["rivers"]["buffer_width"],
-            #     grid_res=self.config["rivers"]["grid_res"],
-            # )
-            # self.rivers.gdf = self.rivers.gdf.to_crs(self.global_crs)
 
         if "reservoirs" in self.config.keys():
             self.reservoirs = Reservoirs(
@@ -479,7 +476,7 @@ class Project:
         return True
 
     def report(self):
-        print(f"Project Name: {self.name}")
+        logger.info("Project Name: %s", self.name)
         if hasattr(self, "rivers"):
             self.rivers.report()
         if hasattr(self, "reservoirs"):
@@ -517,110 +514,55 @@ class Project:
 
     def download(self):
         if hasattr(self, "reservoirs"):
-            if "swot" in self.to_download:
-                self.reservoirs.download_altimetry(
-                    product="SWOT_LAKE",
-                    startdate=self.startdates["swot"],
-                    enddate=self.enddates["swot"],
-                    update_existing=False,
-                )
-
-            if "icesat2" in self.to_download:
-                self.reservoirs.download_altimetry(
-                    product="ATL13",
-                    startdate=self.startdates["icesat2"],
-                    enddate=self.enddates["icesat2"],
-                    update_existing=False,
-                    credentials=(self.earthdata_user, self.earthdata_pass),
-                )
-
-            if "sentinel3" in self.to_download:
-                sentinel_creds = self._require_creodias_credentials()
-                self.reservoirs.download_altimetry(
-                    product="S3",
-                    startdate=self.startdates["sentinel3"],
-                    enddate=self.enddates["sentinel3"],
-                    credentials=sentinel_creds,
-                    update_existing=False,
-                )
-            if "sentinel6" in self.to_download:
-                sentinel_creds = self._require_creodias_credentials()
-                self.reservoirs.download_altimetry(
-                    product="S6",
-                    startdate=self.startdates["sentinel6"],
-                    enddate=self.enddates["sentinel6"],
-                    credentials=sentinel_creds,
-                    update_existing=False,
-                )
+            DownloadFlow(
+                reservoirs=self.reservoirs,
+                to_download=self.to_download,
+                startdates=self.startdates,
+                enddates=self.enddates,
+                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
+                creodias_credentials_provider=self._require_creodias_credentials,
+            ).run(update_existing=False)
 
     def update(self):
         # get the current date of the system
         current_date = datetime.date.today()
-        print(f"Updating download archives up to {current_date}")
+        logger.info("Updating download archives up to %s", current_date)
         current_date = [current_date.year, current_date.month, current_date.day]
 
         if hasattr(self, "reservoirs"):
             if "swot" in self.to_download:
-                print("Updating SWOT Lake SP product")
-                self.reservoirs.download_altimetry(
-                    product="SWOT_Lake",
-                    startdate=self.startdates["swot"],
-                    enddate=current_date,
-                    update_existing=True,
-                )
+                logger.info("Updating SWOT Lake SP product")
             if "icesat2" in self.to_download:
-                print("Updating Icesat-2 ATL13 product")
-                self.reservoirs.download_altimetry(
-                    product="ATL13",
-                    startdate=self.startdates["icesat2"],
-                    enddate=current_date,
-                    update_existing=True,
-                )
+                logger.info("Updating Icesat-2 ATL13 product")
             if "sentinel3" in self.to_download:
-                print("Updating Sentinel-3 Hydro product")
-                sentinel_creds = self._require_creodias_credentials()
-                self.reservoirs.download_altimetry(
-                    product="S3",
-                    startdate=self.startdates["sentinel3"],
-                    enddate=current_date,
-                    credentials=sentinel_creds,
-                    update_existing=True,
-                )
+                logger.info("Updating Sentinel-3 Hydro product")
             if "sentinel6" in self.to_download:
-                print("Updating Sentinel-6 Hydro product")
-                sentinel_creds = self._require_creodias_credentials()
-                self.reservoirs.download_altimetry(
-                    product="S6",
-                    startdate=self.startdates["sentinel6"],
-                    enddate=current_date,
-                    credentials=sentinel_creds,
-                    update_existing=True,
-                )
+                logger.info("Updating Sentinel-6 Hydro product")
+
+            DownloadFlow(
+                reservoirs=self.reservoirs,
+                to_download=self.to_download,
+                startdates=self.startdates,
+                enddates=self.enddates,
+                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
+                creodias_credentials_provider=self._require_creodias_credentials,
+            ).run(
+                update_existing=True,
+                enddate_overrides={
+                    mission: current_date for mission in self.to_download
+                },
+            )
 
     def create_timeseries(self):
         warnings.filterwarnings("ignore", module="pyogrio\\..*")
         if hasattr(self, "reservoirs"):
-            # extract the data
-            self.reservoirs.extract_product_timeseries(self.to_process)
-
-            # clean the individual timeseries
-            self.reservoirs.clean_product_timeseries(
-                products=self.to_process,
-                filter_options_by_product=self.processing_options,
-            )
-
-            # merge the product timeseries
-            self.reservoirs.merge_product_timeseries(products=self.to_process)
+            PreprocessFlow(
+                reservoirs=self.reservoirs,
+                to_process=self.to_process,
+                processing_options=self.processing_options,
+            ).run()
 
     def generate_summaries(self, show=False, save=True):
         warnings.filterwarnings("ignore", module="pandas\\..*")
         if hasattr(self, "reservoirs"):
-            for id in self.reservoirs.download_gdf[self.reservoirs.id_key]:
-                print("Summarizing crossings")
-                self.reservoirs.summarize_crossings_by_id(id, show=show, save=save)
-
-                print("Summarizing cleaning results")
-                self.reservoirs.summarize_cleaning_by_id(id, show=show, save=save)
-
-                print("Summarizing merged results")
-                self.reservoirs.summarize_merging_by_id(id, show=show, save=save)
+            PlottingFlow(self.reservoirs).run(show=show, save=save)
