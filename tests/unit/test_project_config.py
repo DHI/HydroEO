@@ -67,8 +67,12 @@ def test_project_applies_stage2_defaults(tmp_path, monkeypatch, _mock_reservoir_
         "gt3r",
     ]
     assert proj.config["sentinel3"]["sigma0_max"] == 1e5
-    assert "ht_ortho" in proj.config["icesat2"]["atl13_fields"]
-    assert "delta_time" in proj.config["icesat2"]["atl13_fields"]
+    # SlideRule returns core fields (height, lat/lon, date, rgt, cycle_number, beam)
+    # by default — atl13_fields is empty unless ancillary fields are explicitly requested.
+    assert proj.config["icesat2"]["atl13_fields"] == []
+    # The atl13 sub-dict with SlideRule sub-parameters must be injected by defaults.
+    assert "atl13" in proj.config["icesat2"]
+    assert proj.config["icesat2"]["atl13"]["pass_invalid"] is False
 
 
 @pytest.mark.unit

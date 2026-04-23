@@ -16,7 +16,6 @@ To run locally with credentials:
 
 import datetime
 import os
-import re
 
 import pytest
 
@@ -271,47 +270,39 @@ def test_sentinel6_response_shape():
         )
 
 
+# ---------------------------------------------------------------------------
+# (e) SlideRule ATL13 live test — no credentials required
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.integration
-@_has_edl
-def test_icesat2_live_harmony_query_downloads_atl13(tmp_path):
-    """Live: ATL13 request should run through Harmony and download at least one file."""
-    from HydroEO.satellites import icesat2
+def test_sliderule_atl13x_query():
+    """Live SlideRule atl13x query using confirmed-working AMS coordinates.
 
-    os.environ["EARTHDATA_USERNAME"] = os.environ["EDL_USERNAME"]
-    os.environ["EARTHDATA_PASSWORD"] = os.environ["EDL_PASSWORD"]
+    Uses the hardcoded centroid coordinates that are known to resolve to a
+    registered water body in the AMS database.  No Earthdata credentials required.
+    """
+    from HydroEO.satellites.icesat2 import query
 
-    download_dir = tmp_path / "icesat2_harmony"
-    download_dir.mkdir(parents=True, exist_ok=True)
+    # AOI polygon around the target water body (lon=100.32, lat=22.86, Yunnan, China)
+    aoi = [
+        (100.20, 22.75),
+        (100.45, 22.75),
+        (100.45, 22.97),
+        (100.20, 22.97),
+        (100.20, 22.75),
+    ]
 
-    try:
-        _ = icesat2.query(
-            aoi=TITICACA_AOI,
-            startdate=TEST_START,
-            enddate=TEST_END,
-            earthdata_credentials=(
-                os.environ["EDL_USERNAME"],
-                os.environ["EDL_PASSWORD"],
-            ),
-            download_directory=str(download_dir),
-            product="ATL13",
-        )
-    except Exception as exc:
-        message = str(exc)
-
-        # Live endpoints can intermittently return 5xx; treat this as infra flakiness.
-        if re.search(r"HTTP\s+5\d\d", message) or any(
-            code in message for code in [" 500", " 502", " 503", " 504"]
-        ):
-            pytest.skip(f"Skipping due to transient Harmony/EDL service issue: {message}")
-
-        # Keep credential/auth problems as failures because they indicate setup issues.
-        if "incorrect or missing credentials" in message or "HTTP 401" in message:
-            pytest.fail(f"EDL credentials rejected during Harmony auth: {message}")
-
-        raise
-
-    downloaded_files = [p for p in download_dir.rglob("*") if p.is_file()]
-    assert len(downloaded_files) > 0, (
-        "Harmony ATL13 query completed but no files were downloaded. "
-        "Check Harmony availability, ATL13 coverage, or auth configuration."
+    gdf = query(
+        aoi=aoi,
+        startdate=datetime.date(2021, 1, 1),
+        enddate=datetime.date(2025, 1, 1),
+        download_directory=None,
     )
+
+    assert not gdf.empty, "Expected non-empty result (2021-2025)"
+    assert "height" in gdf.columns, (
+        f"Expected 'height' column, got: {list(gdf.columns)}"
+    )
+    heights = gdf["height"].dropna()
+    assert len(heights) > 0, "No non-NaN height values returned"
