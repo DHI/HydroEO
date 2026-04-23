@@ -77,8 +77,7 @@ class Timeseries:
             fltrs.rolling_median(self)
 
     def bias_correct(self, orbit_key="orbit", product_key="platform"):
-        # bias correct between orbits and products
-        pass
+        raise NotImplementedError("bias_correct is not yet implemented")
 
     def merge(self, save_progress=False, dir=".\\merged_progress"):
         # make a folder for saving steps of the timeseries cleaning process

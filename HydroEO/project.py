@@ -11,12 +11,12 @@ import warnings
 import geopandas as gpd
 import datetime
 
-from HydroEO.system import Reservoirs
+from HydroEO.waterbody import Reservoirs
 from HydroEO.satellites.icesat2 import (
     ATL13_DEFAULT_FIELDS,
     SR_ATL13_VALID_ANCILLARY_FIELDS,
 )
-from HydroEO.flows import DownloadFlow, PlottingFlow, PreprocessFlow
+from HydroEO.flows import ReservoirDownloadFlow, PlottingFlow, PreprocessFlow
 from HydroEO.utils import general
 
 logger = logging.getLogger(__name__)
@@ -514,7 +514,7 @@ class Project:
 
     def download(self):
         if hasattr(self, "reservoirs"):
-            DownloadFlow(
+            ReservoirDownloadFlow(
                 reservoirs=self.reservoirs,
                 to_download=self.to_download,
                 startdates=self.startdates,
@@ -539,7 +539,7 @@ class Project:
             if "sentinel6" in self.to_download:
                 logger.info("Updating Sentinel-6 Hydro product")
 
-            DownloadFlow(
+            ReservoirDownloadFlow(
                 reservoirs=self.reservoirs,
                 to_download=self.to_download,
                 startdates=self.startdates,

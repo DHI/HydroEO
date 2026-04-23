@@ -53,7 +53,7 @@ def query(
     sliderule_client=None,
 ) -> gpd.GeoDataFrame:
     """Download ATL13 water surface elevations via SlideRule's atl13x endpoint."""
-    from HydroEO.system import HydroEODownloadError
+    from HydroEO.waterbody import HydroEODownloadError
 
     if sliderule_client is None:
         raise ValueError("sliderule_client must be provided")

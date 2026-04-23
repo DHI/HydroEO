@@ -3,7 +3,7 @@
 import pandas as pd
 import pytest
 
-from HydroEO.flows import DownloadFlow, PlottingFlow, PreprocessFlow
+from HydroEO.flows import ReservoirDownloadFlow, PlottingFlow, PreprocessFlow
 
 
 class DummyReservoirs:
@@ -46,7 +46,7 @@ class DummyReservoirs:
 def test_download_flow_dispatches_products_and_credentials():
     reservoirs = DummyReservoirs()
 
-    flow = DownloadFlow(
+    flow = ReservoirDownloadFlow(
         reservoirs=reservoirs,
         to_download=["swot", "icesat2", "sentinel3", "sentinel6"],
         startdates={

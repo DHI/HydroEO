@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class DownloadFlow:
+class ReservoirDownloadFlow:
     """Run mission downloads while preserving existing behavior."""
 
     reservoirs: object

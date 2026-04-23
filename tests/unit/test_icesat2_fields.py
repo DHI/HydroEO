@@ -13,7 +13,7 @@ from shapely.geometry import Point, box
 def test_query_parms_construction(monkeypatch):
     """sliderule.run must receive correct atl13.coord, poly, t0, t1, atl13_fields."""
     from HydroEO.satellites import icesat2
-    from HydroEO.system import HydroEODownloadError  # noqa: F401 — verify importable
+    from HydroEO.waterbody import HydroEODownloadError  # noqa: F401 — verify importable
 
     captured = {}
 
@@ -118,7 +118,7 @@ def test_column_mapping():
 def test_empty_result_raises(monkeypatch):
     """Empty GeoDataFrame from sliderule.run must raise HydroEODownloadError mentioning HydroLAKES."""
     from HydroEO.satellites import icesat2
-    from HydroEO.system import HydroEODownloadError
+    from HydroEO.waterbody import HydroEODownloadError
 
     monkeypatch.setattr(icesat2.sliderule, "run", lambda *a, **kw: gpd.GeoDataFrame())
 
@@ -142,7 +142,7 @@ def test_empty_result_raises(monkeypatch):
 def test_connection_error_raises(monkeypatch):
     """Exception from sliderule.run must propagate as HydroEODownloadError."""
     from HydroEO.satellites import icesat2
-    from HydroEO.system import HydroEODownloadError
+    from HydroEO.waterbody import HydroEODownloadError
 
     def bad_run(*a, **kw):
         raise ConnectionError("Network unreachable")
@@ -169,7 +169,7 @@ def test_connection_error_raises(monkeypatch):
 def test_ams_400_raises_descriptive_error(monkeypatch):
     """AMS HTTP 400 (water body not registered) must raise HydroEODownloadError mentioning AMS."""
     from HydroEO.satellites import icesat2
-    from HydroEO.system import HydroEODownloadError
+    from HydroEO.waterbody import HydroEODownloadError
 
     def ams_failure(*a, **kw):
         # SlideRule raises FileNotFoundError on a /tmp/ path when the AMS returns 400.
