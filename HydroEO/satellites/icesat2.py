@@ -159,6 +159,7 @@ def query(
         parms["atl13_fields"] = atl13_fields
 
     try:
+        print("This will take time..")
         gdf = sliderule.run("atl13x", parms)
     except FileNotFoundError as exc:
         raise HydroEODownloadError(

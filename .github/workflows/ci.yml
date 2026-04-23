@@ -75,4 +75,4 @@ jobs:
           EDL_PASSWORD: ${{ secrets.EDL_PASSWORD }}
           CREODIAS_USERNAME: ${{ secrets.CREODIAS_USERNAME }}
           CREODIAS_PASSWORD: ${{ secrets.CREODIAS_PASSWORD }}
-        run: pytest -m integration -v --timeout=600
+        run: pytest -m integration -v --timeout=1200
