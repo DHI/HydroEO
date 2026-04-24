@@ -1,23 +1,18 @@
-import shapely
-import geopandas as gpd
+"""Compatibility facade for SWOT mission workflows.
 
-import numpy as np
-import pandas as pd
-import os
-import shutil
-import zipfile
-import warnings
-import earthaccess
-
-from tqdm import tqdm
+This module preserves the historical public API while delegating to explicit
+flow surfaces split by responsibility.
+"""
 
 import datetime
 
-from HydroEO.utils import general, geometry
+import earthaccess
+
+from HydroEO.satellites import swot_download, swot_preprocess
 
 
 # Baseline D short name (supersedes Version C / 2.0)
-SWOT_LAKE_SHORT_NAME = "SWOT_L2_HR_LakeSP_D"
+SWOT_LAKE_SHORT_NAME = swot_download.SWOT_LAKE_SHORT_NAME
 
 
 def query(
@@ -26,126 +21,29 @@ def query(
     enddate: datetime.date,
     product: str = SWOT_LAKE_SHORT_NAME,
 ) -> object:
-    # format coordinates and extract bounds
-    aoi = geometry.format_coord_list(aoi)
-
-    # login and authenticate earthacess
-    earthaccess.login()
-
-    # define query parameters
-    params = {
-        "short_name": product,
-        "temporal": (startdate, enddate),
-        "bounding_box": shapely.Polygon(aoi).bounds,
-    }
-
-    # Silence a known earthaccess deprecation warning until upstream migrates
-    # DataGranule.size() to DataGranule.size attribute access.
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
-            category=FutureWarning,
-            module=r"earthaccess\.results",
-        )
-        results = earthaccess.search_data(**params)
-
-    return results
+    return swot_download.query(
+        aoi=aoi,
+        startdate=startdate,
+        enddate=enddate,
+        product=product,
+        earthaccess_client=earthaccess,
+    )
 
 
 def download(results, download_directory: str):
-    # Check if we have a progress log file in this directory, if not make it
-    log_path = os.path.join(download_directory, "downloaded.log")
-    if not os.path.exists(log_path):
-        with open(log_path, "w") as log:
-            pass
-
-    # open the log file with reading and writing access
-    with open(log_path, "r") as log:
-        # first read all of the downloaded ids
-        downloaded_ids = [line.rstrip() for line in log]
-
-    to_download = list()
-    for result in results:
-        # check file name to see if its downloaded and download if needed
-        file_name = result.data_links()[0].split("/")[-1].split(".")[0]
-        if file_name not in downloaded_ids:
-            to_download.append(result)
-
-    print(f"{len(results) - len(to_download)} files shown as downloaded in log")
-    print(f"{len(to_download)} will be downloaded")
-    if to_download:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
-                category=FutureWarning,
-                module=r"earthaccess\.(results|store)",
-            )
-            files = earthaccess.download(to_download, download_directory)
-
-        with open(log_path, "a") as log:
-            for file in files:
-                file_name = str(file).replace("\\", "/").split("/")[-1]
-                log.write(file_name.split(".zip")[0] + "\n")
-
-        return files
-
-    else:
-        return []
+    return swot_download.download(
+        results=results,
+        download_directory=download_directory,
+        earthaccess_client=earthaccess,
+    )
 
 
 def subset_by_id(files: list, ids: list):
-    for file in tqdm(files, desc="Subsetting files"):
-        # extract file properties
-        file_dir = os.path.dirname(file)
-        file_name = os.path.basename(file)
-
-        # make a temporary directory
-        temp_dir = os.path.join(file_dir, ".temp")
-        general.ifnotmakedirs(temp_dir)
-
-        # unzip file
-        try:
-            with zipfile.ZipFile(file, "r") as zip_ref:
-                zip_ref.extractall(temp_dir)
-
-            # open shape file
-            shp_file = file_name.split(".")[0] + ".shp"
-            gdf = gpd.read_file(os.path.join(temp_dir, shp_file))
-
-            # remove water bodies that have no data
-            gdf = gdf.loc[gdf.obs_id != "no_data"].reset_index(drop=True)
-
-            # extract entries that are in id list
-            gdf = gdf.loc[np.in1d(gdf.lake_id.astype(int).values, ids)]
-
-            if len(gdf) > 0:
-                # save file
-                export_file = "sub_" + shp_file
-                gdf.to_file(os.path.join(file_dir, export_file))
-
-            # clean up original file and temp directory
-            os.remove(file)
-            shutil.rmtree(temp_dir)
-
-        except Exception:
-            print(f"Unable to unzip: {file}")
+    return swot_preprocess.subset_by_id(files=files, ids=ids)
 
 
 def merge_shps(dir):
-    gdf_list = list()
-    for file in os.listdir(dir):
-        if file.endswith(".shp"):
-            gdf_list.append(gpd.read_file(os.path.join(dir, file)))
-
-    if not gdf_list:
-        return None
-
-    # return the combined gdf
-    gdf = pd.concat(gdf_list).reset_index(drop=True)
-
-    return gdf
+    return swot_preprocess.merge_shps(dir=dir)
 
 
 def extract_observations(
@@ -156,62 +54,27 @@ def extract_observations(
     id_key,
     exclude_obs_id_values=None,
 ):
-    # load in combined observations from individual files in download directory
-    data_gdf = merge_shps(src_dir)
-    if data_gdf is None:
-        return []
-    excluded_obs_ids = set(exclude_obs_id_values or ["no_data"])
-
-    empty_ids = []
-    # now loop through the ids in the features gdf to extract the observations from the main one
-    for _, feat in tqdm(
-        features.iterrows(), total=len(features), desc="Extracting SWOT Lake SP product"
-    ):
-        dl_id = str(feat[id_key])
-        if not np.isnan(feat["prior_lake_id"]):
-            lake_id = str(int(feat["prior_lake_id"]))
-
-            # filter observations to keep only the ones associated with this lake/reservoir
-            observations = (
-                data_gdf.loc[data_gdf.lake_id.astype(int).astype(str) == lake_id]
-                .reset_index(drop=True)
-                .sort_values(by="time")
-            )
-
-            if "obs_id" in observations.columns and excluded_obs_ids:
-                observations = observations.loc[
-                    ~observations["obs_id"].astype(str).isin(excluded_obs_ids)
-                ].reset_index(drop=True)
-
-            # if we have observations for this reservoir export it
-            if len(observations) > 0:
-                observations["platform"] = "swot"
-                observations["product"] = SWOT_LAKE_SHORT_NAME
-                observations["height"] = observations.wse
-                observations["date"] = pd.to_datetime(observations.time_str)
-                observations["orbit"] = (
-                    observations.lake_id
-                )  # TODO: edit to SWOT equivalent, ask PASE
-
-                dst_sub_dir = os.path.join(dst_dir, f"{dl_id}", "raw_observations")
-                general.ifnotmakedirs(dst_sub_dir)
-                dst_path = os.path.join(dst_sub_dir, dst_file_name)
-
-                observations.to_file(dst_path)
-            else:
-                empty_ids.append(dl_id)
-
-    return empty_ids
+    return swot_preprocess.extract_observations(
+        src_dir=src_dir,
+        dst_dir=dst_dir,
+        dst_file_name=dst_file_name,
+        features=features,
+        id_key=id_key,
+        exclude_obs_id_values=exclude_obs_id_values,
+        product_name=SWOT_LAKE_SHORT_NAME,
+    )
 
 
 def get_latest_obs_date(data_dir):
-    dates = list()
+    return swot_preprocess.get_latest_obs_date(data_dir=data_dir)
 
-    for dir in os.listdir(data_dir):
-        shp_path = os.path.join(data_dir, dir, "raw_observations", "swot.shp")
 
-        if os.path.exists(shp_path):
-            gdf = gpd.read_file(shp_path)
-            dates.append(max(gdf.date.values).astype(datetime.date))
-
-    return max(dates)
+__all__ = [
+    "SWOT_LAKE_SHORT_NAME",
+    "query",
+    "download",
+    "subset_by_id",
+    "merge_shps",
+    "extract_observations",
+    "get_latest_obs_date",
+]

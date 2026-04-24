@@ -1,6 +1,7 @@
 import os
 import shutil
 import zipfile
+import logging
 
 import py_hydroweb
 import sqlite3
@@ -10,6 +11,8 @@ import geopandas as gpd
 import shapely
 
 from HydroEO.utils import general
+
+logger = logging.getLogger(__name__)
 
 help_message = """
 Download products from your hydroweb.next projects (https://hydroweb.next.theia-land.fr) using the py-hydroweb lib (https://pypi.org/project/py-hydroweb/)
@@ -62,12 +65,12 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
     downloaded_files = os.listdir(extracted_dir)
 
     # now clean up and merge lake datafiles
-    print("Merging products and removing temporary files")
+    logger.info("Merging products and removing temporary files")
     gdf_list = list()
     for file in downloaded_files:
         # read any sqlite files within the downloads folders and extract data
         if file.endswith(".sqlite"):
-            print("found %s" % os.path.join(extracted_dir, file))
+            logger.info("found %s", os.path.join(extracted_dir, file))
 
             # Establish sql connection
             con = sqlite3.connect(os.path.join(extracted_dir, file))
@@ -97,7 +100,7 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
     # save the concatenated dataframe in the output folder
     export_path = os.path.join(download_dir, file_name)
     gdf.to_file(export_path)
-    print(f"Merged data saved to: {export_path}")
+    logger.info("Merged data saved to: %s", export_path)
 
     # once we have processed the files within the download directory, remove the folder
     os.remove(downloaded_zip_path)

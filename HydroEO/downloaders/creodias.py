@@ -1,5 +1,6 @@
 import shutil
 from pathlib import Path
+import logging
 import requests
 from tqdm import tqdm
 import datetime
@@ -17,6 +18,8 @@ TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/
 ATTRIBUTE_URL = (
     "https://catalogue.dataspace.copernicus.eu/odata/v1/Attributes({collection})"
 )
+
+logger = logging.getLogger(__name__)
 
 
 ##### Functions associated with queries
@@ -144,14 +147,6 @@ def _parse_argtype(key, attr_dict):
     for obj in attr_dict:
         if obj.get("Name") == key:
             return obj.get("ValueType")
-
-
-# TODO: remove
-# def _get_next_page(links):
-#     for link in links:
-#         if link["rel"] == "next":
-#             return link["href"]
-#     return False
 
 
 def _parse_date(date):
@@ -284,7 +279,7 @@ def _download_raw_data(url, outfile, show_progress):
                 shutil.move(outfile_temp, outfile)
 
             else:
-                print(f"Download failed: response was {req.status_code}")
+                logger.error("Download failed: response was %s", req.status_code)
 
     finally:
         try:
@@ -346,10 +341,10 @@ def download_list(
         return (time.time() - session_start_time) / 60
 
     if token is None:
-        print("Generating session token")
+        logger.info("Generating session token")
         token = _get_token(username, password)
         session_start_time = time.time()
-    print(f"Session token age: {_token_age(session_start_time):.2f} minutes")
+    logger.info("Session token age: %.2f minutes", _token_age(session_start_time))
 
     if show_progress:
         if len(uids) > 0:
@@ -362,8 +357,9 @@ def download_list(
     for uid in uids:
         # assess age of token, (Expires every ten minutes so we refresh every 9 minutes)
         if _token_age(session_start_time) > 9:
-            print(
-                f"\nSession token age: {_token_age(session_start_time):.2f} minutes. Refreshing session token now."
+            logger.info(
+                "Session token age: %.2f minutes. Refreshing session token now.",
+                _token_age(session_start_time),
             )
             session_start_time = time.time()
             token = _get_token(username, password)

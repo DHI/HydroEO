@@ -53,7 +53,75 @@ project.create_timeseries()
 project.generate_summaries()
 ```
 
-Configuration is validated up-front. `Project.initialize()` now calls `Project.validate_config()` and reports common issues in one error message (missing keys, invalid dates, invalid optional parameter values, and missing input paths).
+## Project capabilities
+
+A HydroEO project is built around a single **water body branch** — either reservoirs/lakes or rivers (coming soon). Both branches are mutually exclusive within one project config; a project targets one type only.
+
+### Water body branches
+
+| Branch | Status | Description |
+| --- | --- | --- |
+| `reservoirs` | ✅ available | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. |
+| `rivers` | 🔜 planned | ... |
+
+### Project lifecycle
+
+Each project exposes six top-level operations:
+
+```
+report() → initialize() → download() → update() → create_timeseries() → generate_summaries()
+```
+
+| Method | What it does |
+| --- | --- |
+| `project.report()` | Logs the project name, logs the number of loaded water bodies in the active branch, and returns a preview of the branch GeoDataFrame (`gdf.head()`). Useful as a quick inspection step after loading a project. |
+| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body shapefile. Reports all config issues in one message before doing any I/O. |
+| `project.download()` | Downloads raw satellite data for every enabled mission within the configured date range. Each mission writes to its own directory (configurable or auto-created under `main_dir`). |
+| `project.update()` | Extends existing downloads from the latest observation up to today. Safe to run repeatedly — already-downloaded data is not re-fetched. |
+| `project.create_timeseries()` | Extracts observations spatially matched to each water body, applies the configured cleaning filters, and writes per-body timeseries shapefiles. |
+| `project.generate_summaries(show, save)` | Produces diagnostic plots for each water body and mission: raw crossings, filter effect, and merged multi-mission timeseries. |
+
+### Supported missions
+
+A project can enable any combination of the four missions below. Each mission is independently toggled (`download: true/false`, `process: true/false`) and has its own date range. The config uses the mission keys in the first column, while extracted and merged outputs may use the product keys in the second column.
+
+| Mission key | Product key | Satellite | Archive start | Required credentials |
+| --- | --- | --- | --- | --- |
+| `swot` | `SWOT_LAKE` | SWOT Lake SP | 2023 | Earthdata account + HydroWeb API key (PLD) |
+| `icesat2` | `ATL13` | ICESat-2 ATL13 | 2018 | None (SlideRule — no auth needed) |
+| `sentinel3` | `S3` | Sentinel-3A/B | 2016 | CREODIAS account |
+| `sentinel6` | `S6` | Sentinel-6 | 2020 | CREODIAS account |
+
+### Output structure
+
+All outputs are written under `project.main_dir`:
+
+```
+main_dir/
+  <water_body_id>/
+    raw_observations/      # extracted, spatially filtered shapefiles per mission
+    cleaned_timeseries/    # filter-cleaned shapefiles per mission
+    merged_timeseries/     # single merged CSV across all enabled missions
+    plots/                 # PNG diagnostics (crossings, cleaning, merging)
+  swot/                    # raw SWOT downloads (or custom download_dir)
+  icesat2/                 # raw ICESat-2 downloads
+  sentinel3/               # raw Sentinel-3 downloads
+  sentinel6/               # raw Sentinel-6 downloads
+```
+
+### Cleaning filters
+
+Applied during `create_timeseries()`. Configured per mission under `processing_filters`:
+
+| Filter | What it removes |
+| --- | --- |
+| `elevation` | Observations outside `[elevation_min_m, elevation_max_m]` |
+| `MAD` | Outliers beyond `mad_threshold × MAD` from the median |
+| `daily_mean` | Reduces multiple same-day observations to their mean |
+| `hampel` | Spike detection using a sliding median window |
+| `rolling_median` | Smoothing pass using a rolling median |
+
+Configuration validation happens during `project.initialize()`, which checks required sections, input paths, date ranges, and optional parameter values before any downloads start.
 
 ## Configuration controls
 HydroEO exposes mission-level optional parameters with defaults that preserve prior behaviour. Existing configs continue to run unchanged.
@@ -159,7 +227,7 @@ icesat2:
 ```
 
 ## Available products
-HydroEO currently supports 4 products for lake/reservoir workflows:
+HydroEO currently supports 4 products for lake/reservoir workflows. These are the product identifiers you will see in extracted outputs, merged timeseries, and lower-level processing methods:
 
 | Product key | Source mission | Typical coverage | Key retrievable parameters |
 | --- | --- | --- | --- |
@@ -225,15 +293,14 @@ export HYDROWEB_API_KEY="your_hydroweb_api_key"
 ## Project structure
 Key modules:
 - `HydroEO/project.py`: high-level project workflow orchestration.
-- `HydroEO/system.py`: core system and reservoir handling.
-- `HydroEO/satellites/swot.py`: SWOT query/download/subset handling.
-- `HydroEO/satellites/icesat2.py`: ICESat-2 query/download/subset handling.
-- `HydroEO/satellites/sentinel.py`: Sentinel-3 and Sentinel-6 handling.
+- `HydroEO/waterbody.py`: shared water body base class and reservoir branch implementation.
+- `HydroEO/flows/`: orchestration split into download, preprocessing, and plotting flows.
+- `HydroEO/plotting.py`: shared plotting helpers for crossings, cleaning, and merged outputs.
+- `HydroEO/satellites/swot.py`: public SWOT facade delegating to mission-specific download and preprocess modules.
+- `HydroEO/satellites/icesat2.py`: public ICESat-2 facade delegating to mission-specific download and preprocess modules.
+- `HydroEO/satellites/sentinel.py`: public Sentinel facade delegating to Sentinel-3 and Sentinel-6 download and preprocess logic.
 - `HydroEO/downloaders/creodias.py`: CREODIAS/CDSE queries and download helpers.
 - `HydroEO/downloaders/hydroweb.py`: HydroWeb integration and PLD support.
-
-## More resources
-- Notebooks: [notebooks](./notebooks)
 
 ## CI/CD and GitHub setup
 
