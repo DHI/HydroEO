@@ -575,10 +575,6 @@ def subset(
     """
     from tqdm import tqdm
 
-    # ensure correct formatting of coordinate list and extract corner coordinates
-    # Upper left corner = lon min, lat max / Lower right corner = lon max, lat min
-    from HydroEO.utils import geometry
-
     ulx, lry, lrx, uly = __format_coord_bounds(aoi)
     if ulx > lrx or lry > uly:
         raise ValueError("Study area extent conflicts - please check coordinates.")
