@@ -7,6 +7,7 @@ flow surfaces split by responsibility.
 from __future__ import annotations
 
 import datetime
+import logging
 
 import geopandas as gpd
 import sliderule
@@ -17,6 +18,7 @@ from HydroEO.satellites import icesat2_download, icesat2_preprocess
 # sliderule.init() only sets the server URL — it does not open a network
 # connection — so it is safe to call at import time.
 sliderule.init("slideruleearth.io")
+sliderule.set_verbose(True, loglevel=logging.WARNING)
 
 SR_DEFAULT_COLUMN_MAP = icesat2_download.SR_DEFAULT_COLUMN_MAP
 SR_ANCILLARY_COLUMN_MAP = icesat2_download.SR_ANCILLARY_COLUMN_MAP
