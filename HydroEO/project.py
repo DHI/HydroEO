@@ -11,12 +11,17 @@ import warnings
 import geopandas as gpd
 import datetime
 
-from HydroEO.waterbody import Reservoirs
+from HydroEO.waterbody import Reservoirs, Rivers
 from HydroEO.satellites.icesat2 import (
     ATL13_DEFAULT_FIELDS,
     SR_ATL13_VALID_ANCILLARY_FIELDS,
 )
-from HydroEO.flows import ReservoirDownloadFlow, PlottingFlow, PreprocessFlow
+from HydroEO.flows import (
+    ReservoirDownloadFlow,
+    RiverDownloadFlow,
+    PlottingFlow,
+    PreprocessFlow,
+)
 from HydroEO.utils import general
 
 logger = logging.getLogger(__name__)
@@ -193,9 +198,6 @@ class Project:
                 self.local_crs = None
 
         ### load in elements for download and processing
-        if "rivers" in self.config.keys():
-            warnings.warn("Rivers system is not yet implemented, input will be ignored")
-
         if "reservoirs" in self.config.keys():
             self.reservoirs = Reservoirs(
                 gdf=gpd.read_file(self.config["reservoirs"]["path"]),
@@ -207,10 +209,72 @@ class Project:
             self.reservoirs.mission_options = self.mission_options
             self.reservoirs.processing_options = self.processing_options
 
+        if "rivers" in self.config.keys():
+            rivers_cfg = self.config["rivers"]
+
+            rivers_aoi_gdf = None
+            if rivers_cfg.get("aoi_path"):
+                rivers_aoi_gdf = gpd.read_file(rivers_cfg["aoi_path"])
+                if rivers_aoi_gdf.crs is None:
+                    rivers_aoi_gdf = rivers_aoi_gdf.set_crs(self.global_crs)
+                else:
+                    rivers_aoi_gdf = rivers_aoi_gdf.to_crs(self.global_crs)
+
+                rivers_id_key = rivers_cfg["id_key"]
+                rivers_gdf = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=self.global_crs)
+                input_mode = "aoi_path"
+                target_ids = []
+                target_id_col = (
+                    "node_id" if rivers_cfg.get("feature_type") == "nodes" else "reach_id"
+                )
+            else:
+                if "node_numbers" in rivers_cfg:
+                    id_values = rivers_cfg["node_numbers"]
+                    rivers_id_key = rivers_cfg.get("id_key", "river_id")
+                    input_mode = "node_numbers"
+                    target_id_col = "node_id"
+                else:
+                    id_values = rivers_cfg.get("reach_numbers", [])
+                    rivers_id_key = rivers_cfg.get("id_key", "river_id")
+                    input_mode = "reach_numbers"
+                    target_id_col = "reach_id"
+
+                target_ids = [int(value) for value in id_values]
+                rivers_gdf = gpd.GeoDataFrame(
+                    {"geometry": []}, geometry="geometry", crs=self.global_crs
+                )
+
+            self.rivers = Rivers(
+                gdf=rivers_gdf,
+                id_key=rivers_id_key,
+                dirs=self.dirs,
+            )
+
+            if self.rivers.gdf.crs is None:
+                self.rivers.gdf = self.rivers.gdf.set_crs(self.global_crs)
+            else:
+                self.rivers.gdf = self.rivers.gdf.to_crs(self.global_crs)
+
+            self.rivers.mission_options = self.mission_options
+            self.rivers.processing_options = self.processing_options
+            self.rivers.input_mode = input_mode
+            self.rivers.aoi_gdf = rivers_aoi_gdf
+            self.rivers.continent_key = rivers_cfg.get("continent_key")
+            self.rivers.feature_type = rivers_cfg.get("feature_type")
+            self.rivers.buffer_meters = rivers_cfg.get("buffer_meters")
+            self.rivers.target_id_col = target_id_col
+            self.rivers.target_ids = target_ids
+
         ### make sure we have a local crs (If we were not able to set it up from the config, grab it from one of the elements)
         if self.local_crs is None:
             if hasattr(self, "rivers"):
-                self.local_crs = self.rivers.gdf.estimate_utm_crs()
+                rivers_crs_source = self.rivers.aoi_gdf if self.rivers.aoi_gdf is not None else self.rivers.gdf
+                if len(rivers_crs_source) > 0 and rivers_crs_source.geometry.notna().any():
+                    self.local_crs = rivers_crs_source.estimate_utm_crs()
+                elif len(self.rivers.gdf) > 0 and self.rivers.gdf.geometry.notna().any():
+                    self.local_crs = self.rivers.gdf.estimate_utm_crs()
+                else:
+                    self.local_crs = self.global_crs
 
             elif hasattr(self, "reservoirs"):
                 self.local_crs = self.reservoirs.gdf.estimate_utm_crs()
@@ -218,10 +282,6 @@ class Project:
                 raise UserWarning(
                     "Must provide a local crs or a river or reservoir shapefile to determine local crs"
                 )
-
-        ### finally make sure we have initiated a buffered shape if we have rivers in the project, we must do this last so that we can work in the use defiend local crs if it exists
-        if hasattr(self, "rivers"):
-            self.rivers.make_buffer(local_crs=self.local_crs)
 
     # fucntion to set information for satellite downloads
     def __sat_init(self, name: str):
@@ -302,18 +362,106 @@ class Project:
         elif not cfg["project"].get("main_dir"):
             issues.append("Missing required key 'project.main_dir'.")
 
-        if "reservoirs" not in cfg or not isinstance(cfg["reservoirs"], dict):
-            issues.append("Missing required section 'reservoirs'.")
-        else:
-            if not cfg["reservoirs"].get("path"):
-                issues.append("Missing required key 'reservoirs.path'.")
-            elif not os.path.exists(cfg["reservoirs"]["path"]):
-                issues.append(
-                    f"Path in 'reservoirs.path' does not exist: {cfg['reservoirs']['path']}"
-                )
+        has_reservoirs = "reservoirs" in cfg
+        has_rivers = "rivers" in cfg
 
-            if not cfg["reservoirs"].get("id_key"):
-                issues.append("Missing required key 'reservoirs.id_key'.")
+        if has_reservoirs and has_rivers:
+            issues.append(
+                "Sections 'reservoirs' and 'rivers' are mutually exclusive. Configure only one."
+            )
+        if not has_reservoirs and not has_rivers:
+            issues.append(
+                "Missing required section: provide either 'reservoirs' or 'rivers'."
+            )
+
+        if has_reservoirs:
+            if not isinstance(cfg["reservoirs"], dict):
+                issues.append("Section 'reservoirs' must be a mapping of key/value pairs.")
+            else:
+                if not cfg["reservoirs"].get("path"):
+                    issues.append("Missing required key 'reservoirs.path'.")
+                elif not os.path.exists(cfg["reservoirs"]["path"]):
+                    issues.append(
+                        f"Path in 'reservoirs.path' does not exist: {cfg['reservoirs']['path']}"
+                    )
+
+                if not cfg["reservoirs"].get("id_key"):
+                    issues.append("Missing required key 'reservoirs.id_key'.")
+
+        if has_rivers:
+            if not isinstance(cfg["rivers"], dict):
+                issues.append("Section 'rivers' must be a mapping of key/value pairs.")
+            else:
+                rivers_cfg = cfg["rivers"]
+                has_aoi_path = bool(rivers_cfg.get("aoi_path"))
+                has_node_numbers = "node_numbers" in rivers_cfg
+                has_reach_numbers = "reach_numbers" in rivers_cfg
+                provided_inputs = sum([has_aoi_path, has_node_numbers, has_reach_numbers])
+
+                if provided_inputs == 0:
+                    issues.append(
+                        "Provide exactly one rivers input source: 'rivers.aoi_path' or 'rivers.node_numbers' or 'rivers.reach_numbers'."
+                    )
+                elif provided_inputs > 1:
+                    issues.append(
+                        "'rivers.aoi_path', 'rivers.node_numbers', and 'rivers.reach_numbers' are mutually exclusive. Provide only one."
+                    )
+
+                if has_aoi_path:
+                    path = rivers_cfg["aoi_path"]
+                    if not os.path.exists(path):
+                        issues.append(f"Path in 'rivers.aoi_path' does not exist: {path}")
+                    elif not path.lower().endswith((".shp", ".gpkg")):
+                        issues.append(
+                            "'rivers.aoi_path' must reference a '.shp' or '.gpkg' file."
+                        )
+
+                    if not rivers_cfg.get("id_key"):
+                        issues.append(
+                            "Missing required key 'rivers.id_key' when 'rivers.aoi_path' is provided."
+                        )
+
+                    continent_key = rivers_cfg.get("continent_key")
+                    if continent_key not in ["af", "as", "eu", "na", "oc", "sa"]:
+                        issues.append(
+                            "'rivers.continent_key' is required with 'rivers.aoi_path' and must be one of ['af', 'as', 'eu', 'na', 'oc', 'sa']."
+                        )
+
+                    feature_type = rivers_cfg.get("feature_type")
+                    if feature_type not in ["nodes", "reaches"]:
+                        issues.append(
+                            "'rivers.feature_type' is required with 'rivers.aoi_path' and must be one of ['nodes', 'reaches']."
+                        )
+
+                    buffer_meters = rivers_cfg.get("buffer_meters")
+                    if buffer_meters is not None and (
+                        not isinstance(buffer_meters, (int, float)) or buffer_meters < 0
+                    ):
+                        issues.append(
+                            "'rivers.buffer_meters' must be None, 0, or a positive number."
+                        )
+
+                if has_node_numbers:
+                    node_numbers = rivers_cfg.get("node_numbers")
+                    if (
+                        not isinstance(node_numbers, list)
+                        or len(node_numbers) == 0
+                        or any(not isinstance(v, int) for v in node_numbers)
+                    ):
+                        issues.append(
+                            "'rivers.node_numbers' must be a non-empty list of integers."
+                        )
+
+                if has_reach_numbers:
+                    reach_numbers = rivers_cfg.get("reach_numbers")
+                    if (
+                        not isinstance(reach_numbers, list)
+                        or len(reach_numbers) == 0
+                        or any(not isinstance(v, int) for v in reach_numbers)
+                    ):
+                        issues.append(
+                            "'rivers.reach_numbers' must be a non-empty list of integers."
+                        )
 
         for mission in ["swot", "icesat2", "sentinel3", "sentinel6"]:
             if mission not in cfg:
@@ -512,10 +660,28 @@ class Project:
             # assign download geometry (for reservoirs this is the same as the input boundaries)
             self.reservoirs.download_gdf = self.reservoirs.gdf
 
+        if hasattr(self, "rivers"):
+            self.rivers.prepare_download_targets(local_crs=self.local_crs)
+            id_label = "node" if self.rivers.target_id_col == "node_id" else "reach"
+            logger.info(
+                "Initialized river %s ids: %s",
+                id_label,
+                ", ".join(str(target_id) for target_id in self.rivers.target_ids),
+            )
+
     def download(self):
         if hasattr(self, "reservoirs"):
             ReservoirDownloadFlow(
                 reservoirs=self.reservoirs,
+                to_download=self.to_download,
+                startdates=self.startdates,
+                enddates=self.enddates,
+                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
+                creodias_credentials_provider=self._require_creodias_credentials,
+            ).run(update_existing=False)
+        if hasattr(self, "rivers"):
+            RiverDownloadFlow(
+                rivers=self.rivers,
                 to_download=self.to_download,
                 startdates=self.startdates,
                 enddates=self.enddates,
@@ -553,6 +719,21 @@ class Project:
                 },
             )
 
+        if hasattr(self, "rivers"):
+            RiverDownloadFlow(
+                rivers=self.rivers,
+                to_download=self.to_download,
+                startdates=self.startdates,
+                enddates=self.enddates,
+                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
+                creodias_credentials_provider=self._require_creodias_credentials,
+            ).run(
+                update_existing=True,
+                enddate_overrides={
+                    mission: current_date for mission in self.to_download
+                },
+            )
+
     def create_timeseries(self):
         warnings.filterwarnings("ignore", module="pyogrio\\..*")
         if hasattr(self, "reservoirs"):
@@ -561,8 +742,16 @@ class Project:
                 to_process=self.to_process,
                 processing_options=self.processing_options,
             ).run()
+        if hasattr(self, "rivers"):
+            logger.warning(
+                "Rivers preprocessing is not implemented yet; skipping create_timeseries for rivers."
+            )
 
     def generate_summaries(self, show=False, save=True):
         warnings.filterwarnings("ignore", module="pandas\\..*")
         if hasattr(self, "reservoirs"):
             PlottingFlow(self.reservoirs).run(show=show, save=save)
+        if hasattr(self, "rivers"):
+            logger.warning(
+                "Rivers plotting is not implemented yet; skipping generate_summaries for rivers."
+            )

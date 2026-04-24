@@ -64,3 +64,27 @@ class ReservoirDownloadFlow:
                 continue
 
             logger.warning("Skipping unsupported mission in download flow: %s", mission)
+
+
+@dataclass
+class RiverDownloadFlow:
+    """Run mission downloads for rivers (stub implementation)."""
+
+    rivers: object
+    to_download: list[str]
+    startdates: dict[str, list[int]]
+    enddates: dict[str, list[int]]
+    earthdata_credentials: tuple[str | None, str | None]
+    creodias_credentials_provider: Callable[[], tuple[str, str]]
+
+    def run(
+        self,
+        update_existing: bool = False,
+        enddate_overrides: dict[str, list[int]] | None = None,
+    ) -> None:
+        _ = enddate_overrides or {}
+        logger.info(
+            "RiverDownloadFlow is currently a stub. Missions queued: %s. update_existing=%s",
+            ", ".join(self.to_download) if self.to_download else "none",
+            update_existing,
+        )

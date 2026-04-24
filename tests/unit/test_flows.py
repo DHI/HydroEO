@@ -3,7 +3,12 @@
 import pandas as pd
 import pytest
 
-from HydroEO.flows import ReservoirDownloadFlow, PlottingFlow, PreprocessFlow
+from HydroEO.flows import (
+    ReservoirDownloadFlow,
+    RiverDownloadFlow,
+    PlottingFlow,
+    PreprocessFlow,
+)
 
 
 class DummyReservoirs:
@@ -124,3 +129,22 @@ def test_plotting_flow_runs_all_summary_steps_for_each_reservoir():
         ("summarize_merging_by_id", "B", False, True),
     ]
     assert summarize_calls == expected
+
+
+@pytest.mark.unit
+def test_river_download_flow_stub_is_non_blocking():
+    rivers = DummyReservoirs()
+
+    flow = RiverDownloadFlow(
+        rivers=rivers,
+        to_download=["swot", "icesat2"],
+        startdates={"swot": [2024, 1, 1], "icesat2": [2024, 1, 1]},
+        enddates={"swot": [2024, 2, 1], "icesat2": [2024, 2, 1]},
+        earthdata_credentials=("edl-user", "edl-pass"),
+        creodias_credentials_provider=lambda: ("creo-user", "creo-pass"),
+    )
+
+    flow.run(update_existing=False)
+
+    # The river flow is a stub for now and should not call mission download methods.
+    assert rivers.calls == []

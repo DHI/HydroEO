@@ -3,6 +3,8 @@ import logging
 import warnings
 
 import os
+import zipfile
+from urllib import request
 import pandas as pd
 import geopandas as gpd
 import datetime
@@ -15,6 +17,10 @@ from HydroEO import plotting
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+SWORD_V17B_ZIP_URL = (
+    "https://zenodo.org/records/15299138/files/SWORD_v17b_gpkg.zip?download=1"
+)
 
 
 class HydroEODownloadError(RuntimeError):
@@ -405,6 +411,113 @@ class WaterBody:
             show=show,
             save=save,
         )
+
+
+@dataclass
+class Rivers(WaterBody):
+    def __post_init__(self):
+        self.type = "rivers"
+
+        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
+        general.ifnotmakedirs(self.dirs["output"])
+
+        if len(self.gdf) > 0 and "geometry" in self.gdf.columns:
+            first_valid_geometry = self.gdf.geometry.dropna()
+            if len(first_valid_geometry) > 0:
+                self.geom_type = first_valid_geometry.iloc[0].geom_type
+            else:
+                self.geom_type = None
+        else:
+            self.geom_type = None
+
+        self.input_mode = getattr(self, "input_mode", None)
+        self.aoi_gdf = getattr(self, "aoi_gdf", None)
+        self.continent_key = getattr(self, "continent_key", None)
+        self.feature_type = getattr(self, "feature_type", None)
+        self.buffer_meters = getattr(self, "buffer_meters", None)
+        self.target_ids = getattr(self, "target_ids", [])
+        self.target_id_col = getattr(self, "target_id_col", None)
+        self.target_features = getattr(self, "target_features", None)
+
+    def _set_geom_type(self):
+        if len(self.gdf) > 0 and "geometry" in self.gdf.columns:
+            first_valid_geometry = self.gdf.geometry.dropna()
+            self.geom_type = (
+                first_valid_geometry.iloc[0].geom_type
+                if len(first_valid_geometry) > 0
+                else None
+            )
+        else:
+            self.geom_type = None
+
+    def _buffer_in_local_crs(self, gdf, local_crs, buffer_m):
+        local_gdf = gdf.to_crs(local_crs).copy()
+        if buffer_m not in [None, 0] and buffer_m > 0:
+            local_gdf["geometry"] = local_gdf.geometry.buffer(buffer_m)
+        return local_gdf
+
+    def _set_target_ids(self):
+        if self.target_ids:
+            self.target_ids = [int(value) for value in self.target_ids]
+            return
+
+        self.target_ids = []
+
+    def ensure_sword_database(self):
+        sword_dir = os.path.join(self.dirs["main"], "SWORD_v17b_gpkg", "gpkg")
+        self.dirs["sword"] = sword_dir
+        if os.path.isdir(sword_dir):
+            return sword_dir
+
+        logger.warning(
+            "SWORD_v17b database not found in %s. Downloading and extracting it now.",
+            sword_dir,
+        )
+        general.ifnotmakedirs(sword_dir)
+
+        zip_path = os.path.join(self.dirs["main"], "SWORD_v17b_gpkg.zip")
+        request.urlretrieve(SWORD_V17B_ZIP_URL, zip_path)
+
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(sword_dir)
+
+        os.remove(zip_path)
+        return sword_dir
+
+    def prepare_from_sword(self, local_crs):
+        sword_dir = self.ensure_sword_database()
+        gpkg_name = f"{self.continent_key}_sword_{self.feature_type}_v17b.gpkg"
+        gpkg_path = os.path.join(sword_dir, gpkg_name)
+
+        if not os.path.exists(gpkg_path):
+            raise FileNotFoundError(f"Expected SWORD file not found: {gpkg_path}")
+
+        sword_gdf = gpd.read_file(gpkg_path)
+
+        aoi_local = self._buffer_in_local_crs(
+            self.aoi_gdf, local_crs, self.buffer_meters
+        )
+
+        sword_local = sword_gdf.to_crs(local_crs)
+        subset = sword_local.loc[sword_local.intersects(aoi_local.unary_union)].copy()
+        subset = subset.to_crs(self.aoi_gdf.crs)
+
+        source_id_col = "node_id" if self.feature_type == "nodes" else "reach_id"
+        if source_id_col not in subset.columns:
+            raise KeyError(
+                f"Expected SWORD column '{source_id_col}' missing from {gpkg_name}"
+            )
+
+        self.target_features = subset
+        self.target_id_col = source_id_col
+        self.target_ids = [int(value) for value in subset[source_id_col]]
+
+    def prepare_download_targets(self, local_crs):
+        if self.input_mode == "aoi_path":
+            self.prepare_from_sword(local_crs=local_crs)
+            return
+
+        self._set_target_ids()
 
 
 @dataclass

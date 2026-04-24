@@ -1,0 +1,94 @@
+project :
+  main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
+
+gis :
+  global_crs : 'EPSG:4326'
+
+# Rivers branch (exclusive with reservoirs)
+rivers :
+  # Provide exactly one input source: aoi_path, node_numbers, or reach_numbers.
+
+  # Option A: define an AOI file and subset the SWORD database for one continent.
+  aoi_path : "C:\\Users\\username\\altimetry_project\\river_aoi.gpkg" # accepted extensions: .shp or .gpkg
+  continent_key : 'eu' # one of: af, as, eu, na, oc, sa
+  feature_type : 'reaches' # one of: nodes, reaches
+  id_key : 'river_id' # downstream alias reserved for later output/folder naming; canonical ids remain node_id/reach_id for now TODO: explain correctly
+  buffer_meters : 1000.0 # optional AOI buffer applied before SWORD subsetting; use null or 0 for no buffer
+
+  # Option B: explicit node numbers (accepted for now, no initialize subsetting yet)
+  # node_numbers : [10001, 10002, 10003]
+
+  # Option C: explicit reach numbers (accepted for now, no initialize subsetting yet)
+  # reach_numbers : [20001, 20002, 20003]
+
+##### A earthaccess username and password may not be needed if your machine is already authenticated
+earthaccess: # create an Earth Data account at https://urs.earthdata.nasa.gov/
+  username : ""
+  password : ""
+
+hydroweb: # create an account and api key at https://hydroweb.next.theia-land.fr/
+  api_key : ""
+  PLD_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp"
+
+swot:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\swot"
+  startdate : [2024, 1, 1]
+  enddate   : [2024, 11, 1]
+  pld_match_max_distance_m : 100.0
+  exclude_obs_id_values : ["no_data"]
+  processing_filters : ["elevation", "MAD"]
+  elevation_min_m : 0.0
+  elevation_max_m : 8000.0
+  mad_threshold : 5.0
+
+icesat2:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2"
+  startdate : [2024, 1, 1]
+  enddate   : [2024, 11, 1]
+  atl13_fields : []
+  atl13 :
+    pass_invalid : false
+    beams : []
+    spots : []
+  track_keys : ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]
+  processing_filters : ["elevation", "MAD"]
+  elevation_min_m : 0.0
+  elevation_max_m : 8000.0
+  mad_threshold : 5.0
+
+##### A creodias username and password must be provided if downloading Sentinel data
+creodias:
+  username : ""
+  password : ""
+
+sentinel3:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel3"
+  startdate : [2024, 1, 1]
+  enddate   : [2024, 11, 1]
+  subset_file_id : "enhanced_measurement.nc"
+  sigma0_max : 100000.0
+  download_threads : 1
+  processing_filters : ["elevation", "MAD"]
+  elevation_min_m : 0.0
+  elevation_max_m : 8000.0
+  mad_threshold : 5.0
+
+sentinel6:
+  download : True
+  process : True
+  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel6"
+  startdate : [2024, 1, 1]
+  enddate   : [2024, 11, 1]
+  subset_file_id : "enhanced_measurement.nc"
+  sigma0_max : 100000.0
+  download_threads : 1
+  processing_filters : ["elevation", "MAD"]
+  elevation_min_m : 0.0
+  elevation_max_m : 8000.0
+  mad_threshold : 5.0

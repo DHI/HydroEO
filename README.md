@@ -33,7 +33,7 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-Usage examples are available in [notebooks](./notebooks), and a complete sample configuration is in [notebooks/example_config.yaml](./notebooks/example_config.yaml).
+Usage examples are available in [notebooks](./notebooks), with separate sample configurations for [reservoirs](./notebooks/example_config_reservoirs.yaml) and [rivers](./notebooks/example_config_rivers.yaml).
 
 HydroEO projects are configured with:
 - project output location and CRS
@@ -55,14 +55,14 @@ project.generate_summaries()
 
 ## Project capabilities
 
-A HydroEO project is built around a single **water body branch** — either reservoirs/lakes or rivers (coming soon). Both branches are mutually exclusive within one project config; a project targets one type only.
+A HydroEO project is built around a single **water body branch** — either reservoirs/lakes or rivers. Both branches are mutually exclusive within one project config; a project targets one type only.
 
 ### Water body branches
 
 | Branch | Status | Description |
 | --- | --- | --- |
 | `reservoirs` | ✅ available | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. |
-| `rivers` | 🔜 planned | ... |
+| `rivers` | 🧪 stubbed | River branch scaffolding and config validation are available. With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, and subsets SWORD to the AOI. Explicit `node_numbers` / `reach_numbers` inputs are accepted but inactive for now. Download orchestration currently routes through a no-op stub flow. |
 
 ### Project lifecycle
 
@@ -75,7 +75,7 @@ report() → initialize() → download() → update() → create_timeseries() �
 | Method | What it does |
 | --- | --- |
 | `project.report()` | Logs the project name, logs the number of loaded water bodies in the active branch, and returns a preview of the branch GeoDataFrame (`gdf.head()`). Useful as a quick inspection step after loading a project. |
-| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body shapefile. Reports all config issues in one message before doing any I/O. |
+| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. Reports all config issues in one message before doing any I/O. |
 | `project.download()` | Downloads raw satellite data for every enabled mission within the configured date range. Each mission writes to its own directory (configurable or auto-created under `main_dir`). |
 | `project.update()` | Extends existing downloads from the latest observation up to today. Safe to run repeatedly — already-downloaded data is not re-fetched. |
 | `project.create_timeseries()` | Extracts observations spatially matched to each water body, applies the configured cleaning filters, and writes per-body timeseries shapefiles. |
