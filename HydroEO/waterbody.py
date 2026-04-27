@@ -1,8 +1,13 @@
 from dataclasses import dataclass
+from io import StringIO
+import json
 import logging
 import warnings
 
 import os
+import zipfile
+from urllib import parse
+from urllib import request
 import pandas as pd
 import geopandas as gpd
 import datetime
@@ -15,6 +20,13 @@ from HydroEO import plotting
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+SWORD_V17B_ZIP_URL = (
+    "https://zenodo.org/records/15299138/files/SWORD_v17b_gpkg.zip?download=1"
+)
+HYDROCRON_TIMESERIES_URL = (
+    "https://soto.podaac.earthdatacloud.nasa.gov/hydrocron/v1/timeseries"
+)
 
 
 class HydroEODownloadError(RuntimeError):
@@ -405,6 +417,349 @@ class WaterBody:
             show=show,
             save=save,
         )
+
+
+@dataclass
+class Rivers(WaterBody):
+    def __post_init__(self):
+        self.type = "rivers"
+
+        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
+        general.ifnotmakedirs(self.dirs["output"])
+
+        if len(self.gdf) > 0 and "geometry" in self.gdf.columns:
+            first_valid_geometry = self.gdf.geometry.dropna()
+            if len(first_valid_geometry) > 0:
+                self.geom_type = first_valid_geometry.iloc[0].geom_type
+            else:
+                self.geom_type = None
+        else:
+            self.geom_type = None
+
+        self.input_mode = getattr(self, "input_mode", None)
+        self.aoi_gdf = getattr(self, "aoi_gdf", None)
+        self.continent_key = getattr(self, "continent_key", None)
+        self.feature_type = getattr(self, "feature_type", None)
+        self.buffer_meters = getattr(self, "buffer_meters", None)
+        self.target_ids = getattr(self, "target_ids", [])
+        self.target_id_col = getattr(self, "target_id_col", None)
+        self.target_features = getattr(self, "target_features", None)
+        self.configured_id = getattr(self, "configured_id", None)
+
+    def _set_geom_type(self):
+        if len(self.gdf) > 0 and "geometry" in self.gdf.columns:
+            first_valid_geometry = self.gdf.geometry.dropna()
+            self.geom_type = (
+                first_valid_geometry.iloc[0].geom_type
+                if len(first_valid_geometry) > 0
+                else None
+            )
+        else:
+            self.geom_type = None
+
+    def _buffer_in_local_crs(self, gdf, local_crs, buffer_m):
+        local_gdf = gdf.to_crs(local_crs).copy()
+        if buffer_m not in [None, 0] and buffer_m > 0:
+            local_gdf["geometry"] = local_gdf.geometry.buffer(buffer_m)
+        return local_gdf
+
+    def _set_target_ids(self):
+        if self.target_ids:
+            self.target_ids = [int(value) for value in self.target_ids]
+            return
+
+        self.target_ids = []
+
+    def ensure_sword_database(self):
+        sword_dir = os.path.join(self.dirs["main"], "SWORD_v17b_gpkg", "gpkg")
+        self.dirs["sword"] = sword_dir
+        if os.path.isdir(sword_dir):
+            return sword_dir
+
+        logger.warning(
+            "SWORD_v17b database not found in %s. Downloading and extracting it now.",
+            sword_dir,
+        )
+        general.ifnotmakedirs(sword_dir)
+
+        zip_path = os.path.join(self.dirs["main"], "SWORD_v17b_gpkg.zip")
+        request.urlretrieve(SWORD_V17B_ZIP_URL, zip_path)
+
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(sword_dir)
+
+        os.remove(zip_path)
+        return sword_dir
+
+    def prepare_from_sword(self, local_crs):
+        sword_dir = self.ensure_sword_database()
+        gpkg_name = f"{self.continent_key}_sword_{self.feature_type}_v17b.gpkg"
+        gpkg_path = os.path.join(sword_dir, gpkg_name)
+
+        if not os.path.exists(gpkg_path):
+            raise FileNotFoundError(f"Expected SWORD file not found: {gpkg_path}")
+
+        sword_gdf = gpd.read_file(gpkg_path)
+
+        aoi_local = self._buffer_in_local_crs(
+            self.aoi_gdf, local_crs, self.buffer_meters
+        )
+
+        sword_local = sword_gdf.to_crs(local_crs)
+        subset = sword_local.loc[sword_local.intersects(aoi_local.unary_union)].copy()
+        if self.id_key not in self.aoi_gdf.columns:
+            raise KeyError(
+                f"Expected AOI column '{self.id_key}' missing from river input file"
+            )
+
+        aoi_join = aoi_local[[self.id_key, "geometry"]].copy()
+        subset = gpd.sjoin(
+            subset,
+            aoi_join,
+            how="inner",
+            predicate="intersects",
+        ).drop(columns=["index_right"], errors="ignore")
+        subset = subset.drop_duplicates().to_crs(self.aoi_gdf.crs)
+
+        source_id_col = "node_id" if self.feature_type == "nodes" else "reach_id"
+        if source_id_col not in subset.columns:
+            raise KeyError(
+                f"Expected SWORD column '{source_id_col}' missing from {gpkg_name}"
+            )
+
+        self.target_features = subset
+        self.target_id_col = source_id_col
+        self.target_ids = [int(value) for value in subset[source_id_col]]
+
+    def prepare_download_targets(self, local_crs):
+        if self.input_mode == "aoi_path":
+            self.prepare_from_sword(local_crs=local_crs)
+            return
+
+        self._set_target_ids()
+
+    def _hydrocron_feature_config(self):
+        if self.target_id_col == "node_id":
+            return {
+                "feature": "Node",
+                "quality_column": "node_q",
+                "fields": self.mission_options.get("swot", {})
+                .get("hydrocron_fields", {})
+                .get("nodes", []),
+                "max_q": self.mission_options.get("swot", {})
+                .get("quality_filters", {})
+                .get("nodes", {})
+                .get("max_q", 2),
+            }
+
+        if self.target_id_col == "reach_id":
+            return {
+                "feature": "Reach",
+                "quality_column": "reach_q",
+                "fields": self.mission_options.get("swot", {})
+                .get("hydrocron_fields", {})
+                .get("reaches", []),
+                "max_q": self.mission_options.get("swot", {})
+                .get("quality_filters", {})
+                .get("reaches", {})
+                .get("max_q", 2),
+            }
+
+        raise ValueError(
+            f"Unsupported river target id column for Hydrocron download: {self.target_id_col}"
+        )
+
+    def _resolve_target_output_key(self, target_id):
+        if self.target_features is not None and len(self.target_features) > 0:
+            matches = self.target_features.loc[
+                self.target_features[self.target_id_col].astype(int) == int(target_id)
+            ]
+            if len(matches) > 0:
+                resolved_id = matches.iloc[0][self.id_key]
+                if pd.notna(resolved_id):
+                    return str(resolved_id)
+
+        if self.configured_id:
+            return str(self.configured_id)
+
+        raise ValueError(
+            f"Unable to resolve output key for river target {target_id}. Configure rivers.id or ensure rivers.id_key exists in the AOI file."
+        )
+
+    def _hydrocron_output_path(self, waterbody_id):
+        return os.path.join(
+            self.dirs["swot"], self.type, str(waterbody_id), "timeseries.csv"
+        )
+
+    def _group_targets_by_waterbody(self):
+        """Return {waterbody_id: [target_id, ...]} grouping.
+
+        In AOI mode each SWORD node/reach is joined to its AOI row via id_key,
+        so a single AOI feature ('gauja') that contains three nodes produces
+        one entry: {'gauja': [node1, node2, node3]}.
+        In node_numbers/reach_numbers mode all target IDs belong to the single
+        configured_id waterbody.
+        """
+        if self.target_features is not None and len(self.target_features) > 0:
+            groups: dict[str, list] = {}
+            seen_target_ids: set = set()
+            for _, row in self.target_features.iterrows():
+                target_id = int(row[self.target_id_col])
+                if target_id in seen_target_ids:
+                    continue
+                seen_target_ids.add(target_id)
+                wb_id = str(row[self.id_key])
+                groups.setdefault(wb_id, []).append(target_id)
+            return groups
+
+        if self.configured_id:
+            return {str(self.configured_id): list(self.target_ids)}
+
+        raise ValueError(
+            "Unable to group river targets by waterbody. "
+            "Configure rivers.id or provide rivers.aoi_path with rivers.id_key."
+        )
+
+    def _latest_hydrocron_obs_date(self, output_path):
+        if not os.path.exists(output_path):
+            return None
+
+        try:
+            existing = pd.read_csv(output_path)
+        except Exception as exc:
+            logger.warning(
+                "Unable to read existing Hydrocron output %s: %s", output_path, exc
+            )
+            return None
+
+        if "time_str" not in existing.columns or existing.empty:
+            return None
+
+        timestamps = pd.to_datetime(existing["time_str"], errors="coerce", utc=True)
+        timestamps = timestamps.dropna()
+        if timestamps.empty:
+            return None
+
+        latest_obs = timestamps.max().to_pydatetime()
+        return datetime.date(latest_obs.year, latest_obs.month, latest_obs.day)
+
+    def _request_hydrocron_timeseries(
+        self, target_id, startdate, enddate, fields, feature
+    ):
+        query_params = {
+            "feature": feature,
+            "feature_id": str(target_id),
+            "start_time": startdate.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "end_time": enddate.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "output": "csv",
+            "fields": ",".join(fields),
+        }
+        request_url = f"{HYDROCRON_TIMESERIES_URL}?{parse.urlencode(query_params)}"
+
+        with request.urlopen(request_url) as response:
+            status_code = getattr(response, "status", response.getcode())
+            payload = json.loads(response.read().decode("utf-8"))
+
+        return status_code, payload, query_params
+
+    def download_swot_hydrocron(self, startdate, enddate, update_existing=False):
+        if not isinstance(startdate, datetime.date):
+            startdate = datetime.date(*startdate)
+        if not isinstance(enddate, datetime.date):
+            enddate = datetime.date(*enddate)
+
+        feature_cfg = self._hydrocron_feature_config()
+        waterbody_groups = self._group_targets_by_waterbody()
+
+        summary = {
+            "requested": len(waterbody_groups),
+            "successful": 0,
+            "failed": 0,
+            "empty_after_filter": 0,
+        }
+
+        for wb_id, target_ids in waterbody_groups.items():
+            output_path = self._hydrocron_output_path(wb_id)
+            general.ifnotmakedirs(os.path.dirname(output_path))
+
+            wb_startdate = startdate
+            latest_obs = self._latest_hydrocron_obs_date(output_path)
+            if update_existing and latest_obs is not None:
+                wb_startdate = latest_obs
+
+            frames = []
+            for target_id in target_ids:
+                try:
+                    status_code, payload, _query_params = (
+                        self._request_hydrocron_timeseries(
+                            target_id=target_id,
+                            startdate=wb_startdate,
+                            enddate=enddate,
+                            fields=feature_cfg["fields"],
+                            feature=feature_cfg["feature"],
+                        )
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Hydrocron request failed for %s %s: %s",
+                        self.target_id_col,
+                        target_id,
+                        exc,
+                    )
+                    continue
+
+                csv_payload = (
+                    payload.get("results", {}).get("csv")
+                    if isinstance(payload, dict)
+                    else None
+                )
+                if status_code != 200 or not csv_payload:
+                    logger.warning(
+                        "Hydrocron returned no usable CSV payload for %s %s (status=%s).",
+                        self.target_id_col,
+                        target_id,
+                        status_code,
+                    )
+                    continue
+
+                try:
+                    frames.append(pd.read_csv(StringIO(csv_payload)))
+                except Exception as exc:
+                    logger.warning(
+                        "Unable to parse Hydrocron CSV for %s %s: %s",
+                        self.target_id_col,
+                        target_id,
+                        exc,
+                    )
+
+            if not frames:
+                summary["failed"] += 1
+                logger.warning(
+                    "Hydrocron download produced no data for waterbody %s.", wb_id
+                )
+                continue
+
+            combined = pd.concat(frames, ignore_index=True)
+
+            if feature_cfg["quality_column"] in combined.columns:
+                combined = combined.loc[
+                    pd.to_numeric(
+                        combined[feature_cfg["quality_column"]], errors="coerce"
+                    )
+                    <= feature_cfg["max_q"]
+                ].copy()
+
+            if combined.empty:
+                summary["empty_after_filter"] += 1
+                logger.info(
+                    "Hydrocron output empty after filtering for waterbody %s.", wb_id
+                )
+                continue
+
+            combined.to_csv(output_path, index=False)
+            summary["successful"] += 1
+
+        return summary
 
 
 @dataclass

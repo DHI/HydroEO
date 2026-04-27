@@ -33,7 +33,7 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-Usage examples are available in [notebooks](./notebooks), and a complete sample configuration is in [notebooks/example_config.yaml](./notebooks/example_config.yaml).
+Usage examples are available in [notebooks](./notebooks), with separate sample configurations for [reservoirs](./notebooks/example_config_reservoirs.yaml) and [rivers](./notebooks/example_config_rivers.yaml).
 
 HydroEO projects are configured with:
 - project output location and CRS
@@ -55,14 +55,14 @@ project.generate_summaries()
 
 ## Project capabilities
 
-A HydroEO project is built around a single **water body branch** — either reservoirs/lakes or rivers (coming soon). Both branches are mutually exclusive within one project config; a project targets one type only.
+A HydroEO project is built around a single **water body branch** — either reservoirs/lakes or rivers. Both branches are mutually exclusive within one project config; a project targets one type only.
 
 ### Water body branches
 
 | Branch | Status | Description |
 | --- | --- | --- |
 | `reservoirs` | ✅ available | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. |
-| `rivers` | 🔜 planned | ... |
+| `rivers` | 🧪 partial | River projects support initialization plus SWOT Hydrocron download outputs. With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `node_numbers` / `reach_numbers` inputs are also supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
 
 ### Project lifecycle
 
@@ -75,8 +75,8 @@ report() → initialize() → download() → update() → create_timeseries() �
 | Method | What it does |
 | --- | --- |
 | `project.report()` | Logs the project name, logs the number of loaded water bodies in the active branch, and returns a preview of the branch GeoDataFrame (`gdf.head()`). Useful as a quick inspection step after loading a project. |
-| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body shapefile. Reports all config issues in one message before doing any I/O. |
-| `project.download()` | Downloads raw satellite data for every enabled mission within the configured date range. Each mission writes to its own directory (configurable or auto-created under `main_dir`). |
+| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. Reports all config issues in one message before doing any I/O. |
+| `project.download()` | Downloads raw satellite data for every enabled mission within the configured date range. Reservoir missions keep their existing raw-download layout. River SWOT downloads call Hydrocron and write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from the AOI `rivers.id_key` value or the fallback `rivers.id`. Each node/reach gets its own subfolder so multiple targets within the same AOI feature never overwrite each other. |
 | `project.update()` | Extends existing downloads from the latest observation up to today. Safe to run repeatedly — already-downloaded data is not re-fetched. |
 | `project.create_timeseries()` | Extracts observations spatially matched to each water body, applies the configured cleaning filters, and writes per-body timeseries shapefiles. |
 | `project.generate_summaries(show, save)` | Produces diagnostic plots for each water body and mission: raw crossings, filter effect, and merged multi-mission timeseries. |
@@ -103,7 +103,7 @@ main_dir/
     cleaned_timeseries/    # filter-cleaned shapefiles per mission
     merged_timeseries/     # single merged CSV across all enabled missions
     plots/                 # PNG diagnostics (crossings, cleaning, merging)
-  swot/                    # raw SWOT downloads (or custom download_dir)
+  swot/                    # raw SWOT downloads for reservoirs, plus river Hydrocron outputs
   icesat2/                 # raw ICESat-2 downloads
   sentinel3/               # raw Sentinel-3 downloads
   sentinel6/               # raw Sentinel-6 downloads
@@ -136,6 +136,9 @@ Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6
 ### SWOT
 - `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching.
 - `exclude_obs_id_values`: list of SWOT `obs_id` values to exclude during extraction.
+- `hydrocron_fields.nodes` and `hydrocron_fields.reaches`: optional field lists for river Hydrocron requests.
+- `quality_filters.nodes.max_q` and `quality_filters.reaches.max_q`: optional Hydrocron river quality thresholds. The default `2` keeps records where `node_q <= 2` or `reach_q <= 2`.
+- River SWOT downloads currently stop at `project.download()` and write CSV outputs under `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`. Each node/reach gets its own subfolder within the AOI-feature folder, so multiple nodes from the same AOI feature coexist safely.
 
 ### Sentinel-3 and Sentinel-6
 - `subset_file_id`: expected source netCDF filename inside each package.

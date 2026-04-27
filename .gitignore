@@ -152,4 +152,6 @@ dmypy.json
 .env
 run.py
 config.yaml
+config_river.yaml
 notebooks/SWOT_Download.ipynb
+notebooks/swot_examples/*

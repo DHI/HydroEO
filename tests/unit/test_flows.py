@@ -3,7 +3,12 @@
 import pandas as pd
 import pytest
 
-from HydroEO.flows import ReservoirDownloadFlow, PlottingFlow, PreprocessFlow
+from HydroEO.flows import (
+    ReservoirDownloadFlow,
+    RiverDownloadFlow,
+    PlottingFlow,
+    PreprocessFlow,
+)
 
 
 class DummyReservoirs:
@@ -14,6 +19,15 @@ class DummyReservoirs:
 
     def download_altimetry(self, **kwargs):
         self.calls.append(("download_altimetry", kwargs))
+
+    def download_swot_hydrocron(self, **kwargs):
+        self.calls.append(("download_swot_hydrocron", kwargs))
+        return {
+            "requested": 1,
+            "successful": 1,
+            "failed": 0,
+            "empty_after_filter": 0,
+        }
 
     def extract_product_timeseries(self, products):
         self.calls.append(("extract_product_timeseries", products))
@@ -124,3 +138,32 @@ def test_plotting_flow_runs_all_summary_steps_for_each_reservoir():
         ("summarize_merging_by_id", "B", False, True),
     ]
     assert summarize_calls == expected
+
+
+@pytest.mark.unit
+def test_river_download_flow_dispatches_swot_and_skips_other_missions(caplog):
+    rivers = DummyReservoirs()
+
+    flow = RiverDownloadFlow(
+        rivers=rivers,
+        to_download=["swot", "icesat2"],
+        startdates={"swot": [2024, 1, 1], "icesat2": [2024, 1, 1]},
+        enddates={"swot": [2024, 2, 1], "icesat2": [2024, 2, 1]},
+        earthdata_credentials=("edl-user", "edl-pass"),
+        creodias_credentials_provider=lambda: ("creo-user", "creo-pass"),
+    )
+
+    with caplog.at_level("WARNING"):
+        flow.run(update_existing=True, enddate_overrides={"swot": [2024, 3, 1]})
+
+    assert rivers.calls == [
+        (
+            "download_swot_hydrocron",
+            {
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 3, 1],
+                "update_existing": True,
+            },
+        )
+    ]
+    assert "Skipping unsupported river mission" in caplog.text
