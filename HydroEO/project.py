@@ -30,12 +30,62 @@ logger = logging.getLogger(__name__)
 SUPPORTED_TRACK_KEYS = ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]
 SUPPORTED_CLEAN_FILTERS = ["elevation", "MAD", "daily_mean", "hampel", "rolling_median"]
 
+DEFAULT_SWOT_HYDROCRON_FIELDS = {
+    "nodes": [
+        "node_id",
+        "node_q",
+        "reach_id",
+        "time_str",
+        "wse",
+        "wse_u",
+        "p_wse",
+        "geoid_hght",
+        "sword_version",
+        "solid_tide",
+        "load_tidef",
+        "pole_tide",
+        "width",
+        "width_u",
+        "p_width",
+        "xovr_cal_q",
+        "rdr_sig0",
+        "xovr_cal_c",
+        "dark_frac",
+    ],
+    "reaches": [
+        "reach_id",
+        "reach_q",
+        "time_str",
+        "wse",
+        "wse_u",
+        "slope",
+        "slope_u",
+        "slope2",
+        "slope2_u",
+        "width",
+        "width_u",
+        "geoid_hght",
+        "solid_tide",
+        "load_tidef",
+        "pole_tide",
+        "p_wse",
+        "p_width",
+    ],
+}
+
+DEFAULT_SWOT_QUALITY_FILTERS = {
+    "nodes": {"max_q": 2},
+    "reaches": {"max_q": 2},
+}
+
 MISSION_DEFAULTS = {
     "swot": {
         "download": False,
         "process": False,
         "pld_match_max_distance_m": 100.0,
         "exclude_obs_id_values": ["no_data"],
+        "hydrocron_fields": DEFAULT_SWOT_HYDROCRON_FIELDS,
+        "quality_filters": DEFAULT_SWOT_QUALITY_FILTERS,
         "processing_filters": ["elevation", "MAD"],
         "elevation_min_m": 0.0,
         "elevation_max_m": 8000.0,
@@ -221,11 +271,15 @@ class Project:
                     rivers_aoi_gdf = rivers_aoi_gdf.to_crs(self.global_crs)
 
                 rivers_id_key = rivers_cfg["id_key"]
-                rivers_gdf = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs=self.global_crs)
+                rivers_gdf = gpd.GeoDataFrame(
+                    {"geometry": []}, geometry="geometry", crs=self.global_crs
+                )
                 input_mode = "aoi_path"
                 target_ids = []
                 target_id_col = (
-                    "node_id" if rivers_cfg.get("feature_type") == "nodes" else "reach_id"
+                    "node_id"
+                    if rivers_cfg.get("feature_type") == "nodes"
+                    else "reach_id"
                 )
             else:
                 if "node_numbers" in rivers_cfg:
@@ -262,16 +316,26 @@ class Project:
             self.rivers.continent_key = rivers_cfg.get("continent_key")
             self.rivers.feature_type = rivers_cfg.get("feature_type")
             self.rivers.buffer_meters = rivers_cfg.get("buffer_meters")
+            self.rivers.configured_id = rivers_cfg.get("id")
             self.rivers.target_id_col = target_id_col
             self.rivers.target_ids = target_ids
 
         ### make sure we have a local crs (If we were not able to set it up from the config, grab it from one of the elements)
         if self.local_crs is None:
             if hasattr(self, "rivers"):
-                rivers_crs_source = self.rivers.aoi_gdf if self.rivers.aoi_gdf is not None else self.rivers.gdf
-                if len(rivers_crs_source) > 0 and rivers_crs_source.geometry.notna().any():
+                rivers_crs_source = (
+                    self.rivers.aoi_gdf
+                    if self.rivers.aoi_gdf is not None
+                    else self.rivers.gdf
+                )
+                if (
+                    len(rivers_crs_source) > 0
+                    and rivers_crs_source.geometry.notna().any()
+                ):
                     self.local_crs = rivers_crs_source.estimate_utm_crs()
-                elif len(self.rivers.gdf) > 0 and self.rivers.gdf.geometry.notna().any():
+                elif (
+                    len(self.rivers.gdf) > 0 and self.rivers.gdf.geometry.notna().any()
+                ):
                     self.local_crs = self.rivers.gdf.estimate_utm_crs()
                 else:
                     self.local_crs = self.global_crs
@@ -305,6 +369,8 @@ class Project:
                 for k, v in self.config[name].items()
                 if k
                 in [
+                    "hydrocron_fields",
+                    "quality_filters",
                     "atl13",
                     "atl13_fields",
                     "track_keys",
@@ -376,7 +442,9 @@ class Project:
 
         if has_reservoirs:
             if not isinstance(cfg["reservoirs"], dict):
-                issues.append("Section 'reservoirs' must be a mapping of key/value pairs.")
+                issues.append(
+                    "Section 'reservoirs' must be a mapping of key/value pairs."
+                )
             else:
                 if not cfg["reservoirs"].get("path"):
                     issues.append("Missing required key 'reservoirs.path'.")
@@ -396,7 +464,9 @@ class Project:
                 has_aoi_path = bool(rivers_cfg.get("aoi_path"))
                 has_node_numbers = "node_numbers" in rivers_cfg
                 has_reach_numbers = "reach_numbers" in rivers_cfg
-                provided_inputs = sum([has_aoi_path, has_node_numbers, has_reach_numbers])
+                provided_inputs = sum(
+                    [has_aoi_path, has_node_numbers, has_reach_numbers]
+                )
 
                 if provided_inputs == 0:
                     issues.append(
@@ -410,7 +480,9 @@ class Project:
                 if has_aoi_path:
                     path = rivers_cfg["aoi_path"]
                     if not os.path.exists(path):
-                        issues.append(f"Path in 'rivers.aoi_path' does not exist: {path}")
+                        issues.append(
+                            f"Path in 'rivers.aoi_path' does not exist: {path}"
+                        )
                     elif not path.lower().endswith((".shp", ".gpkg")):
                         issues.append(
                             "'rivers.aoi_path' must reference a '.shp' or '.gpkg' file."
@@ -452,6 +524,11 @@ class Project:
                             "'rivers.node_numbers' must be a non-empty list of integers."
                         )
 
+                    if not rivers_cfg.get("id"):
+                        issues.append(
+                            "Missing required key 'rivers.id' when 'rivers.node_numbers' is provided."
+                        )
+
                 if has_reach_numbers:
                     reach_numbers = rivers_cfg.get("reach_numbers")
                     if (
@@ -461,6 +538,11 @@ class Project:
                     ):
                         issues.append(
                             "'rivers.reach_numbers' must be a non-empty list of integers."
+                        )
+
+                    if not rivers_cfg.get("id"):
+                        issues.append(
+                            "Missing required key 'rivers.id' when 'rivers.reach_numbers' is provided."
                         )
 
         for mission in ["swot", "icesat2", "sentinel3", "sentinel6"]:
@@ -546,6 +628,75 @@ class Project:
                     issues.append(
                         "'swot.exclude_obs_id_values' must be a list of strings."
                     )
+
+                hydrocron_fields = mission_cfg.get(
+                    "hydrocron_fields", DEFAULT_SWOT_HYDROCRON_FIELDS
+                )
+                if not isinstance(hydrocron_fields, dict):
+                    issues.append("'swot.hydrocron_fields' must be a mapping.")
+                else:
+                    extra_keys = sorted(
+                        key
+                        for key in hydrocron_fields.keys()
+                        if key not in ["nodes", "reaches"]
+                    )
+                    if extra_keys:
+                        issues.append(
+                            "'swot.hydrocron_fields' only accepts 'nodes' and 'reaches' keys. "
+                            f"Unexpected keys: {extra_keys}."
+                        )
+
+                    for feature_type in ["nodes", "reaches"]:
+                        if feature_type not in hydrocron_fields:
+                            issues.append(
+                                f"Missing required key 'swot.hydrocron_fields.{feature_type}'."
+                            )
+                            continue
+
+                        fields = hydrocron_fields[feature_type]
+                        if not isinstance(fields, list) or any(
+                            not isinstance(value, str) for value in fields
+                        ):
+                            issues.append(
+                                f"'swot.hydrocron_fields.{feature_type}' must be a list of strings."
+                            )
+
+                quality_filters = mission_cfg.get(
+                    "quality_filters", DEFAULT_SWOT_QUALITY_FILTERS
+                )
+                if not isinstance(quality_filters, dict):
+                    issues.append("'swot.quality_filters' must be a mapping.")
+                else:
+                    extra_keys = sorted(
+                        key
+                        for key in quality_filters.keys()
+                        if key not in ["nodes", "reaches"]
+                    )
+                    if extra_keys:
+                        issues.append(
+                            "'swot.quality_filters' only accepts 'nodes' and 'reaches' keys. "
+                            f"Unexpected keys: {extra_keys}."
+                        )
+
+                    for feature_type in ["nodes", "reaches"]:
+                        if feature_type not in quality_filters:
+                            issues.append(
+                                f"Missing required key 'swot.quality_filters.{feature_type}'."
+                            )
+                            continue
+
+                        feature_filters = quality_filters[feature_type]
+                        if not isinstance(feature_filters, dict):
+                            issues.append(
+                                f"'swot.quality_filters.{feature_type}' must be a mapping."
+                            )
+                            continue
+
+                        max_q = feature_filters.get("max_q")
+                        if not isinstance(max_q, int):
+                            issues.append(
+                                f"'swot.quality_filters.{feature_type}.max_q' must be an integer."
+                            )
 
             if mission == "icesat2":
                 track_keys = mission_cfg.get("track_keys", SUPPORTED_TRACK_KEYS)

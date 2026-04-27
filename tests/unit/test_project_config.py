@@ -212,6 +212,7 @@ def test_project_accepts_rivers_aoi_branch(tmp_path, monkeypatch, _mock_river_gd
         "HydroEO.project.gpd.read_file",
         lambda *_args, **_kwargs: _mock_river_gdf.copy(),
     )
+
     def _mock_prepare_from_sword(self, local_crs):
         _ = local_crs
         self.target_features = _mock_river_gdf.copy()
@@ -240,7 +241,7 @@ def test_project_accepts_rivers_node_number_branch(tmp_path):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"node_numbers": [10, 11, 12]},
+            "rivers": {"node_numbers": [10, 11, 12], "id": "demo-river"},
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -267,7 +268,7 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"node_numbers": [10, 11, 12]},
+            "rivers": {"node_numbers": [10, 11, 12], "id": "demo-river"},
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -300,7 +301,7 @@ def test_initialize_logs_resolved_river_target_ids(tmp_path, caplog):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"reach_numbers": [21, 22]},
+            "rivers": {"reach_numbers": [21, 22], "id": "demo-river"},
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -329,6 +330,75 @@ def test_validate_config_rejects_both_node_and_reach_numbers():
     }
 
     with pytest.raises(ValueError, match="node_numbers"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+def test_project_applies_swot_hydrocron_defaults_for_rivers(tmp_path):
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {"main_dir": str(tmp_path / "out")},
+            "gis": {"global_crs": "EPSG:4326"},
+            "rivers": {"node_numbers": [10], "id": "demo-river"},
+            "swot": {
+                "download": True,
+                "process": False,
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 2, 1],
+            },
+        },
+    )
+
+    proj = Project(name="rivers-swot-defaults", config=str(cfg_path))
+
+    assert proj.config["swot"]["hydrocron_fields"]["nodes"][0] == "node_id"
+    assert proj.config["swot"]["hydrocron_fields"]["reaches"][0] == "reach_id"
+    assert proj.config["swot"]["quality_filters"]["nodes"]["max_q"] == 2
+    assert proj.mission_options["swot"]["quality_filters"]["reaches"]["max_q"] == 2
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_invalid_swot_hydrocron_shapes():
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "rivers": {"node_numbers": [1], "id": "demo-river"},
+        "swot": {
+            "download": True,
+            "process": False,
+            "startdate": [2024, 1, 1],
+            "enddate": [2024, 2, 1],
+            "hydrocron_fields": {"nodes": "node_id", "invalid": []},
+            "quality_filters": {"nodes": {"max_q": "2"}, "reaches": {}},
+        },
+    }
+
+    with pytest.raises(ValueError) as exc_info:
+        proj.validate_config()
+
+    msg = str(exc_info.value)
+    assert "swot.hydrocron_fields" in msg
+    assert "swot.quality_filters.nodes.max_q" in msg
+    assert "swot.quality_filters.reaches.max_q" in msg
+
+
+@pytest.mark.unit
+def test_validate_config_requires_rivers_id_for_number_inputs():
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "rivers": {"reach_numbers": [2]},
+    }
+
+    with pytest.raises(ValueError, match="rivers.id"):
         proj.validate_config()
 
 

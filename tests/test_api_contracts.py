@@ -169,3 +169,78 @@ def test_hydroweb_api_key_valid():
         pytest.skip("py_hydroweb not installed")
     except Exception as e:
         pytest.fail(f"HydroWeb client initialization failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Hydrocron (SWOT river timeseries) endpoint checks — credential-free
+# ---------------------------------------------------------------------------
+
+# Loire River node 23227000010171 — confirmed working in Hydrocron with data from 2023+.
+_HYDROCRON_TEST_NODE_ID = "23227000010171"
+_HYDROCRON_URL = "https://soto.podaac.earthdatacloud.nasa.gov/hydrocron/v1/timeseries"
+
+
+@pytest.mark.api_contract
+def test_hydrocron_endpoint_is_reachable():
+    """Hydrocron timeseries endpoint must be reachable and return a JSON body."""
+    import requests
+
+    params = {
+        "feature": "Node",
+        "feature_id": _HYDROCRON_TEST_NODE_ID,
+        "start_time": "2024-01-01T00:00:00Z",
+        "end_time": "2024-01-15T00:00:00Z",
+        "output": "csv",
+        "fields": "node_id,node_q,time_str,wse",
+    }
+
+    try:
+        resp = requests.get(_HYDROCRON_URL, params=params, timeout=30)
+    except requests.exceptions.ConnectionError as exc:
+        pytest.fail(f"Hydrocron endpoint unreachable: {exc}")
+    except requests.exceptions.Timeout:
+        pytest.fail("Hydrocron endpoint timed out (>30 s)")
+
+    assert resp.status_code == 200, (
+        f"Expected 200 from Hydrocron, got {resp.status_code}. "
+        "Endpoint URL or API version may have changed."
+    )
+
+    payload = resp.json()
+    assert isinstance(payload, dict), (
+        f"Hydrocron response must be a JSON object, got {type(payload)}"
+    )
+
+
+@pytest.mark.api_contract
+def test_hydrocron_response_schema_has_results_csv_key():
+    """Hydrocron timeseries response must include 'results.csv' for csv output mode."""
+    import requests
+
+    params = {
+        "feature": "Node",
+        "feature_id": _HYDROCRON_TEST_NODE_ID,
+        "start_time": "2024-01-01T00:00:00Z",
+        "end_time": "2024-02-01T00:00:00Z",
+        "output": "csv",
+        "fields": "node_id,node_q,time_str,wse",
+    }
+
+    try:
+        resp = requests.get(_HYDROCRON_URL, params=params, timeout=30)
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+        pytest.skip(f"Hydrocron unreachable — skipping schema validation: {exc}")
+
+    if resp.status_code != 200:
+        pytest.skip(f"Hydrocron returned {resp.status_code} — cannot validate schema")
+
+    payload = resp.json()
+    assert "results" in payload, (
+        f"Top-level 'results' key missing from Hydrocron response. Keys: {list(payload.keys())}"
+    )
+    assert "csv" in payload["results"], (
+        f"'results.csv' key missing. Keys under 'results': {list(payload['results'].keys())}"
+    )
+    assert isinstance(payload["results"]["csv"], str), (
+        "'results.csv' must be a string (the raw CSV text)"
+    )

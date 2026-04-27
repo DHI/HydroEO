@@ -306,3 +306,81 @@ def test_sliderule_atl13x_query():
     )
     heights = gdf["height"].dropna()
     assert len(heights) > 0, "No non-NaN height values returned"
+
+
+# ---------------------------------------------------------------------------
+# Hydrocron live round-trip — credential-free (public NASA PO.DAAC endpoint)
+# ---------------------------------------------------------------------------
+
+# Loire River node 23227000010171 — confirmed working in Hydrocron with data from 2023+.
+_HYDROCRON_TEST_NODE_ID = 23227000010171
+
+
+@pytest.mark.integration
+def test_hydrocron_river_download_writes_filtered_csv(tmp_path):
+    """Live Hydrocron download for a known Loire node must produce a quality-filtered CSV.
+
+    No credentials required — Hydrocron is a public NASA PO.DAAC endpoint.
+    The node 23221000160051 is confirmed to have SWOT data from 2024-01-01.
+    """
+    import geopandas as gpd
+    from HydroEO.waterbody import Rivers
+
+    swot_dir = tmp_path / "swot"
+    rivers = Rivers(
+        gdf=gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs="EPSG:4326"),
+        id_key="river_id",
+        dirs={"main": str(tmp_path), "swot": str(swot_dir)},
+    )
+    rivers.target_id_col = "node_id"
+    rivers.target_ids = [_HYDROCRON_TEST_NODE_ID]
+    rivers.configured_id = "loire"
+    rivers.mission_options = {
+        "swot": {
+            "hydrocron_fields": {
+                "nodes": ["node_id", "node_q", "time_str", "wse"],
+                "reaches": [],
+            },
+            "quality_filters": {
+                "nodes": {"max_q": 2},
+                "reaches": {"max_q": 2},
+            },
+        }
+    }
+
+    summary = rivers.download_swot_hydrocron(
+        startdate=[2024, 1, 1],
+        enddate=[2024, 6, 1],
+        update_existing=False,
+    )
+
+    assert summary["requested"] == 1, "Expected 1 requested target"
+    assert summary["failed"] == 0, (
+        f"Expected no failures, got {summary['failed']}. "
+        "Check Hydrocron endpoint or node_id validity."
+    )
+    assert summary["successful"] + summary["empty_after_filter"] == 1, (
+        "The one target must be either successful or empty-after-filter."
+    )
+
+    output_path = swot_dir / "rivers" / "loire" / "timeseries.csv"
+    if summary["successful"] == 1:
+        assert output_path.exists(), (
+            f"Expected timeseries CSV at {output_path} but file was not created."
+        )
+        import pandas as pd
+
+        df = pd.read_csv(output_path)
+        assert "node_id" in df.columns, (
+            f"Expected 'node_id' column in output CSV. Got: {list(df.columns)}"
+        )
+        assert "wse" in df.columns, (
+            f"Expected 'wse' column in output CSV. Got: {list(df.columns)}"
+        )
+        assert "node_q" in df.columns, (
+            f"Expected 'node_q' column in output CSV. Got: {list(df.columns)}"
+        )
+        assert (df["node_q"] <= 2).all(), (
+            f"Quality filter failed — found node_q > 2: {df['node_q'].unique()}"
+        )
+        assert len(df) > 0, "Quality-filtered output CSV must have at least 1 row."

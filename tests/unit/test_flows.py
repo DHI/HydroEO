@@ -20,6 +20,15 @@ class DummyReservoirs:
     def download_altimetry(self, **kwargs):
         self.calls.append(("download_altimetry", kwargs))
 
+    def download_swot_hydrocron(self, **kwargs):
+        self.calls.append(("download_swot_hydrocron", kwargs))
+        return {
+            "requested": 1,
+            "successful": 1,
+            "failed": 0,
+            "empty_after_filter": 0,
+        }
+
     def extract_product_timeseries(self, products):
         self.calls.append(("extract_product_timeseries", products))
 
@@ -132,7 +141,7 @@ def test_plotting_flow_runs_all_summary_steps_for_each_reservoir():
 
 
 @pytest.mark.unit
-def test_river_download_flow_stub_is_non_blocking():
+def test_river_download_flow_dispatches_swot_and_skips_other_missions(caplog):
     rivers = DummyReservoirs()
 
     flow = RiverDownloadFlow(
@@ -144,7 +153,17 @@ def test_river_download_flow_stub_is_non_blocking():
         creodias_credentials_provider=lambda: ("creo-user", "creo-pass"),
     )
 
-    flow.run(update_existing=False)
+    with caplog.at_level("WARNING"):
+        flow.run(update_existing=True, enddate_overrides={"swot": [2024, 3, 1]})
 
-    # The river flow is a stub for now and should not call mission download methods.
-    assert rivers.calls == []
+    assert rivers.calls == [
+        (
+            "download_swot_hydrocron",
+            {
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 3, 1],
+                "update_existing": True,
+            },
+        )
+    ]
+    assert "Skipping unsupported river mission" in caplog.text

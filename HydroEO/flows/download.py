@@ -68,7 +68,7 @@ class ReservoirDownloadFlow:
 
 @dataclass
 class RiverDownloadFlow:
-    """Run mission downloads for rivers (stub implementation)."""
+    """Run mission downloads for rivers."""
 
     rivers: object
     to_download: list[str]
@@ -82,9 +82,25 @@ class RiverDownloadFlow:
         update_existing: bool = False,
         enddate_overrides: dict[str, list[int]] | None = None,
     ) -> None:
-        _ = enddate_overrides or {}
-        logger.info(
-            "RiverDownloadFlow is currently a stub. Missions queued: %s. update_existing=%s",
-            ", ".join(self.to_download) if self.to_download else "none",
-            update_existing,
-        )
+        enddate_overrides = enddate_overrides or {}
+
+        for mission in self.to_download:
+            if mission == "swot":
+                summary = self.rivers.download_swot_hydrocron(
+                    startdate=self.startdates["swot"],
+                    enddate=enddate_overrides.get("swot", self.enddates["swot"]),
+                    update_existing=update_existing,
+                )
+                logger.info(
+                    "Hydrocron SWOT river download summary: requested=%s successful=%s failed=%s empty_after_filter=%s",
+                    summary["requested"],
+                    summary["successful"],
+                    summary["failed"],
+                    summary["empty_after_filter"],
+                )
+                continue
+
+            logger.warning(
+                "Skipping unsupported river mission in download flow: %s",
+                mission,
+            )
