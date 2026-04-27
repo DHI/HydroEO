@@ -2,10 +2,13 @@
 
 import pandas as pd
 import pytest
+from pathlib import Path
+from unittest.mock import Mock, patch, MagicMock
 
 from HydroEO.flows import (
     ReservoirDownloadFlow,
     RiverDownloadFlow,
+    SWOTRasterDownloadFlow,
     PlottingFlow,
     PreprocessFlow,
 )
@@ -149,8 +152,6 @@ def test_river_download_flow_dispatches_swot_and_skips_other_missions(caplog):
         to_download=["swot", "icesat2"],
         startdates={"swot": [2024, 1, 1], "icesat2": [2024, 1, 1]},
         enddates={"swot": [2024, 2, 1], "icesat2": [2024, 2, 1]},
-        earthdata_credentials=("edl-user", "edl-pass"),
-        creodias_credentials_provider=lambda: ("creo-user", "creo-pass"),
     )
 
     with caplog.at_level("WARNING"):
@@ -167,3 +168,162 @@ def test_river_download_flow_dispatches_swot_and_skips_other_missions(caplog):
         )
     ]
     assert "Skipping unsupported river mission" in caplog.text
+
+
+@pytest.mark.unit
+def test_swot_raster_download_flow_initialization():
+    """Test SWOTRasterDownloadFlow instantiation with valid config."""
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+        "granule_filter": None,
+        "target_crs": "EPSG:4326",
+    }
+
+    flow = SWOTRasterDownloadFlow(
+        swot_raster_config=config,
+        project_dir="/tmp/test_project",
+        earthdata_credentials=("user", "pass"),
+    )
+
+    assert flow.swot_raster_config == config
+    assert flow.project_dir == "/tmp/test_project"
+    assert flow.earthdata_credentials == ("user", "pass")
+
+
+@pytest.mark.unit
+def test_swot_raster_download_flow_resampling_selection():
+    """Test correct resampling method selection for different variable types."""
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+    }
+
+    flow = SWOTRasterDownloadFlow(
+        swot_raster_config=config,
+        project_dir="/tmp/test_project",
+        earthdata_credentials=("user", "pass"),
+    )
+
+    from rasterio.warp import Resampling
+
+    # Test continuous variables get bilinear resampling
+    assert flow._resampling_for("wse") == Resampling.bilinear
+    assert flow._resampling_for("wse_uncert") == Resampling.bilinear
+    assert flow._resampling_for("geoid") == Resampling.bilinear
+    assert flow._resampling_for("height_cor_xover") == Resampling.bilinear
+
+    # Test discrete variables get nearest resampling
+    assert flow._resampling_for("n_wse_pix") == Resampling.nearest
+    assert flow._resampling_for("n_other_pix") == Resampling.nearest
+    assert flow._resampling_for("wse_qual") == Resampling.nearest
+
+
+@pytest.mark.unit
+def test_swot_raster_download_flow_crs_detection_from_filename(tmp_path):
+    """Test CRS detection from SWOT filename pattern."""
+    import xarray as xr
+
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+    }
+
+    flow = SWOTRasterDownloadFlow(
+        swot_raster_config=config,
+        project_dir=str(tmp_path),
+        earthdata_credentials=("user", "pass"),
+    )
+
+    # Create a dummy dataset
+    ds = xr.Dataset()
+
+    # Test UTM zone extraction from filename
+    from pyproj import CRS
+
+    utm_file = (
+        tmp_path
+        / "SWOT_L2_HR_Raster_D_123_001_UTM45N_20240101T120000_20240101T130000.nc"
+    )
+    crs = flow._detect_crs(ds, utm_file)
+
+    # Should detect UTM 45 North
+    assert crs is not None
+    assert crs.to_epsg() == 32645  # EPSG code for UTM 45N
+
+
+@pytest.mark.unit
+def test_swot_raster_download_flow_no_processed_files_skips_merge(tmp_path, caplog):
+    """Test that merge phase is skipped when no processed files exist."""
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+        "target_crs": "EPSG:4326",
+    }
+
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    with patch.object(SWOTRasterDownloadFlow, "_download_granules", return_value=[]):
+        flow = SWOTRasterDownloadFlow(
+            swot_raster_config=config,
+            project_dir=str(project_dir),
+            earthdata_credentials=("user", "pass"),
+        )
+
+        with caplog.at_level("INFO"):
+            flow.run()
+
+        # Should log that no processed TIFs were found
+        assert "No processed TIF files found" in caplog.text
+
+
+@pytest.mark.unit
+def test_swot_raster_download_flow_merge_with_existing_files(tmp_path, caplog):
+    """Test that merge phase runs when processed files exist."""
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+        "target_crs": "EPSG:4326",
+    }
+
+    project_dir = (
+        tmp_path
+        / "project"
+        / "swot_raster"
+        / "test_aoi"
+        / "processed"
+        / "SWOT_L2_HR_Raster_D"
+    )
+    project_dir.mkdir(parents=True)
+
+    # Create a dummy TIF file
+    dummy_tif = project_dir / "20240101T120000_wse.tif"
+    dummy_tif.touch()
+
+    with patch.object(SWOTRasterDownloadFlow, "_download_granules", return_value=[]):
+        with patch.object(
+            SWOTRasterDownloadFlow, "_merge_and_reproject_granules"
+        ) as mock_merge:
+            flow = SWOTRasterDownloadFlow(
+                swot_raster_config=config,
+                project_dir=str(tmp_path / "project"),
+                earthdata_credentials=("user", "pass"),
+            )
+
+            with caplog.at_level("INFO"):
+                flow.run()
+
+            # Merge should have been called
+            mock_merge.assert_called_once()
+            assert "Found 1 processed TIF files" in caplog.text

@@ -1,0 +1,20 @@
+project :
+  main_dir : "/home/kaza/eodata/hydroeo/swot-raster-test"
+gis :
+  global_crs : 'EPSG:4326' 
+earthaccess: 
+  username : "kzlt"
+  password : "oGhuy8rGRsCR9k"
+swot_raster:
+  enabled : True 
+  aoi:
+    name : "example_aoi" 
+    type : "bbox" 
+    bbox : [56.4, 24.5, 56.6, 24.7] 
+  
+  product : "SWOT_L2_HR_Raster_D"
+  startdate : [2025, 6, 1] 
+  enddate   : [2025, 7, 1]
+  granule_filter : "*100m*"
+  target_crs : "EPSG:32645"
+  quality_filters:

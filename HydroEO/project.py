@@ -16,6 +16,7 @@ from HydroEO.satellites.icesat2 import ATL13_DEFAULT_FIELDS
 from HydroEO.flows import (
     ReservoirDownloadFlow,
     RiverDownloadFlow,
+    SWOTRasterDownloadFlow,
     PlottingFlow,
     PreprocessFlow,
 )
@@ -271,6 +272,11 @@ class Project:
             self.rivers.target_id_col = target_id_col
             self.rivers.target_ids = target_ids
 
+        if "swot_raster" in self.config.keys():
+            # Store the SWOT raster config for later use in download/preprocess
+            # Will be instantiated in download() when needed
+            self.swot_raster_config = self.config["swot_raster"]
+
         ### make sure we have a local crs (If we were not able to set it up from the config, grab it from one of the elements)
         if self.local_crs is None:
             if hasattr(self, "rivers"):
@@ -293,6 +299,9 @@ class Project:
 
             elif hasattr(self, "reservoirs"):
                 self.local_crs = self.reservoirs.gdf.estimate_utm_crs()
+            elif hasattr(self, "swot_raster_config"):
+                # For swot_raster, use global CRS as local if no local CRS specified
+                self.local_crs = self.global_crs
             else:
                 raise UserWarning(
                     "Must provide a local crs or a river or reservoir shapefile to determine local crs"
@@ -424,9 +433,13 @@ class Project:
                 to_download=self.to_download,
                 startdates=self.startdates,
                 enddates=self.enddates,
-                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
-                creodias_credentials_provider=self._require_creodias_credentials,
             ).run(update_existing=False)
+        if hasattr(self, "swot_raster_config"):
+            SWOTRasterDownloadFlow(
+                swot_raster_config=self.swot_raster_config,
+                project_dir=self.dirs["main"],
+                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
+            ).run()
 
     def update(self):
         # get the current date of the system

@@ -1,0 +1,69 @@
+# Example configuration for SWOT raster data download and preprocessing
+# This flow enables downloading SWOT raster products for arbitrary areas of interest (AOIs)
+# defined via bounding box or shapefile/geopackage geometries.
+
+project :
+  main_dir : "/home/kaza/eodata/hydroeo/swot-raster-test" # main directory in which to store processed outputs
+
+gis :
+  global_crs : 'EPSG:4326' # coordinate reference system for all operations
+  # local_crs : 'EPSG:32633' # optional: override CRS for specific regions (e.g., UTM zones)
+
+##### Credentials for data access
+##### A earthaccess username and password may not be needed if your machine is already authenticated
+earthaccess: # create an Earth Data account at https://urs.earthdata.nasa.gov/ 
+  username : "your_username_here"
+  password : "your_password_here"
+
+##### SWOT Raster Configuration
+##### This section controls download and preprocessing of SWOT raster data products
+##### Only SWOT is available as a data source for this flow.
+swot_raster:
+  enabled : True # toggle to enable/disable this flow
+  
+  # Area of Interest (AOI) definition
+  # Supports three input modes:
+  #   - "bbox": Simple bounding box coordinates [lon_min, lat_min, lon_max, lat_max]
+  #   - "shapefile": Path to ESRI Shapefile (.shp) with feature geometries
+  #   - "geopackage": Path to GeoPackage file (.gpkg) with feature geometries
+  aoi:
+    name : "example_aoi" # identifier for this AOI, used in output directory paths
+    type : "bbox" # choose: "bbox", "shapefile", or "geopackage"
+    
+    # Use this for bounding box (type = "bbox")
+    bbox : [90.342, 20.88, 91.463, 23.928] # [lon_min, lat_min, lon_max, lat_max]
+    
+    # Alternatively, use this for shapefile/geopackage (type = "shapefile" or "geopackage")
+    # path : "/path/to/your/aoi.shp" # or "/path/to/your/aoi.gpkg"
+  
+  # SWOT product selection
+  # Available products:
+  #   - "SWOT_L2_HR_Raster_D": High-resolution raster data (default)
+  #   - "SWOT_L2_LR_SSH_2.0": Low-resolution sea surface height
+  #   - "SWOT_L2_HR_RIVERSP_2.0": High-resolution river surface product
+  product : "SWOT_L2_HR_Raster_D"
+  
+  # Download directory (optional)
+  # If not provided, defaults to: project_dir/swot_raster/{aoi_name}/
+  # download_dir : "/custom/path/to/swot_raster"
+  
+  # Temporal range for data download
+  startdate : [2025, 5, 1] # [year, month, day] format
+  enddate   : [2025, 7, 1]
+  
+  # Optional: Granule filename filter
+  # Useful to select specific file types or processing levels
+  # Leave empty or omit to download all granules matching the bbox and date range
+  # Examples: "*100m*", "*Expert*", "*_124_*"
+  granule_filter : "*100m*"
+  
+  # Optional: Target CRS for merging and reprojecting tiles
+  # If provided, processed tiles will be merged by date/variable and reprojected to this CRS
+  # Format: "EPSG:XXXX" (e.g., "EPSG:32645" for UTM 45N)
+  # If omitted, merge phase is skipped and individual clipped tiles are kept
+  target_crs : "EPSG:4326"  # WGS84 (optional, set to None or omit to skip merging)
+  
+  # Quality and processing filters (placeholder for future enhancement)
+  quality_filters:
+    # Future filter options will be added here
+    # e.g., elevation_range, confidence_threshold, etc.

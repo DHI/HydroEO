@@ -122,14 +122,18 @@ def validate_config(
 
     has_reservoirs = "reservoirs" in cfg
     has_rivers = "rivers" in cfg
+    has_swot_raster = "swot_raster" in cfg
 
-    if has_reservoirs and has_rivers:
+    # Count how many waterbody types are configured
+    waterbody_count = sum([has_reservoirs, has_rivers, has_swot_raster])
+
+    if waterbody_count > 1:
         issues.append(
-            "Sections 'reservoirs' and 'rivers' are mutually exclusive. Configure only one."
+            "Sections 'reservoirs', 'rivers', and 'swot_raster' are mutually exclusive. Configure only one."
         )
-    if not has_reservoirs and not has_rivers:
+    if waterbody_count == 0:
         issues.append(
-            "Missing required section: provide either 'reservoirs' or 'rivers'."
+            "Missing required section: provide one of 'reservoirs', 'rivers', or 'swot_raster'."
         )
 
     if has_reservoirs:
@@ -229,6 +233,89 @@ def validate_config(
                 if not rivers_cfg.get("id"):
                     issues.append(
                         "Missing required key 'rivers.id' when 'rivers.reach_numbers' is provided."
+                    )
+
+    if has_swot_raster:
+        if not isinstance(cfg["swot_raster"], dict):
+            issues.append("Section 'swot_raster' must be a mapping of key/value pairs.")
+        else:
+            swot_raster_cfg = cfg["swot_raster"]
+
+            # Validate AOI configuration
+            if "aoi" not in swot_raster_cfg:
+                issues.append("Missing required key 'swot_raster.aoi'.")
+            elif not isinstance(swot_raster_cfg["aoi"], dict):
+                issues.append("'swot_raster.aoi' must be a mapping of key/value pairs.")
+            else:
+                aoi_cfg = swot_raster_cfg["aoi"]
+
+                if "name" not in aoi_cfg:
+                    issues.append("Missing required key 'swot_raster.aoi.name'.")
+
+                if "type" not in aoi_cfg:
+                    issues.append("Missing required key 'swot_raster.aoi.type'.")
+                elif aoi_cfg["type"] not in ["bbox", "shapefile", "geopackage"]:
+                    issues.append(
+                        "'swot_raster.aoi.type' must be one of ['bbox', 'shapefile', 'geopackage']."
+                    )
+
+                # Validate type-specific requirements
+                aoi_type = aoi_cfg.get("type")
+                if aoi_type == "bbox":
+                    if "bbox" not in aoi_cfg:
+                        issues.append(
+                            "Missing required key 'swot_raster.aoi.bbox' when type='bbox'."
+                        )
+                    elif (
+                        not isinstance(aoi_cfg["bbox"], (list, tuple))
+                        or len(aoi_cfg["bbox"]) != 4
+                    ):
+                        issues.append(
+                            "'swot_raster.aoi.bbox' must be a list/tuple of 4 coordinates [lon_min, lat_min, lon_max, lat_max]."
+                        )
+
+                elif aoi_type in ["shapefile", "geopackage"]:
+                    if "path" not in aoi_cfg:
+                        issues.append(
+                            f"Missing required key 'swot_raster.aoi.path' when type='{aoi_type}'."
+                        )
+                    else:
+                        path = aoi_cfg["path"]
+                        if not os.path.exists(path):
+                            issues.append(
+                                f"Path in 'swot_raster.aoi.path' does not exist: {path}"
+                            )
+                        else:
+                            expected_suffix = (
+                                ".shp" if aoi_type == "shapefile" else ".gpkg"
+                            )
+                            if not path.lower().endswith(expected_suffix):
+                                issues.append(
+                                    f"'swot_raster.aoi.path' must reference a '{expected_suffix}' file for type '{aoi_type}'."
+                                )
+
+            # Validate product
+            if "product" not in swot_raster_cfg:
+                issues.append("Missing required key 'swot_raster.product'.")
+            elif swot_raster_cfg["product"] not in [
+                "SWOT_L2_HR_Raster_D",
+                "SWOT_L2_LR_SSH_2.0",
+                "SWOT_L2_HR_RIVERSP_2.0",
+            ]:
+                issues.append(
+                    "'swot_raster.product' must be one of ['SWOT_L2_HR_Raster_D', 'SWOT_L2_LR_SSH_2.0', 'SWOT_L2_HR_RIVERSP_2.0']."
+                )
+
+            # Validate temporal range
+            for date_field in ["startdate", "enddate"]:
+                if date_field not in swot_raster_cfg:
+                    issues.append(f"Missing required key 'swot_raster.{date_field}'.")
+                elif (
+                    not isinstance(swot_raster_cfg[date_field], (list, tuple))
+                    or len(swot_raster_cfg[date_field]) != 3
+                ):
+                    issues.append(
+                        f"'swot_raster.{date_field}' must be [year, month, day] format."
                     )
 
     for mission in ["swot", "icesat2", "sentinel3", "sentinel6"]:
