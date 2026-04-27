@@ -2220,7 +2220,7 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.4.0,<2.0" },
     { name = "seaborn", specifier = ">=0.13.0,<1.0" },
     { name = "shapely", specifier = ">=2.0.0,<3.0" },
-    { name = "sliderule", specifier = ">=5.4.0,<6.0" },
+    { name = "sliderule", specifier = ">=5.3.0,<5.4" },
     { name = "tqdm", specifier = ">=4.60.0,<5.0" },
 ]
 provides-extras = ["dev", "test", "notebooks"]
@@ -6817,7 +6817,7 @@ wheels = [
 
 [[package]]
 name = "sliderule"
-version = "5.4.0"
+version = "5.3.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "geopandas" },
@@ -6827,9 +6827,9 @@ dependencies = [
     { name = "requests" },
     { name = "shapely" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/b5/7c92765631beec8db8f4a81abd48ada12806f3e19c0b0523ef86d5e59e29/sliderule-5.4.0.tar.gz", hash = "sha256:994cc8664dcb4994553a855d0d67891aaf48c2bd5cb35a319803d7170dc315c1", size = 85209, upload-time = "2026-04-24T12:43:13.583Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/cc/e88351d4d194284d1b29415cd048c6ba94f2227ddef1d2d6a114e7d03dad/sliderule-5.3.2.tar.gz", hash = "sha256:a96355171a9221e2e1ba37533a3225f8260d015f2d29035f0f5c5b4a8748dce1", size = 85169, upload-time = "2026-04-16T13:36:24.532Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/6f/926539577d1d067d0c9345174cae00cd6c53bf43b8cc739d0e638a870327/sliderule-5.4.0-py3-none-any.whl", hash = "sha256:14436699711b6c556d5c3fcf65833668978b7b3fd5a5519570207f79d4adc82c", size = 165596, upload-time = "2026-04-24T12:43:12.327Z" },
+    { url = "https://files.pythonhosted.org/packages/01/d5/3dbbbcd2e7ec1ea6f455cfff6b9bc3ced6950cb2f4304946bfc3fc054b6b/sliderule-5.3.2-py3-none-any.whl", hash = "sha256:88cc3096db5834a017992306dc13ab9b7f94190498c0c78520d1070232c64202", size = 165553, upload-time = "2026-04-16T13:36:23.382Z" },
 ]
 
 [[package]]
