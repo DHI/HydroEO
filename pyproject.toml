@@ -100,6 +100,7 @@ markers = [
     "unit: Fast, fully mocked unit tests (no external network)",
     "integration: Live integration tests requiring valid API credentials",
     "api_contract: Credential-free tests for API endpoint reachability & schema validation",
+    "sliderule: Tests that call the SlideRule API (skip with -m 'not sliderule' when API is down)",
 ]
 
 [tool.ruff]

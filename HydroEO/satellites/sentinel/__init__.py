@@ -1,10 +1,12 @@
+"""Sentinel-3/6 mission public API."""
+
 import logging
 import datetime
 
 from HydroEO.downloaders import creodias
-from HydroEO.satellites import sentinel_download, sentinel_preprocess
+from HydroEO.satellites.sentinel import download as _download
+from HydroEO.satellites.sentinel import preprocess as _preprocess
 from HydroEO.utils import geometry
-
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +18,7 @@ def query(
     product: str = "S3",
     creodias_credentials: tuple = None,
 ) -> object:
-    return sentinel_download.query(
+    return _download.query(
         aoi=aoi,
         startdate=startdate,
         enddate=enddate,
@@ -34,7 +36,7 @@ def download(
     session_start_time: str = None,
     threads: int = 1,
 ):
-    return sentinel_download.download(
+    return _download.download(
         ids=ids,
         download_directory=download_directory,
         creodias_credentials=creodias_credentials,
@@ -53,8 +55,7 @@ def subset(
     product: str = "S3",
     show_progress=False,
 ):
-    """Subset sentinel-3/6 netCDF files to area of interest."""
-    return sentinel_preprocess.subset(
+    return _preprocess.subset(
         aoi=aoi,
         download_dir=download_dir,
         dest_dir=dest_dir,
@@ -65,8 +66,7 @@ def subset(
 
 
 def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
-    """Extract Sentinel observations to shapefile."""
-    return sentinel_preprocess.extract_observations(
+    return _preprocess.extract_observations(
         src_dir=src_dir,
         dst_path=dst_path,
         features=features,
@@ -75,5 +75,13 @@ def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
 
 
 def get_latest_obs_date(data_dir, product):
-    """Get latest observation date from Sentinel product shapefile."""
-    return sentinel_preprocess.get_latest_obs_date(data_dir=data_dir, product=product)
+    return _preprocess.get_latest_obs_date(data_dir=data_dir, product=product)
+
+
+__all__ = [
+    "query",
+    "download",
+    "subset",
+    "extract_observations",
+    "get_latest_obs_date",
+]

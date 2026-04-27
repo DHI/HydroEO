@@ -1,18 +1,13 @@
-"""Compatibility facade for SWOT mission workflows.
-
-This module preserves the historical public API while delegating to explicit
-flow surfaces split by responsibility.
-"""
+"""SWOT mission public API."""
 
 import datetime
 
 import earthaccess
 
-from HydroEO.satellites import swot_download, swot_preprocess
+from HydroEO.satellites.swot import download as _download
+from HydroEO.satellites.swot import preprocess as _preprocess
 
-
-# Baseline D short name (supersedes Version C / 2.0)
-SWOT_LAKE_SHORT_NAME = swot_download.SWOT_LAKE_SHORT_NAME
+SWOT_LAKE_SHORT_NAME = _download.SWOT_LAKE_SHORT_NAME
 
 
 def query(
@@ -21,7 +16,7 @@ def query(
     enddate: datetime.date,
     product: str = SWOT_LAKE_SHORT_NAME,
 ) -> object:
-    return swot_download.query(
+    return _download.query(
         aoi=aoi,
         startdate=startdate,
         enddate=enddate,
@@ -31,7 +26,7 @@ def query(
 
 
 def download(results, download_directory: str):
-    return swot_download.download(
+    return _download.download(
         results=results,
         download_directory=download_directory,
         earthaccess_client=earthaccess,
@@ -39,11 +34,11 @@ def download(results, download_directory: str):
 
 
 def subset_by_id(files: list, ids: list):
-    return swot_preprocess.subset_by_id(files=files, ids=ids)
+    return _preprocess.subset_by_id(files=files, ids=ids)
 
 
 def merge_shps(dir):
-    return swot_preprocess.merge_shps(dir=dir)
+    return _preprocess.merge_shps(dir=dir)
 
 
 def extract_observations(
@@ -54,7 +49,7 @@ def extract_observations(
     id_key,
     exclude_obs_id_values=None,
 ):
-    return swot_preprocess.extract_observations(
+    return _preprocess.extract_observations(
         src_dir=src_dir,
         dst_dir=dst_dir,
         dst_file_name=dst_file_name,
@@ -66,7 +61,7 @@ def extract_observations(
 
 
 def get_latest_obs_date(data_dir):
-    return swot_preprocess.get_latest_obs_date(data_dir=data_dir)
+    return _preprocess.get_latest_obs_date(data_dir=data_dir)
 
 
 __all__ = [

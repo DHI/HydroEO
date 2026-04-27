@@ -10,7 +10,7 @@ swot_raster:
   aoi:
     name : "example_aoi" 
     type : "bbox" 
-    bbox : [56.4, 24.5, 56.6, 24.7] 
+    bbox : [24.5, 56.4, 24.7, 56.6] 
   
   product : "SWOT_L2_HR_Raster_D"
   startdate : [2025, 6, 1] 
