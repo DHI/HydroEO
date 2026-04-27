@@ -3,15 +3,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
+
+from HydroEO.waterbody import WaterBody
 
 
 @dataclass
 class PreprocessFlow:
-    """Run extract/clean/merge in sequence for selected missions."""
+    """Run extract/clean/merge in sequence for selected missions.
 
-    reservoirs: object
+    Parameters
+    ----------
+    reservoirs : WaterBody
+        WaterBody instance (Reservoirs or Rivers) with extract/clean/merge methods.
+    to_process : list[str]
+        Product names to process (e.g., ['swot', 'icesat2', 'sentinel3']).
+    processing_options : dict[str, dict[str, Any]]
+        Per-product filter options mapping product name to filter config.
+    """
+
+    reservoirs: WaterBody
     to_process: list[str]
-    processing_options: dict
+    processing_options: dict[str, dict[str, Any]]
 
     def run(self) -> None:
         self.reservoirs.extract_product_timeseries(self.to_process)
