@@ -1,3 +1,6 @@
+# NOTE: This file is kept as a reference. The recommended starting point is
+# example_config.yaml, which covers all three use cases in one file.
+
 # Example configuration for SWOT raster data download and preprocessing
 # This flow enables downloading SWOT raster products for arbitrary areas of interest (AOIs)
 # defined via bounding box or shapefile/geopackage geometries.

@@ -119,19 +119,34 @@ def validate_config(
         issues.append("Missing required section 'project'.")
     elif not cfg["project"].get("main_dir"):
         issues.append("Missing required key 'project.main_dir'.")
+    else:
+        for date_field in ["startdate", "enddate"]:
+            if date_field in cfg["project"] and not is_valid_date_tuple(cfg["project"][date_field]):
+                issues.append(
+                    f"'project.{date_field}' must be [year, month, day] with valid integer values."
+                )
+
+    def _is_enabled(section_cfg) -> bool:
+        """Return True if a mode section is active (enabled key absent or True)."""
+        if not isinstance(section_cfg, dict):
+            return True  # let structural validation catch non-dict issues
+        return section_cfg.get("enabled", True)
 
     has_reservoirs = "reservoirs" in cfg
     has_rivers = "rivers" in cfg
     has_swot_raster = "swot_raster" in cfg
 
-    # Count how many waterbody types are configured
-    waterbody_count = sum([has_reservoirs, has_rivers, has_swot_raster])
+    # Exclusivity and presence checks apply only to *enabled* sections
+    active_reservoirs = has_reservoirs and _is_enabled(cfg.get("reservoirs", {}))
+    active_rivers = has_rivers and _is_enabled(cfg.get("rivers", {}))
+    active_swot_raster = has_swot_raster and _is_enabled(cfg.get("swot_raster", {}))
+    active_count = sum([active_reservoirs, active_rivers, active_swot_raster])
 
-    if waterbody_count > 1:
+    if active_count > 1:
         issues.append(
             "Sections 'reservoirs', 'rivers', and 'swot_raster' are mutually exclusive. Configure only one."
         )
-    if waterbody_count == 0:
+    if active_count == 0:
         issues.append(
             "Missing required section: provide one of 'reservoirs', 'rivers', or 'swot_raster'."
         )
@@ -156,17 +171,26 @@ def validate_config(
         else:
             rivers_cfg = cfg["rivers"]
             has_aoi_path = bool(rivers_cfg.get("aoi_path"))
+            has_feature_numbers = "feature_numbers" in rivers_cfg
             has_node_numbers = "node_numbers" in rivers_cfg
             has_reach_numbers = "reach_numbers" in rivers_cfg
-            provided_inputs = sum([has_aoi_path, has_node_numbers, has_reach_numbers])
 
-            if provided_inputs == 0:
+            if has_node_numbers or has_reach_numbers:
+                old_key = "node_numbers" if has_node_numbers else "reach_numbers"
                 issues.append(
-                    "Provide exactly one rivers input source: 'rivers.aoi_path' or 'rivers.node_numbers' or 'rivers.reach_numbers'."
+                    f"'rivers.{old_key}' is no longer supported. "
+                    "Use 'rivers.feature_numbers' with 'rivers.feature_type' set to 'nodes' or 'reaches'."
+                )
+
+            provided_inputs = sum([has_aoi_path, has_feature_numbers])
+
+            if provided_inputs == 0 and not has_node_numbers and not has_reach_numbers:
+                issues.append(
+                    "Provide exactly one rivers input source: 'rivers.aoi_path' or 'rivers.feature_numbers'."
                 )
             elif provided_inputs > 1:
                 issues.append(
-                    "'rivers.aoi_path', 'rivers.node_numbers', and 'rivers.reach_numbers' are mutually exclusive. Provide only one."
+                    "'rivers.aoi_path' and 'rivers.feature_numbers' are mutually exclusive. Provide only one."
                 )
 
             if has_aoi_path:
@@ -203,36 +227,26 @@ def validate_config(
                         "'rivers.buffer_meters' must be None, 0, or a positive number."
                     )
 
-            if has_node_numbers:
-                node_numbers = rivers_cfg.get("node_numbers")
+            if has_feature_numbers:
+                feature_numbers = rivers_cfg.get("feature_numbers")
                 if (
-                    not isinstance(node_numbers, list)
-                    or len(node_numbers) == 0
-                    or any(not isinstance(v, int) for v in node_numbers)
+                    not isinstance(feature_numbers, list)
+                    or len(feature_numbers) == 0
+                    or any(not isinstance(v, int) for v in feature_numbers)
                 ):
                     issues.append(
-                        "'rivers.node_numbers' must be a non-empty list of integers."
+                        "'rivers.feature_numbers' must be a non-empty list of integers."
                     )
 
                 if not rivers_cfg.get("id"):
                     issues.append(
-                        "Missing required key 'rivers.id' when 'rivers.node_numbers' is provided."
+                        "Missing required key 'rivers.id' when 'rivers.feature_numbers' is provided."
                     )
 
-            if has_reach_numbers:
-                reach_numbers = rivers_cfg.get("reach_numbers")
-                if (
-                    not isinstance(reach_numbers, list)
-                    or len(reach_numbers) == 0
-                    or any(not isinstance(v, int) for v in reach_numbers)
-                ):
+                feature_type = rivers_cfg.get("feature_type")
+                if feature_type not in ["nodes", "reaches"]:
                     issues.append(
-                        "'rivers.reach_numbers' must be a non-empty list of integers."
-                    )
-
-                if not rivers_cfg.get("id"):
-                    issues.append(
-                        "Missing required key 'rivers.id' when 'rivers.reach_numbers' is provided."
+                        "'rivers.feature_type' is required with 'rivers.feature_numbers' and must be one of ['nodes', 'reaches']."
                     )
 
     if has_swot_raster:
@@ -334,19 +348,20 @@ def validate_config(
                 issues.append(f"'{mission}.{key}' must be a boolean value.")
 
         for key in ["startdate", "enddate"]:
-            if key not in mission_cfg:
-                issues.append(f"Missing required key '{mission}.{key}'.")
-            elif not is_valid_date_tuple(mission_cfg[key]):
+            # Allow mission dates to be omitted when project-level dates are provided
+            project_has_date = isinstance(cfg.get("project"), dict) and is_valid_date_tuple(cfg["project"].get(key))
+            if key not in mission_cfg and not project_has_date:
+                issues.append(f"Missing required key '{mission}.{key}' (or 'project.{key}' as a fallback).")
+            elif key in mission_cfg and not is_valid_date_tuple(mission_cfg[key]):
                 issues.append(
                     f"'{mission}.{key}' must be [year, month, day] with valid integer values."
                 )
 
-        if is_valid_date_tuple(mission_cfg.get("startdate")) and is_valid_date_tuple(
-            mission_cfg.get("enddate")
-        ):
-            if datetime.date(*mission_cfg["startdate"]) > datetime.date(
-                *mission_cfg["enddate"]
-            ):
+        project_cfg = cfg.get("project", {})
+        effective_start = mission_cfg.get("startdate") or project_cfg.get("startdate")
+        effective_end = mission_cfg.get("enddate") or project_cfg.get("enddate")
+        if is_valid_date_tuple(effective_start) and is_valid_date_tuple(effective_end):
+            if datetime.date(*effective_start) > datetime.date(*effective_end):
                 issues.append(
                     f"'{mission}.startdate' cannot be after '{mission}.enddate'."
                 )
