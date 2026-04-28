@@ -53,7 +53,100 @@ project.create_timeseries()
 project.generate_summaries()
 ```
 
-## Project capabilities
+## CLI
+
+After installation, a `hydroeo` command is available on the PATH.
+
+### Config-driven pipeline
+
+Run any project lifecycle step directly from the terminal against a YAML config file:
+
+```sh
+# Full pipeline (initialize + download)
+hydroeo run config.yaml
+
+# Individual steps
+hydroeo initialize config.yaml
+hydroeo download    config.yaml
+hydroeo update      config.yaml   # extend to today
+hydroeo timeseries  config.yaml   # reservoirs only
+hydroeo summaries   config.yaml   # reservoirs only
+```
+
+Use `--name` to override the project name (defaults to the config file stem) and `--verbose` / `-v` for debug logging:
+
+```sh
+hydroeo run config.yaml --name "Lake Geneva" --verbose
+```
+
+### Direct satellite downloads (no config file)
+
+Download data for any satellite using a bounding box and date range, without writing a config file. Credentials can be passed as flags or via environment variables.
+
+#### SWOT raster
+
+```sh
+hydroeo fetch swot-raster \
+  --bbox "-10 40 10 60" \
+  --start 2023-01-01 \
+  --end   2023-06-01 \
+  --output ./output \
+  --username <earthaccess-user> \
+  --password <earthaccess-pass>
+
+# Or set credentials as environment variables:
+export EARTHACCESS_USERNAME=...
+export EARTHACCESS_PASSWORD=...
+hydroeo fetch swot-raster --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
+```
+
+Optional flags: `--aoi-name <label>` (default `aoi`), `--product <short-name>` (default `SWOT_L2_HR_PIXC_D`).
+
+#### SWOT lake
+
+```sh
+hydroeo fetch swot-lake \
+  --bbox "-10 40 10 60" \
+  --start 2023-01-01 \
+  --end   2023-06-01 \
+  --output ./output
+```
+
+Credentials: `--username` / `--password` or `EARTHACCESS_USERNAME` / `EARTHACCESS_PASSWORD`.
+
+#### ICESat-2
+
+```sh
+hydroeo fetch icesat2 \
+  --bbox "-10 40 10 60" \
+  --start 2023-01-01 \
+  --end   2023-06-01 \
+  --output ./output
+```
+
+No credentials required (uses SlideRule public API). Output is written as `atl13.parquet` inside the output directory.
+
+#### Sentinel-3 / Sentinel-6
+
+```sh
+hydroeo fetch sentinel \
+  --bbox "-10 40 10 60" \
+  --start 2023-01-01 \
+  --end   2023-06-01 \
+  --product S3 \
+  --output ./output \
+  --creodias-username <user> \
+  --creodias-password <pass>
+
+# Or set credentials as environment variables:
+export CREODIAS_USERNAME=...
+export CREODIAS_PASSWORD=...
+hydroeo fetch sentinel --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01 --product S6
+```
+
+Use `--product S3` for Sentinel-3 (default) or `--product S6` for Sentinel-6.
+
+
 
 A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, or SWOT rasters for arbitrary areas. All three branches are mutually exclusive within one project config; a project targets one type only.
 
