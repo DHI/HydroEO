@@ -276,11 +276,14 @@ def test_sentinel6_response_shape():
 
 
 @pytest.mark.integration
+@pytest.mark.sliderule
+@pytest.mark.timeout(300)
 def test_sliderule_atl13x_query():
     """Live SlideRule atl13x query using confirmed-working AMS coordinates.
 
     Uses the hardcoded centroid coordinates that are known to resolve to a
     registered water body in the AMS database.  No Earthdata credentials required.
+    Skip with: pytest -m 'not sliderule'
     """
     from HydroEO.satellites.icesat2 import query
 

@@ -11,6 +11,7 @@ from urllib import request
 import pandas as pd
 import geopandas as gpd
 import datetime
+from typing import Callable
 
 from HydroEO.satellites import swot, icesat2, sentinel
 from HydroEO.utils import general, timeseries
@@ -34,10 +35,18 @@ class HydroEODownloadError(RuntimeError):
 
 
 @dataclass
-class WaterBody:
+class Reservoirs:
     gdf: gpd.GeoDataFrame
     id_key: str
     dirs: dict
+
+    def __post_init__(self):
+        self.type = "reservoirs"
+
+        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
+        general.ifnotmakedirs(self.dirs["output"])
+
+        self.geom_type = self.gdf.loc[0, "geometry"].geom_type
 
     def report(self):
         logger.info("Number of %s: %s", self.type, len(self.gdf))
@@ -50,6 +59,10 @@ class WaterBody:
         if update_existing and latest_obs is not None:
             return datetime.date(latest_obs.year, latest_obs.month, latest_obs.day)
         return provided_start_date
+
+    # -------------------------------------------------------------------------
+    # Download methods
+    # -------------------------------------------------------------------------
 
     def _download_swot(self, startdate, enddate, update_existing):
         download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
@@ -246,6 +259,10 @@ class WaterBody:
                 product, startdate, enddate, credentials, update_existing
             )
 
+    # -------------------------------------------------------------------------
+    # Timeseries methods
+    # -------------------------------------------------------------------------
+
     def _load_dataframes_from_dir(self, data_dir, ext, products, reader_fn):
         """Load files of a given extension from a directory, optionally filtered to named products."""
         if not os.path.exists(data_dir):
@@ -286,7 +303,6 @@ class WaterBody:
 
         for id in tqdm(ids_with_raw, desc="Cleaning product timeseries"):
             for product in products:
-                # get timeseries for id and each product to clean individually
                 df = self.get_unfiltered_product_timeseries(id, [product])
                 if df is not None:
                     product_options = filter_options_by_product.get(
@@ -299,10 +315,8 @@ class WaterBody:
                         },
                     )
 
-                    # create a timeseries object
                     ts = timeseries.Timeseries(df, date_key="date", height_key="height")
 
-                    # run all filters on timeseries
                     ts.clean(
                         product_options.get("processing_filters", ["elevation", "MAD"]),
                         filter_params={
@@ -316,7 +330,6 @@ class WaterBody:
                         },
                     )
 
-                    # save filtered timeseries
                     export_dir = os.path.join(
                         self.dirs["output"], f"{id}", "cleaned_observations"
                     )
@@ -383,6 +396,10 @@ class WaterBody:
             )
             return None
 
+    # -------------------------------------------------------------------------
+    # Per-reservoir plotting methods
+    # -------------------------------------------------------------------------
+
     def summarize_crossings_by_id(self, id, show=True, save=False):
         """Plot raw observations crossing for a reservoir."""
         return plotting.plot_crossings(
@@ -418,9 +435,277 @@ class WaterBody:
             save=save,
         )
 
+    # -------------------------------------------------------------------------
+    # Reservoirs-specific methods
+    # -------------------------------------------------------------------------
+
+    def download_pld(self, overwrite=False):
+        pld_path = self.dirs["pld"]
+
+        if (not os.path.exists(pld_path)) or (overwrite):
+            logger.info("Downloading PLD")
+            download_dir = os.path.dirname(pld_path)
+            file_name = os.path.basename(pld_path)
+            bounds = list(self.gdf.unary_union.bounds)
+            hydroweb.download_PLD(
+                download_dir=download_dir, file_name=file_name, bounds=bounds
+            )
+        else:
+            logger.info("PLD located")
+
+    def assign_pld_id(self, local_crs, max_distance):
+        pld = gpd.read_file(self.dirs["pld"])
+
+        joined_gdf = gpd.sjoin_nearest(
+            self.gdf.to_crs(local_crs),
+            pld.to_crs(local_crs),
+            how="left",
+            max_distance=max_distance,
+            distance_col="dist_to_pld",
+        )
+        joined_gdf = joined_gdf.to_crs(self.gdf.crs)
+
+        joined_gdf = joined_gdf.rename(
+            columns={"lake_id": "prior_lake_id", "res_id": "prior_res_id"}
+        )
+
+        joined_gdf.loc[joined_gdf.prior_lake_id.isnull(), "prior_lake_id"] = -9999
+
+        self.gdf = joined_gdf
+
+    def flag_missing_priors(self):
+        present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
+        missing = self.gdf.loc[self.gdf.prior_lake_id < 0].reset_index(drop=True)
+
+        shp_field_map = {
+            "index_right": "idx_right",
+            "prior_lake_id": "prior_lake",
+            "prior_res_id": "prior_res",
+            "dist_to_pld": "dist_pld",
+        }
+        present_out = present.rename(columns=shp_field_map)
+        missing_out = missing.rename(columns=shp_field_map)
+
+        present_out.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
+        missing_out.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
+
+        logger.info(
+            "Out of the %s reservoirs, %s are present and %s are missing from the PLD.",
+            len(self.gdf),
+            len(present),
+            len(missing),
+        )
+
+    def _extract_per_reservoir_observations(
+        self,
+        dir_key,
+        availability_check_fn,
+        dst_filename,
+        extract_fn,
+        tqdm_desc,
+        mission_label,
+    ):
+        """Find available IDs, loop with tqdm, extract observations, and warn about empty results."""
+        available_ids = [
+            id for id in self.download_gdf[self.id_key] if availability_check_fn(id)
+        ]
+        if not available_ids:
+            logger.warning(
+                "No %s downloads found; skipping timeseries extraction.", mission_label
+            )
+            return
+
+        empty_ids = []
+        for id in tqdm(available_ids, desc=tqdm_desc):
+            sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
+            download_dir = os.path.join(self.dirs[dir_key], rf"{self.type}", rf"{id}")
+            dst_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
+            general.ifnotmakedirs(dst_dir)
+            dst_path = os.path.join(dst_dir, dst_filename)
+            extract_fn(download_dir=download_dir, dst_path=dst_path, features=sub_gdf)
+            if not os.path.exists(dst_path):
+                empty_ids.append(id)
+
+        if empty_ids:
+            logger.warning(
+                "%s timeseries empty for: %s (no observations passed the spatial filter or the download returned no data)",
+                mission_label,
+                ", ".join(str(i) for i in empty_ids),
+            )
+
+    def extract_product_timeseries(self, products: list):
+        if "icesat2" in products:
+            self._extract_per_reservoir_observations(
+                dir_key="icesat2",
+                availability_check_fn=lambda id: os.path.exists(
+                    os.path.join(
+                        self.dirs["icesat2"], rf"{self.type}", rf"{id}", "atl13.parquet"
+                    )
+                ),
+                dst_filename="icesat2.shp",
+                extract_fn=lambda download_dir, dst_path, features: (
+                    icesat2.extract_observations(
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=features,
+                        atl13_fields=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("atl13_fields"),
+                        track_keys=getattr(self, "mission_options", {})
+                        .get("icesat2", {})
+                        .get("track_keys"),
+                    )
+                ),
+                tqdm_desc="Extracting ICESat-2 ATL13 product",
+                mission_label="ICESat-2",
+            )
+
+        if "sentinel3" in products:
+            self._extract_per_reservoir_observations(
+                dir_key="sentinel3",
+                availability_check_fn=lambda id: os.path.exists(
+                    os.path.join(self.dirs["sentinel3"], rf"{self.type}", rf"{id}")
+                ),
+                dst_filename="sentinel3.shp",
+                extract_fn=lambda download_dir, dst_path, features: (
+                    sentinel.extract_observations(
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=features,
+                        sigma0_max=getattr(self, "mission_options", {})
+                        .get("sentinel3", {})
+                        .get("sigma0_max", 1e5),
+                    )
+                ),
+                tqdm_desc="Extracting Sentinel-3 product",
+                mission_label="Sentinel-3",
+            )
+
+        if "sentinel6" in products:
+            self._extract_per_reservoir_observations(
+                dir_key="sentinel6",
+                availability_check_fn=lambda id: os.path.exists(
+                    os.path.join(self.dirs["sentinel6"], rf"{self.type}", rf"{id}")
+                ),
+                dst_filename="sentinel6.shp",
+                extract_fn=lambda download_dir, dst_path, features: (
+                    sentinel.extract_observations(
+                        src_dir=download_dir,
+                        dst_path=dst_path,
+                        features=features,
+                        sigma0_max=getattr(self, "mission_options", {})
+                        .get("sentinel6", {})
+                        .get("sigma0_max", 1e5),
+                    )
+                ),
+                tqdm_desc="Extracting Sentinel-6 product",
+                mission_label="Sentinel-6",
+            )
+
+        if "swot" in products:
+            download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
+            if not os.path.exists(download_dir):
+                logger.warning(
+                    "No SWOT downloads found; skipping timeseries extraction."
+                )
+            else:
+                empty_ids = swot.extract_observations(
+                    src_dir=download_dir,
+                    dst_dir=self.dirs["output"],
+                    dst_file_name="swot.shp",
+                    features=self.download_gdf,
+                    id_key=self.id_key,
+                    exclude_obs_id_values=getattr(self, "mission_options", {})
+                    .get("swot", {})
+                    .get("exclude_obs_id_values", ["no_data"]),
+                )
+                if empty_ids:
+                    logger.warning(
+                        "SWOT timeseries empty for: %s (no observations matched the prior lake ID or all were excluded)",
+                        ", ".join(str(i) for i in empty_ids),
+                    )
+
+    # -------------------------------------------------------------------------
+    # Flow-level orchestration methods (absorb former flows/)
+    # -------------------------------------------------------------------------
+
+    def download(
+        self,
+        to_download: list,
+        startdates: dict,
+        enddates: dict,
+        earthdata_credentials: tuple = None,
+        creodias_credentials_provider: Callable = None,
+        update_existing: bool = False,
+        enddate_overrides: dict = None,
+    ) -> None:
+        """Download altimetry data for all requested missions."""
+        enddate_overrides = enddate_overrides or {}
+
+        for mission in to_download:
+            if mission == "swot":
+                self.download_altimetry(
+                    product="SWOT_LAKE",
+                    startdate=startdates["swot"],
+                    enddate=enddate_overrides.get("swot", enddates["swot"]),
+                    update_existing=update_existing,
+                )
+
+            elif mission == "icesat2":
+                self.download_altimetry(
+                    product="ATL13",
+                    startdate=startdates["icesat2"],
+                    enddate=enddate_overrides.get("icesat2", enddates["icesat2"]),
+                    update_existing=update_existing,
+                    credentials=earthdata_credentials,
+                )
+
+            elif mission in ["sentinel3", "sentinel6"]:
+                product = "S3" if mission == "sentinel3" else "S6"
+                sentinel_creds = creodias_credentials_provider()
+                self.download_altimetry(
+                    product=product,
+                    startdate=startdates[mission],
+                    enddate=enddate_overrides.get(mission, enddates[mission]),
+                    credentials=sentinel_creds,
+                    update_existing=update_existing,
+                )
+
+            else:
+                logger.warning("Skipping unsupported mission in download: %s", mission)
+
+    def process(
+        self,
+        to_process: list,
+        processing_options: dict = None,
+    ) -> None:
+        """Extract, clean, and merge timeseries for all requested missions."""
+        self.extract_product_timeseries(to_process)
+        self.clean_product_timeseries(
+            products=to_process,
+            filter_options_by_product=processing_options,
+        )
+        self.merge_product_timeseries(products=to_process)
+
+    def summarize(self, show: bool = False, save: bool = True) -> None:
+        """Generate per-reservoir plotting summaries."""
+        for reservoir_id in self.download_gdf[self.id_key]:
+            logger.info("Summarizing crossings")
+            self.summarize_crossings_by_id(reservoir_id, show=show, save=save)
+
+            logger.info("Summarizing cleaning results")
+            self.summarize_cleaning_by_id(reservoir_id, show=show, save=save)
+
+            logger.info("Summarizing merged results")
+            self.summarize_merging_by_id(reservoir_id, show=show, save=save)
+
 
 @dataclass
-class Rivers(WaterBody):
+class Rivers:
+    gdf: gpd.GeoDataFrame
+    id_key: str
+    dirs: dict
+
     def __post_init__(self):
         self.type = "rivers"
 
@@ -445,6 +730,10 @@ class Rivers(WaterBody):
         self.target_id_col = getattr(self, "target_id_col", None)
         self.target_features = getattr(self, "target_features", None)
         self.configured_id = getattr(self, "configured_id", None)
+
+    def report(self):
+        logger.info("Number of %s: %s", self.type, len(self.gdf))
+        return self.gdf.head()
 
     def _set_geom_type(self):
         if len(self.gdf) > 0 and "geometry" in self.gdf.columns:
@@ -592,14 +881,7 @@ class Rivers(WaterBody):
         )
 
     def _group_targets_by_waterbody(self):
-        """Return {waterbody_id: [target_id, ...]} grouping.
-
-        In AOI mode each SWORD node/reach is joined to its AOI row via id_key,
-        so a single AOI feature ('gauja') that contains three nodes produces
-        one entry: {'gauja': [node1, node2, node3]}.
-        In node_numbers/reach_numbers mode all target IDs belong to the single
-        configured_id waterbody.
-        """
+        """Return {waterbody_id: [target_id, ...]} grouping."""
         if self.target_features is not None and len(self.target_features) > 0:
             groups: dict[str, list] = {}
             seen_target_ids: set = set()
@@ -761,209 +1043,36 @@ class Rivers(WaterBody):
 
         return summary
 
+    # -------------------------------------------------------------------------
+    # Flow-level orchestration method (absorbs former RiverDownloadFlow)
+    # -------------------------------------------------------------------------
 
-@dataclass
-class Reservoirs(WaterBody):
-    def __post_init__(self):
-        self.type = "reservoirs"
-
-        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
-        general.ifnotmakedirs(self.dirs["output"])
-
-        self.geom_type = self.gdf.loc[0, "geometry"].geom_type
-
-    def download_pld(self, overwrite=False):
-        pld_path = self.dirs["pld"]
-
-        # determine if we need to download or simply load the pld
-        if (not os.path.exists(pld_path)) or (overwrite):
-            logger.info("Downloading PLD")
-            download_dir = os.path.dirname(pld_path)
-            file_name = os.path.basename(pld_path)
-            bounds = list(self.gdf.unary_union.bounds)
-            hydroweb.download_PLD(
-                download_dir=download_dir, file_name=file_name, bounds=bounds
-            )
-        else:
-            logger.info("PLD located")
-
-    def assign_pld_id(self, local_crs, max_distance):
-        # load the pld
-        pld = gpd.read_file(self.dirs["pld"])
-
-        # perform the spatial join
-        joined_gdf = gpd.sjoin_nearest(
-            self.gdf.to_crs(local_crs),
-            pld.to_crs(local_crs),
-            how="left",
-            max_distance=max_distance,
-            distance_col="dist_to_pld",
-        )
-        joined_gdf = joined_gdf.to_crs(self.gdf.crs)
-
-        # rename the joined columns to keep it clear
-        joined_gdf = joined_gdf.rename(
-            columns={"lake_id": "prior_lake_id", "res_id": "prior_res_id"}
-        )
-
-        # map null lake ids to a negative number -9999
-        joined_gdf.loc[joined_gdf.prior_lake_id.isnull(), "prior_lake_id"] = -9999
-
-        # reset the reservoir data frame to include the changes
-        self.gdf = joined_gdf
-
-    def flag_missing_priors(
+    def download(
         self,
-    ):  # simple function to report what reservoirs do not have PLD shapes
-        present = self.gdf.loc[self.gdf.prior_lake_id > 0].reset_index(drop=True)
-        missing = self.gdf.loc[self.gdf.prior_lake_id < 0].reset_index(drop=True)
+        to_download: list,
+        startdates: dict,
+        enddates: dict,
+        update_existing: bool = False,
+        enddate_overrides: dict = None,
+    ) -> None:
+        """Download river altimetry data for all requested missions."""
+        enddate_overrides = enddate_overrides or {}
 
-        # ESRI Shapefile limits field names to 10 chars. Rename explicitly so
-        # writes are deterministic and avoid pyogrio truncation warnings.
-        shp_field_map = {
-            "index_right": "idx_right",
-            "prior_lake_id": "prior_lake",
-            "prior_res_id": "prior_res",
-            "dist_to_pld": "dist_pld",
-        }
-        present_out = present.rename(columns=shp_field_map)
-        missing_out = missing.rename(columns=shp_field_map)
-
-        present_out.to_file(os.path.join(self.dirs["output"], "present_in_pld.shp"))
-        missing_out.to_file(os.path.join(self.dirs["output"], "missing_in_pld.shp"))
-
-        logger.info(
-            "Out of the %s reservoirs, %s are present and %s are missing from the PLD.",
-            len(self.gdf),
-            len(present),
-            len(missing),
-        )
-
-    def _extract_per_reservoir_observations(
-        self,
-        dir_key,
-        availability_check_fn,
-        dst_filename,
-        extract_fn,
-        tqdm_desc,
-        mission_label,
-    ):
-        """Find available IDs, loop with tqdm, extract observations, and warn about empty results."""
-        available_ids = [
-            id for id in self.download_gdf[self.id_key] if availability_check_fn(id)
-        ]
-        if not available_ids:
-            logger.warning(
-                "No %s downloads found; skipping timeseries extraction.", mission_label
-            )
-            return
-
-        empty_ids = []
-        for id in tqdm(available_ids, desc=tqdm_desc):
-            sub_gdf = self.download_gdf.loc[self.download_gdf[self.id_key] == id]
-            download_dir = os.path.join(self.dirs[dir_key], rf"{self.type}", rf"{id}")
-            dst_dir = os.path.join(self.dirs["output"], f"{id}", "raw_observations")
-            general.ifnotmakedirs(dst_dir)
-            dst_path = os.path.join(dst_dir, dst_filename)
-            extract_fn(download_dir=download_dir, dst_path=dst_path, features=sub_gdf)
-            if not os.path.exists(dst_path):
-                empty_ids.append(id)
-
-        if empty_ids:
-            logger.warning(
-                "%s timeseries empty for: %s (no observations passed the spatial filter or the download returned no data)",
-                mission_label,
-                ", ".join(str(i) for i in empty_ids),
-            )
-
-    def extract_product_timeseries(self, products: list):
-        if "icesat2" in products:
-            self._extract_per_reservoir_observations(
-                dir_key="icesat2",
-                availability_check_fn=lambda id: os.path.exists(
-                    os.path.join(
-                        self.dirs["icesat2"], rf"{self.type}", rf"{id}", "atl13.parquet"
-                    )
-                ),
-                dst_filename="icesat2.shp",
-                extract_fn=lambda download_dir, dst_path, features: (
-                    icesat2.extract_observations(
-                        src_dir=download_dir,
-                        dst_path=dst_path,
-                        features=features,
-                        atl13_fields=getattr(self, "mission_options", {})
-                        .get("icesat2", {})
-                        .get("atl13_fields"),
-                        track_keys=getattr(self, "mission_options", {})
-                        .get("icesat2", {})
-                        .get("track_keys"),
-                    )
-                ),
-                tqdm_desc="Extracting ICESat-2 ATL13 product",
-                mission_label="ICESat-2",
-            )
-
-        if "sentinel3" in products:
-            self._extract_per_reservoir_observations(
-                dir_key="sentinel3",
-                availability_check_fn=lambda id: os.path.exists(
-                    os.path.join(self.dirs["sentinel3"], rf"{self.type}", rf"{id}")
-                ),
-                dst_filename="sentinel3.shp",
-                extract_fn=lambda download_dir, dst_path, features: (
-                    sentinel.extract_observations(
-                        src_dir=download_dir,
-                        dst_path=dst_path,
-                        features=features,
-                        sigma0_max=getattr(self, "mission_options", {})
-                        .get("sentinel3", {})
-                        .get("sigma0_max", 1e5),
-                    )
-                ),
-                tqdm_desc="Extracting Sentinel-3 product",
-                mission_label="Sentinel-3",
-            )
-
-        if "sentinel6" in products:
-            self._extract_per_reservoir_observations(
-                dir_key="sentinel6",
-                availability_check_fn=lambda id: os.path.exists(
-                    os.path.join(self.dirs["sentinel6"], rf"{self.type}", rf"{id}")
-                ),
-                dst_filename="sentinel6.shp",
-                extract_fn=lambda download_dir, dst_path, features: (
-                    sentinel.extract_observations(
-                        src_dir=download_dir,
-                        dst_path=dst_path,
-                        features=features,
-                        sigma0_max=getattr(self, "mission_options", {})
-                        .get("sentinel6", {})
-                        .get("sigma0_max", 1e5),
-                    )
-                ),
-                tqdm_desc="Extracting Sentinel-6 product",
-                mission_label="Sentinel-6",
-            )
-
-        if "swot" in products:
-            download_dir = os.path.join(self.dirs["swot"], rf"{self.type}")
-            if not os.path.exists(download_dir):
-                logger.warning(
-                    "No SWOT downloads found; skipping timeseries extraction."
+        for mission in to_download:
+            if mission == "swot":
+                summary = self.download_swot_hydrocron(
+                    startdate=startdates["swot"],
+                    enddate=enddate_overrides.get("swot", enddates["swot"]),
+                    update_existing=update_existing,
+                )
+                logger.info(
+                    "Hydrocron SWOT river download summary: requested=%s successful=%s failed=%s empty_after_filter=%s",
+                    summary["requested"],
+                    summary["successful"],
+                    summary["failed"],
+                    summary["empty_after_filter"],
                 )
             else:
-                empty_ids = swot.extract_observations(
-                    src_dir=download_dir,
-                    dst_dir=self.dirs["output"],
-                    dst_file_name="swot.shp",
-                    features=self.download_gdf,
-                    id_key=self.id_key,
-                    exclude_obs_id_values=getattr(self, "mission_options", {})
-                    .get("swot", {})
-                    .get("exclude_obs_id_values", ["no_data"]),
+                logger.warning(
+                    "Skipping unsupported river mission in download: %s", mission
                 )
-                if empty_ids:
-                    logger.warning(
-                        "SWOT timeseries empty for: %s (no observations matched the prior lake ID or all were excluded)",
-                        ", ".join(str(i) for i in empty_ids),
-                    )

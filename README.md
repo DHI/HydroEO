@@ -33,7 +33,7 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-Usage examples are available in [notebooks](./notebooks), with separate sample configurations for [reservoirs](./notebooks/example_config_reservoirs.yaml) and [rivers](./notebooks/example_config_rivers.yaml).
+Usage examples are available in [notebooks](./notebooks), with sample configurations for [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), and [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
 
 HydroEO projects are configured with:
 - project output location and CRS
@@ -55,14 +55,15 @@ project.generate_summaries()
 
 ## Project capabilities
 
-A HydroEO project is built around a single **water body branch** — either reservoirs/lakes or rivers. Both branches are mutually exclusive within one project config; a project targets one type only.
+A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, or SWOT rasters for arbitrary areas. All three branches are mutually exclusive within one project config; a project targets one type only.
 
 ### Water body branches
 
-| Branch | Status | Description |
-| --- | --- | --- |
-| `reservoirs` | ✅ available | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. |
-| `rivers` | 🧪 partial | River projects support initialization plus SWOT Hydrocron download outputs. With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `node_numbers` / `reach_numbers` inputs are also supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
+| Branch | Status | Products | Description |
+| --- | --- | --- | --- |
+| `reservoirs` | ✅ available | SWOT Lake, ICESat-2, Sentinel-3, Sentinel-6 | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. Supports multi-mission downloads and full timeseries processing. |
+| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `node_numbers` / `reach_numbers` inputs are also supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
+| `swot_raster` | ✅ available | SWOT Rasters (L2 HR/LR products) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT raster products (SWOT_L2_HR_Raster_D, SWOT_L2_LR_SSH_2.0, SWOT_L2_HR_RIVERSP_2.0) via Earthdata. Extracts selected variables, applies quality filters, clips to AOI, and merges/reprojects tiles by date. Requires Earthdata credentials. |
 
 ### Project lifecycle
 
@@ -75,15 +76,16 @@ report() → initialize() → download() → update() → create_timeseries() �
 | Method | What it does |
 | --- | --- |
 | `project.report()` | Logs the project name, logs the number of loaded water bodies in the active branch, and returns a preview of the branch GeoDataFrame (`gdf.head()`). Useful as a quick inspection step after loading a project. |
-| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. Reports all config issues in one message before doing any I/O. |
-| `project.download()` | Downloads raw satellite data for every enabled mission within the configured date range. Reservoir missions keep their existing raw-download layout. River SWOT downloads call Hydrocron and write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from the AOI `rivers.id_key` value or the fallback `rivers.id`. Each node/reach gets its own subfolder so multiple targets within the same AOI feature never overwrite each other. |
+| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. For SWOT rasters, validates AOI geometry and product selection. Reports all config issues in one message before doing any I/O. |
+| `project.download()` | Downloads raw satellite data within the configured date range. **Reservoirs:** downloads from all enabled missions (SWOT, ICESat-2, Sentinel-3, Sentinel-6) keeping their existing raw-download layout. **Rivers:** SWOT Hydrocron API calls write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from `rivers.id_key` value or fallback `rivers.id`. **SWOT Rasters:** downloads SWOT raster granules matching the AOI bounds and temporal range using Earthdata credentials, outputs to `swot_raster/<aoi_name>/raw/<product>/`. |
 | `project.update()` | Extends existing downloads from the latest observation up to today. Safe to run repeatedly — already-downloaded data is not re-fetched. |
 | `project.create_timeseries()` | Extracts observations spatially matched to each water body, applies the configured cleaning filters, and writes per-body timeseries shapefiles. |
 | `project.generate_summaries(show, save)` | Produces diagnostic plots for each water body and mission: raw crossings, filter effect, and merged multi-mission timeseries. |
 
 ### Supported missions
 
-A project can enable any combination of the four missions below. Each mission is independently toggled (`download: true/false`, `process: true/false`) and has its own date range. The config uses the mission keys in the first column, while extracted and merged outputs may use the product keys in the second column.
+#### Reservoirs / Lakes
+A reservoir project can enable any combination of the four missions below. Each mission is independently toggled (`download: true/false`, `process: true/false`) and has its own date range.
 
 | Mission key | Product key | Satellite | Archive start | Required credentials |
 | --- | --- | --- | --- | --- |
@@ -92,10 +94,27 @@ A project can enable any combination of the four missions below. Each mission is
 | `sentinel3` | `S3` | Sentinel-3A/B | 2016 | CREODIAS account |
 | `sentinel6` | `S6` | Sentinel-6 | 2020 | CREODIAS account |
 
+#### Rivers
+River projects support SWOT data only, via the Hydrocron public API (no credentials required):
+
+| Product | Source | Archive start | Credentials |
+| --- | --- | --- | --- |
+| SWOT Hydrocron (nodes/reaches) | SWOT | 2023 | None (public API) |
+
+#### SWOT Rasters
+SWOT raster projects support three high-resolution and low-resolution SWOT Level-2 products for arbitrary areas:
+
+| Product key | Description | Archive start | Credentials |
+| --- | --- | --- | --- |
+| `SWOT_L2_HR_Raster_D` | High-resolution raster data (~100m pixels) | 2024 | Earthdata account |
+| `SWOT_L2_LR_SSH_2.0` | Low-resolution sea-surface-height raster (~250m pixels) | 2023 | Earthdata account |
+| `SWOT_L2_HR_RIVERSP_2.0` | High-resolution river surface product (~100m pixels) | 2024 | Earthdata account |
+
 ### Output structure
 
-All outputs are written under `project.main_dir`:
+All outputs are written under `project.main_dir`. Structure varies by branch:
 
+#### Reservoirs
 ```
 main_dir/
   <water_body_id>/
@@ -103,10 +122,31 @@ main_dir/
     cleaned_timeseries/    # filter-cleaned shapefiles per mission
     merged_timeseries/     # single merged CSV across all enabled missions
     plots/                 # PNG diagnostics (crossings, cleaning, merging)
-  swot/                    # raw SWOT downloads for reservoirs, plus river Hydrocron outputs
+  swot/                    # raw SWOT Lake SP downloads
   icesat2/                 # raw ICESat-2 downloads
   sentinel3/               # raw Sentinel-3 downloads
   sentinel6/               # raw Sentinel-6 downloads
+```
+
+#### Rivers
+```
+main_dir/
+  swot/rivers/
+    <per_id>/<node_or_reach_id>/
+      timeseries.csv       # SWOT Hydrocron data per node/reach
+```
+
+#### SWOT Rasters
+```
+main_dir/
+  swot_raster/<aoi_name>/
+    raw/<product>/                # raw netCDF granule files
+    processed/<product>/          # extracted/clipped GeoTIFFs per granule (temporary, deleted after merge)
+    merged/                       # merged mosaics by date/variable
+      20231004_wse_merged.tif
+      20231004_wse_uncert_merged.tif
+      20231005_wse_merged.tif
+      ...
 ```
 
 ### Cleaning filters
@@ -139,6 +179,22 @@ Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6
 - `hydrocron_fields.nodes` and `hydrocron_fields.reaches`: optional field lists for river Hydrocron requests.
 - `quality_filters.nodes.max_q` and `quality_filters.reaches.max_q`: optional Hydrocron river quality thresholds. The default `2` keeps records where `node_q <= 2` or `reach_q <= 2`.
 - River SWOT downloads currently stop at `project.download()` and write CSV outputs under `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`. Each node/reach gets its own subfolder within the AOI-feature folder, so multiple nodes from the same AOI feature coexist safely.
+
+### SWOT Rasters
+SWOT raster workflow configuration:
+- `aoi.name`: identifier for this AOI (used in output directory paths and log files).
+- `aoi.type`: one of `"bbox"`, `"shapefile"`, or `"geopackage"`. For non-bbox types, provide `aoi.path`.
+- `aoi.bbox`: for type `"bbox"`, array of `[lon_min, lat_min, lon_max, lat_max]`.
+- `aoi.path`: for type `"shapefile"` or `"geopackage"`, path to the geometry file.
+- `product`: one of `"SWOT_L2_HR_Raster_D"`, `"SWOT_L2_LR_SSH_2.0"`, or `"SWOT_L2_HR_RIVERSP_2.0"`.
+- `startdate` and `enddate`: temporal range as `[year, month, day]`.
+- `granule_filter`: optional filename pattern to filter granules (e.g., `"*100m*"` for 100m products).
+- `target_crs`: optional target EPSG code for merge/reproject phase (e.g., `"EPSG:32645"` for UTM 45N). If omitted, individual clipped tiles are kept without merging.
+- `variables`: optional list of variables to extract. Defaults to all 8 variables: `wse`, `wse_uncert`, `wse_qual`, `height_cor_xover`, `geoid`, `n_wse_pix`, `n_other_pix`, `layover_impact`. Regardless of the user-supplied list, `wse`, `wse_uncert`, and `layover_impact` are always extracted as they are required for quality masking.
+- `quality_filters.max_wse_uncert`: pixels with `wse_uncert` at or above this value are masked. Default `0.3` (metres).
+- `quality_filters.max_layover_impact`: pixels with `layover_impact` at or above this value are masked. Default `0.3` (metres).
+
+The download phase tracks already-processed granules in `raw/<product>/downloaded.log` to avoid re-downloading on config reruns. Preprocessing extracts the configured variables, applies quality filters, clips each tile to the AOI, and outputs GeoTIFFs. The merge phase groups clipped tiles by date and variable, merges multiple passes, and reprojects to the target CRS. Only tiles that spatially overlap the AOI are processed — out-of-area tiles (e.g., distant UTM zones fetched by the search API) are discarded before extraction. Raw netCDF files are deleted after preprocessing to save space.
 
 ### Sentinel-3 and Sentinel-6
 - `subset_file_id`: expected source netCDF filename inside each package.
@@ -230,16 +286,30 @@ icesat2:
 ```
 
 ## Available products
-HydroEO currently supports 4 products for lake/reservoir workflows. These are the product identifiers you will see in extracted outputs, merged timeseries, and lower-level processing methods:
+
+### Lake/Reservoir workflows
+HydroEO supports 4 products for reservoir workflows. These are the product identifiers you will see in extracted outputs, merged timeseries, and lower-level processing methods:
 
 | Product key | Source mission | Typical coverage | Key retrievable parameters |
 | --- | --- | --- | --- |
-| `SWOT_LAKE` | SWOT | 2023-present | water surface elevation, water area/storage-related metrics, quality flags |
+| `SWOT_LAKE` | SWOT Lake SP | 2023-present | water surface elevation, water area, storage-related metrics, quality flags |
 | `ATL13` | ICESat-2 | 2018-present | inland water surface elevation, along-track geometry, quality metadata |
 | `S3` | Sentinel-3A/B | 2016-present | latitude, longitude, elevation, waveform, backscatter (`sig0`), time, altitude, tracker/range variables, geoid |
 | `S6` | Sentinel-6 | 2020-present | latitude, longitude, altitude, `range_ocog`, wet/dry tropospheric corrections, backscatter, time, geoid |
 
-Common across products: geolocation, observation time, water level/elevation-style measurements, and quality metadata.
+Common across reservoir products: geolocation, observation time, water level/elevation measurements, and quality metadata.
+
+### River workflows
+River projects use SWOT Hydrocron, a public API delivering SWOT observations for predefined river nodes and reaches. Returns timeseries CSV with water surface elevation, discharge estimates, and quality flags.
+
+### SWOT Raster workflows
+SWOT raster projects download three L2 raster products via Earthdata. Each product is distributed as geotiff granules, one per satellite pass:
+
+| Product | Resolution | Coverage | Key parameters |
+| --- | --- | --- | --- |
+| `SWOT_L2_HR_Raster_D` | ~100m | Land/water classification, elevation | digital elevation model (DEM), water surface elevation, water area fraction |
+| `SWOT_L2_LR_SSH_2.0` | ~250m | Sea surface height, open water | sea surface height, geoid height, wind speed, wave height |
+| `SWOT_L2_HR_RIVERSP_2.0` | ~100m | River surface | river channel elevation, width, slope, quality flags |
 
 ## Running tests
 The development environment with all testing tools is set up via:

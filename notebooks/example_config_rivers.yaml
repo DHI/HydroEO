@@ -23,15 +23,6 @@ rivers :
   # reach_numbers : [20001, 20002, 20003]
   # id : 'gauja'
 
-##### A earthaccess username and password may not be needed if your machine is already authenticated
-earthaccess: # create an Earth Data account at https://urs.earthdata.nasa.gov/
-  username : ""
-  password : ""
-
-hydroweb: # create an account and api key at https://hydroweb.next.theia-land.fr/
-  api_key : ""
-  PLD_path : "C:\\Users\\username\\altimetry_project\\PLD_subset.shp"
-
 swot:
   download : True
   process : False # river SWOT support currently stops at download() CSV generation
@@ -48,56 +39,6 @@ swot:
       max_q : 2
     reaches :
       max_q : 2
-  processing_filters : ["elevation", "MAD"]
-  elevation_min_m : 0.0
-  elevation_max_m : 8000.0
-  mad_threshold : 5.0
-
-icesat2:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\icesat2"
-  startdate : [2024, 1, 1]
-  enddate   : [2024, 11, 1]
-  atl13_fields : []
-  atl13 :
-    pass_invalid : false
-    beams : []
-    spots : []
-  track_keys : ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]
-  processing_filters : ["elevation", "MAD"]
-  elevation_min_m : 0.0
-  elevation_max_m : 8000.0
-  mad_threshold : 5.0
-
-##### A creodias username and password must be provided if downloading Sentinel data
-creodias:
-  username : ""
-  password : ""
-
-sentinel3:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel3"
-  startdate : [2024, 1, 1]
-  enddate   : [2024, 11, 1]
-  subset_file_id : "enhanced_measurement.nc"
-  sigma0_max : 100000.0
-  download_threads : 1
-  processing_filters : ["elevation", "MAD"]
-  elevation_min_m : 0.0
-  elevation_max_m : 8000.0
-  mad_threshold : 5.0
-
-sentinel6:
-  download : True
-  process : True
-  download_dir : "C:\\Users\\username\\altimetry_project\\data\\sentinel6"
-  startdate : [2024, 1, 1]
-  enddate   : [2024, 11, 1]
-  subset_file_id : "enhanced_measurement.nc"
-  sigma0_max : 100000.0
-  download_threads : 1
   processing_filters : ["elevation", "MAD"]
   elevation_min_m : 0.0
   elevation_max_m : 8000.0

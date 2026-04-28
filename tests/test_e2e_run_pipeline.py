@@ -40,7 +40,7 @@ _has_required_creds = pytest.mark.skipif(
 @pytest.mark.integration
 @_has_e2e_flag
 @_has_required_creds
-def test_run_pipeline_e2e_one_month_env_credentials(tmp_path):
+def test_run_reservoir_e2e_one_month_env_credentials(tmp_path):
     """Run the full Project pipeline using a one-month live data window."""
     repo_root = Path(__file__).resolve().parents[1]
     base_config_path = repo_root / "tests" / "data" / "config.e2e.yaml"
