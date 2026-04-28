@@ -171,7 +171,6 @@ def bbox_config():
         "product": "SWOT_L2_HR_Raster_D",
         "startdate": [2025, 6, 1],
         "enddate": [2025, 6, 10],
-        "target_crs": "EPSG:32644",
         "quality_filters": {
             "max_wse_uncert": 0.3,
             "max_layover_impact": 0.3,
@@ -207,7 +206,6 @@ def shapefile_config(tmp_path):
         "product": "SWOT_L2_HR_Raster_D",
         "startdate": [2025, 6, 1],
         "enddate": [2025, 6, 10],
-        "target_crs": "EPSG:32644",
         "quality_filters": {
             "max_wse_uncert": 0.3,
             "max_layover_impact": 0.3,
@@ -472,16 +470,14 @@ def test_merge_and_reproject_multiple_tiles(
 
 
 @pytest.mark.unit
-def test_merge_and_reproject_no_target_crs_skips_merge(
-    synthetic_geotiff_utm44, tmp_path
-):
-    """When target_crs omitted, merge phase skips."""
+def test_merge_tiles_false_skips_merge(synthetic_geotiff_utm44, tmp_path):
+    """When merge_tiles is false, merge phase is skipped."""
     processed_dir = tmp_path / "swot_raster" / "aoi" / "processed" / "product"
     processed_dir.mkdir(parents=True, exist_ok=True)
 
     shutil.copy(synthetic_geotiff_utm44, processed_dir / synthetic_geotiff_utm44.name)
 
-    config = {"aoi": {"type": "bbox", "bbox": [0, 0, 1, 1]}}  # No target_crs
+    config = {"merge_tiles": False}
 
     _merge_and_reproject_granules(config, processed_dir)
 
@@ -519,9 +515,9 @@ def test_merge_and_reproject_groups_by_date_and_variable(tmp_path):
         ) as dst:
             dst.write(data, 1)
 
-    config = {"target_crs": "EPSG:32644"}
+    config = {}
 
-    _merge_and_reproject_granules(config, processed_dir)
+    _merge_and_reproject_granules(config, processed_dir, "EPSG:32644")
 
     merged_dir = processed_dir.parent.parent / "merged"
     merged_tiffs = list(merged_dir.glob("*.tif"))
