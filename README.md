@@ -189,7 +189,8 @@ SWOT raster workflow configuration:
 - `product`: one of `"SWOT_L2_HR_Raster_D"`, `"SWOT_L2_LR_SSH_2.0"`, or `"SWOT_L2_HR_RIVERSP_2.0"`.
 - `startdate` and `enddate`: temporal range as `[year, month, day]`.
 - `granule_filter`: optional filename pattern to filter granules (e.g., `"*100m*"` for 100m products).
-- `target_crs`: optional target EPSG code for merge/reproject phase (e.g., `"EPSG:32645"` for UTM 45N). If omitted, individual clipped tiles are kept without merging.
+- `merge_tiles`: optional boolean (default `true`). When `true`, processed tiles are merged by date/variable and reprojected. Set to `false` to keep individual clipped tiles without merging.
+- `target_crs`: advanced optional override — output EPSG code for the merge/reproject phase (e.g., `"EPSG:32645"` for UTM 45N). By default the merge phase uses `gis.global_crs`. Only set this when you need a different output CRS than the project-level CRS.
 - `variables`: optional list of variables to extract. Defaults to all 8 variables: `wse`, `wse_uncert`, `wse_qual`, `height_cor_xover`, `geoid`, `n_wse_pix`, `n_other_pix`, `layover_impact`. Regardless of the user-supplied list, `wse`, `wse_uncert`, and `layover_impact` are always extracted as they are required for quality masking.
 - `quality_filters.max_wse_uncert`: pixels with `wse_uncert` at or above this value are masked. Default `0.3` (metres).
 - `quality_filters.max_layover_impact`: pixels with `layover_impact` at or above this value are masked. Default `0.3` (metres).

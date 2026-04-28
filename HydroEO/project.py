@@ -431,6 +431,7 @@ class Project:
                 config=self.swot_raster_config,
                 project_dir=self.dirs["main"],
                 credentials=(self.earthdata_user, self.earthdata_pass),
+                global_crs=self.global_crs,
             )
 
     def update(self):

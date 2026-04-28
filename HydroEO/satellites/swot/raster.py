@@ -47,6 +47,7 @@ def download_raster(
     config: dict[str, Any],
     project_dir: str,
     credentials: tuple[str | None, str | None],
+    global_crs: str = "EPSG:4326",
 ) -> None:
     """Download, preprocess, and merge SWOT raster data for an AOI.
 
@@ -59,6 +60,10 @@ def download_raster(
         ``<project_dir>/swot_raster/<aoi_name>/``.
     credentials:
         ``(earthdata_username, earthdata_password)`` tuple.
+    global_crs:
+        Project-level CRS (from ``gis.global_crs``). Used as the default
+        output CRS for the merge phase unless ``target_crs`` is set in
+        ``config``.
     """
     logger.info(
         "SWOT Raster Download - AOI: %s, Product: %s, Temporal range: %s to %s",
@@ -100,7 +105,7 @@ def download_raster(
             "Found %d processed TIF files, proceeding with merge",
             len(processed_files),
         )
-        _merge_and_reproject_granules(config, processed_dir)
+        _merge_and_reproject_granules(config, processed_dir, global_crs)
     else:
         logger.info("No processed TIF files found, skipping merge phase")
 
@@ -368,19 +373,23 @@ def _detect_crs(ds: xr.Dataset, nc_path: Path) -> CRS | None:
     return None
 
 
-def _merge_and_reproject_granules(config: dict, processed_dir: Path) -> None:
+def _merge_and_reproject_granules(
+    config: dict, processed_dir: Path, global_crs: str = "EPSG:4326"
+) -> None:
     """Organize processed TIFFs by date and merge/reproject tiles."""
     logger.info("=== SWOT Raster Merge and Reproject Phase ===")
 
-    target_crs = config.get("target_crs", None)
-    if not target_crs:
-        logger.warning("No target_crs specified in config, skipping merge phase")
+    if not config.get("merge_tiles", True):
+        logger.info("merge_tiles is disabled in config, skipping merge phase")
         return
 
+    # target_crs in swot_raster config is an optional override; falls back to global_crs
+    crs_to_use = config.get("target_crs", global_crs)
+
     try:
-        epsg_code = int(target_crs.replace("EPSG:", ""))
+        epsg_code = int(crs_to_use.replace("EPSG:", ""))
     except (ValueError, AttributeError):
-        logger.error("Invalid target_crs format: %s", target_crs)
+        logger.error("Invalid CRS format: %s", crs_to_use)
         return
 
     merged_dir = processed_dir.parent.parent / "merged"

@@ -216,7 +216,6 @@ def test_swot_raster_no_processed_files_skips_merge(tmp_path, caplog):
         "product": "SWOT_L2_HR_Raster_D",
         "startdate": [2024, 1, 1],
         "enddate": [2024, 2, 1],
-        "target_crs": "EPSG:4326",
     }
     project_dir = tmp_path / "project"
     project_dir.mkdir()
@@ -243,7 +242,6 @@ def test_swot_raster_merge_with_existing_files(tmp_path, caplog):
         "product": "SWOT_L2_HR_Raster_D",
         "startdate": [2024, 1, 1],
         "enddate": [2024, 2, 1],
-        "target_crs": "EPSG:4326",
     }
     project_dir = tmp_path / "project"
     processed_dir = (

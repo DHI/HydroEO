@@ -57,11 +57,15 @@ swot_raster:
   # Examples: "*100m*", "*Expert*", "*_124_*"
   granule_filter : "*100m*"
   
-  # Optional: Target CRS for merging and reprojecting tiles
-  # If provided, processed tiles will be merged by date/variable and reprojected to this CRS
-  # Format: "EPSG:XXXX" (e.g., "EPSG:32645" for UTM 45N)
-  # If omitted, merge phase is skipped and individual clipped tiles are kept
-  target_crs : "EPSG:4326"  # WGS84 (optional, set to None or omit to skip merging)
+  # Optional: disable tile merging (default: true)
+  # When true, processed tiles are merged by date/variable and reprojected to gis.global_crs
+  # Set to false to keep individual clipped tiles without merging
+  # merge_tiles : false
+
+  # Optional: override output CRS for the merge phase
+  # By default the merge phase uses gis.global_crs (e.g. EPSG:4326)
+  # Set this only when you need a different output CRS (e.g. a UTM zone)
+  # target_crs : "EPSG:32645"  # e.g. UTM 45N
   
   # Quality and processing filters
   quality_filters:
