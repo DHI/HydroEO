@@ -2,7 +2,6 @@
 
 import pandas as pd
 import pytest
-from pathlib import Path
 from unittest.mock import patch, MagicMock, call
 
 from HydroEO.waterbody import Reservoirs, Rivers
@@ -197,7 +196,6 @@ def test_swot_raster_resampling_selection():
 def test_swot_raster_crs_detection_from_filename(tmp_path):
     """_detect_crs extracts UTM CRS from SWOT filename."""
     import xarray as xr
-    from pyproj import CRS
 
     ds = xr.Dataset()
     utm_file = (

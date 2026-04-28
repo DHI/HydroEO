@@ -18,7 +18,6 @@ from rasterio.transform import from_bounds
 from shapely.geometry import box
 
 from HydroEO.satellites.swot.raster import (
-    DEFAULT_VARIABLES,
     REQUIRED_VARIABLES,
     download_raster,
     _download_granules,
@@ -41,12 +40,12 @@ def synthetic_swot_netcdf(tmp_path):
     # Create SWOT structure with geographic bounds overlapping test AOI
     # UTM 44N bounds (roughly): lon 24-30, lat 56-60 in real world
     width, height = 100, 100
-    
+
     # Create coordinate arrays for UTM 44N in projected coordinates
     # UTM zone 44N origin is around lon=24, lat=56
     x_coords = np.linspace(500000, 600000, width)  # Easting (meters)
     y_coords = np.linspace(6200000, 6300000, height)  # Northing (meters)
-    
+
     data = {
         "wse": (["y", "x"], np.random.uniform(0, 100, (height, width))),
         "wse_uncert": (["y", "x"], np.random.uniform(0, 0.5, (height, width))),
@@ -79,10 +78,13 @@ def synthetic_swot_netcdf_utm45(tmp_path):
     # UTM 45N coordinates (east of zone 44)
     x_coords = np.linspace(600000, 700000, width)
     y_coords = np.linspace(6200000, 6300000, height)
-    
+
     data = {
         "wse": (["y", "x"], np.random.uniform(0, 100, (height, width))),
-        "wse_uncert": (["y", "x"], np.random.uniform(0, 0.2, (height, width))),  # Good quality
+        "wse_uncert": (
+            ["y", "x"],
+            np.random.uniform(0, 0.2, (height, width)),
+        ),  # Good quality
         "wse_qual": (["y", "x"], np.random.randint(0, 4, (height, width))),
         "height_cor_xover": (["y", "x"], np.random.uniform(-0.5, 0.5, (height, width))),
         "geoid": (["y", "x"], np.random.uniform(40, 50, (height, width))),
@@ -290,9 +292,13 @@ def test_preprocess_granules_filters_by_quality(
 
     # Verify required variables are present
     tiff_names = {t.stem for t in tiffs}
-    assert any("wse" in name and "uncert" not in name for name in tiff_names), "wse variable missing"
+    assert any("wse" in name and "uncert" not in name for name in tiff_names), (
+        "wse variable missing"
+    )
     assert any("wse_uncert" in name for name in tiff_names), "wse_uncert required"
-    assert any("layover_impact" in name for name in tiff_names), "layover_impact required"
+    assert any("layover_impact" in name for name in tiff_names), (
+        "layover_impact required"
+    )
 
 
 @pytest.mark.unit
@@ -320,7 +326,9 @@ def test_preprocess_granules_always_includes_required_variables(
 
     # Required variables must always be present
     for required in REQUIRED_VARIABLES:
-        assert any(required in name for name in tiff_names), f"Required {required} missing"
+        assert any(required in name for name in tiff_names), (
+            f"Required {required} missing"
+        )
 
 
 @pytest.mark.unit
@@ -425,7 +433,9 @@ def test_preprocess_granules_bounds_check_discards_non_overlapping(tmp_path):
 
 
 @pytest.mark.unit
-def test_merge_and_reproject_single_tile(bbox_config, synthetic_geotiff_utm44, tmp_path):
+def test_merge_and_reproject_single_tile(
+    bbox_config, synthetic_geotiff_utm44, tmp_path
+):
     """Single TIF is reprojected without actual merge."""
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir()
@@ -529,7 +539,9 @@ def test_merge_and_reproject_groups_by_date_and_variable(tmp_path):
 
 
 @pytest.mark.unit
-def test_download_raster_full_pipeline_bbox(bbox_config, synthetic_swot_netcdf, tmp_path):
+def test_download_raster_full_pipeline_bbox(
+    bbox_config, synthetic_swot_netcdf, tmp_path
+):
     """Full pipeline: init dirs, mock download, preprocess, merge."""
     project_dir = tmp_path / "project"
 
@@ -538,7 +550,11 @@ def test_download_raster_full_pipeline_bbox(bbox_config, synthetic_swot_netcdf, 
 
         # Create the raw NC file first
         raw_parent = (
-            project_dir / "swot_raster" / bbox_config["aoi"]["name"] / "raw" / bbox_config["product"]
+            project_dir
+            / "swot_raster"
+            / bbox_config["aoi"]["name"]
+            / "raw"
+            / bbox_config["product"]
         )
         raw_parent.mkdir(parents=True, exist_ok=True)
 
@@ -557,7 +573,11 @@ def test_download_raster_full_pipeline_bbox(bbox_config, synthetic_swot_netcdf, 
 
     # Verify outputs were created
     processed_dir = (
-        project_dir / "swot_raster" / bbox_config["aoi"]["name"] / "processed" / bbox_config["product"]
+        project_dir
+        / "swot_raster"
+        / bbox_config["aoi"]["name"]
+        / "processed"
+        / bbox_config["product"]
     )
     assert processed_dir.exists()
 
@@ -571,7 +591,13 @@ def test_download_raster_no_new_granules_processes_existing_nc(
 ):
     """When no new granules found, existing NC files in raw dir are still processed."""
     project_dir = tmp_path / "project"
-    raw_dir = project_dir / "swot_raster" / bbox_config["aoi"]["name"] / "raw" / bbox_config["product"]
+    raw_dir = (
+        project_dir
+        / "swot_raster"
+        / bbox_config["aoi"]["name"]
+        / "raw"
+        / bbox_config["product"]
+    )
     raw_dir.mkdir(parents=True, exist_ok=True)
 
     # Place NC file in raw dir (simulating previous download)
@@ -589,7 +615,13 @@ def test_download_raster_no_new_granules_processes_existing_nc(
         )
 
     # Verify preprocessing happened despite no new downloads
-    processed_dir = project_dir / "swot_raster" / bbox_config["aoi"]["name"] / "processed" / bbox_config["product"]
+    processed_dir = (
+        project_dir
+        / "swot_raster"
+        / bbox_config["aoi"]["name"]
+        / "processed"
+        / bbox_config["product"]
+    )
     tiffs = list(processed_dir.glob("*.tif"))
     assert len(tiffs) > 0, "Existing NC files should have been processed"
 
@@ -618,7 +650,9 @@ def test_detect_crs_from_filename():
     """CRS detected from filename when metadata absent."""
     ds = xr.Dataset()
 
-    result = _detect_crs(ds, Path("SWOT_L2_HR_Raster_D_20250601T000000_UTM44N_01_01.nc"))
+    result = _detect_crs(
+        ds, Path("SWOT_L2_HR_Raster_D_20250601T000000_UTM44N_01_01.nc")
+    )
 
     assert result is not None
     assert result.to_epsg() == 32644
@@ -640,4 +674,3 @@ def test_detect_crs_utm_zones(utm_zone):
 
     assert result is not None
     assert result.to_epsg() == (32600 + utm_zone)  # UTM zone to EPSG
-
