@@ -182,19 +182,19 @@ class Project:
         self.__sat_init("sentinel6")
 
         ### Set the crs from the congiguration file if possible
+        self.global_crs = "EPSG:4326"
+        self.local_crs = None
         if "gis" in self.config.keys():
             if "global_crs" in self.config["gis"].keys():
                 self.global_crs = self.config["gis"]["global_crs"]
-            else:
-                self.global_crs = "EPSG:4326"
 
             if "local_crs" in self.config["gis"].keys():
                 self.local_crs = self.config["gis"]["local_crs"]
-            else:
-                self.local_crs = None
 
         ### load in elements for download and processing
-        if "reservoirs" in self.config.keys():
+        if "reservoirs" in self.config.keys() and self.config["reservoirs"].get(
+            "enabled", True
+        ):
             self.reservoirs = Reservoirs(
                 gdf=gpd.read_file(self.config["reservoirs"]["path"]),
                 id_key=self.config["reservoirs"]["id_key"],
@@ -205,7 +205,9 @@ class Project:
             self.reservoirs.mission_options = self.mission_options
             self.reservoirs.processing_options = self.processing_options
 
-        if "rivers" in self.config.keys():
+        if "rivers" in self.config.keys() and self.config["rivers"].get(
+            "enabled", True
+        ):
             rivers_cfg = self.config["rivers"]
 
             rivers_aoi_gdf = None
@@ -228,15 +230,13 @@ class Project:
                     else "reach_id"
                 )
             else:
-                if "node_numbers" in rivers_cfg:
-                    id_values = rivers_cfg["node_numbers"]
-                    rivers_id_key = rivers_cfg.get("id_key", "river_id")
-                    input_mode = "node_numbers"
+                id_values = rivers_cfg.get("feature_numbers", [])
+                rivers_id_key = rivers_cfg.get("id_key", "river_id")
+                if rivers_cfg.get("feature_type") == "nodes":
+                    input_mode = "feature_numbers"
                     target_id_col = "node_id"
                 else:
-                    id_values = rivers_cfg.get("reach_numbers", [])
-                    rivers_id_key = rivers_cfg.get("id_key", "river_id")
-                    input_mode = "reach_numbers"
+                    input_mode = "feature_numbers"
                     target_id_col = "reach_id"
 
                 target_ids = [int(value) for value in id_values]
@@ -266,7 +266,9 @@ class Project:
             self.rivers.target_id_col = target_id_col
             self.rivers.target_ids = target_ids
 
-        if "swot_raster" in self.config.keys():
+        if "swot_raster" in self.config.keys() and self.config["swot_raster"].get(
+            "enabled", True
+        ):
             # Store the SWOT raster config for later use in download/preprocess
             # Will be instantiated in download() when needed
             self.swot_raster_config = self.config["swot_raster"]
@@ -301,6 +303,23 @@ class Project:
                     "Must provide a local crs or a river or reservoir shapefile to determine local crs"
                 )
 
+        ### Warn when lake/reservoir-only satellites are configured for rivers or raster modes
+        if not hasattr(self, "reservoirs"):
+            incompatible = [
+                m
+                for m in ["icesat2", "sentinel3", "sentinel6"]
+                if m in self.to_download or m in self.to_process
+            ]
+            if incompatible:
+                warnings.warn(
+                    f"Satellite(s) {incompatible} are configured but have no effect without a "
+                    "'reservoirs' section. ICESat-2, Sentinel-3, and Sentinel-6 require reservoir "
+                    "waterbody polygons for spatial filtering. Remove these sections or add a "
+                    "'reservoirs' section to silence this warning.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
     # fucntion to set information for satellite downloads
     def __sat_init(self, name: str):
         if name in self.config.keys():
@@ -315,8 +334,13 @@ class Project:
             else:
                 self.dirs[name] = os.path.join(self.dirs["main"], name)
 
-            self.startdates[name] = self.config[name]["startdate"]
-            self.enddates[name] = self.config[name]["enddate"]
+            project_cfg = self.config.get("project", {})
+            self.startdates[name] = self.config[name].get(
+                "startdate"
+            ) or project_cfg.get("startdate")
+            self.enddates[name] = self.config[name].get("enddate") or project_cfg.get(
+                "enddate"
+            )
 
             self.mission_options[name] = {
                 k: v

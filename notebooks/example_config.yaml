@@ -1,0 +1,206 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HydroEO — Unified Configuration Template
+# ══════════════════════════════════════════════════════════════════════════════
+# Three use cases are supported. Enable exactly one by setting enabled: true.
+#
+#   Use Case A — Lakes & Reservoirs  (multi-satellite: SWOT, ICESat-2, Sentinel-3/6)
+#   Use Case B — Rivers              (SWOT Hydrocron download only)
+#   Use Case C — SWOT Raster tiles   (arbitrary AOI, NASA Earthaccess only)
+#
+# Quick-start:
+#   1. Set project.main_dir and project.startdate / project.enddate.
+#   2. Set enabled: true on the use case you want.
+#   3. Fill in the required fields for that use case.
+#   4. Add credentials (or export them as environment variables — see below).
+#   5. Enable the satellite sources you need and set download/process flags.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── PROJECT ──────────────────────────────────────────────────────────────────
+project:
+  main_dir: "/path/to/your/project"   # all outputs are written here
+
+  # Shared temporal range — each satellite section inherits these dates unless
+  # overridden with its own startdate / enddate.
+  startdate: [2024, 1, 1]             # [year, month, day]
+  enddate:   [2024, 12, 31]
+
+gis:
+  global_crs: 'EPSG:4326'
+  # local_crs: 'EPSG:32633'           # optional: override UTM zone (auto-detected if omitted)
+
+
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+# Tip: set credentials as environment variables to avoid storing secrets in files.
+# The config values below act as fallbacks when the env vars are not set.
+#
+#   earthaccess : EARTHDATA_USERNAME / EARTHDATA_PASSWORD
+#   hydroweb    : EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+#   creodias    : CREODIAS_USERNAME / CREODIAS_PASSWORD
+
+earthaccess:  # NASA Earthdata — needed for Use Cases A (SWOT/ICESat-2) and C
+  username: null   # or set EARTHDATA_USERNAME
+  password: null   # or set EARTHDATA_PASSWORD
+
+hydroweb:     # needed for Use Case A (SWOT lake matching via PLD)
+  api_key: null    # or set EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+  PLD_path: "/path/to/your/project/PLD_subset.shp"
+
+creodias:     # needed for Use Case A — Sentinel-3 and Sentinel-6 only
+  username: null   # or set CREODIAS_USERNAME
+  password: null   # or set CREODIAS_PASSWORD
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# USE CASE A — Lakes & Reservoirs
+# Supports SWOT, ICESat-2, Sentinel-3, and Sentinel-6.
+# Set enabled: true and configure the satellite sections below.
+# ══════════════════════════════════════════════════════════════════════════════
+reservoirs:
+  enabled: false
+  path: "/path/to/your/reservoirs.shp"   # .shp or .gpkg with one feature per reservoir
+  id_key: 'reservoir_id'                 # column in the file used as unique reservoir identifier
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# USE CASE B — Rivers
+# Only SWOT Hydrocron download is supported (no Sentinel or ICESat-2).
+# Set enabled: true and choose Option A or Option B below.
+# ══════════════════════════════════════════════════════════════════════════════
+rivers:
+  enabled: false
+
+  # Option A — AOI file (recommended): subsets SWORD river database to your area.
+  aoi_path: "/path/to/your/river_aoi.gpkg"   # .shp or .gpkg
+  continent_key: 'eu'        # SWORD continent: af | as | eu | na | oc | sa
+  feature_type: 'reaches'    # nodes | reaches
+  id_key: 'river_id'         # AOI column used to name per-river output folders
+  # buffer_meters: 1000.0    # optional AOI buffer before SWORD subsetting
+
+  # Option B — explicit IDs (comment out aoi_path above).
+  # feature_type must match the IDs: 'nodes' for node IDs, 'reaches' for reach IDs.
+  # feature_numbers: [24292000031, 24292000041]
+  # feature_type: 'reaches'
+  # id: 'my_river'           # used as the output folder name
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# USE CASE C — SWOT Raster tiles (arbitrary AOI)
+# Only earthaccess credentials are needed.
+# Set enabled: true. Satellite sections below are ignored for this use case.
+# ══════════════════════════════════════════════════════════════════════════════
+swot_raster:
+  enabled: false
+
+  aoi:
+    name: "my_aoi"           # identifier used in output directory names
+    type: "bbox"             # bbox | shapefile | geopackage
+
+    # Use for type: bbox — [lon_min, lat_min, lon_max, lat_max]
+    bbox: [90.3, 20.9, 91.5, 23.9]
+
+    # Use for type: shapefile or geopackage (comment out bbox above)
+    # path: "/path/to/your/aoi.shp"   # or .gpkg
+
+  product: "SWOT_L2_HR_Raster_D"
+  # Available products:
+  #   SWOT_L2_HR_Raster_D       — high-resolution raster (default)
+  #   SWOT_L2_LR_SSH_2.0        — low-resolution sea surface height
+  #   SWOT_L2_HR_RIVERSP_2.0    — high-resolution river surface product
+
+  # granule_filter: "*100m*"   # optional glob filter; omit to download all matching granules
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# SATELLITE DATA SOURCES
+# Applies to Use Case A (and partially B for swot).
+# Set download/process flags for the sources you need.
+# Omit a section entirely to skip that satellite.
+# Dates default to project.startdate / project.enddate unless overridden here.
+# ══════════════════════════════════════════════════════════════════════════════
+swot:
+  download: true
+  process: true
+  # startdate: [2024, 3, 1]   # override project dates for this satellite only
+  # enddate:   [2024, 9, 30]
+
+icesat2:
+  download: true
+  process: true
+
+sentinel3:
+  download: false
+  process: false
+
+sentinel6:
+  download: false
+  process: false
+
+
+# ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
+# All fields below have sensible defaults and can be omitted.
+# Each block is a single complete override — do NOT repeat a section key that
+# already appears above, as YAML silently drops the earlier one.
+# Copy only the keys you want to change into the live section above.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# swot — Use Case A extras (reservoirs/lakes, PLD matching):
+#   pld_match_max_distance_m: 100.0            # max nearest-neighbour distance to match reservoirs to PLD lakes
+#   exclude_obs_id_values: ["no_data"]         # SWOT obs_id values to drop during extraction
+#   processing_filters: ["elevation", "MAD"]   # elevation | MAD | daily_mean | hampel | rolling_median
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+#   download_dir: "/custom/path/swot"          # default: project.main_dir/swot
+
+# swot — Use Case B extras (rivers, Hydrocron API):
+#   hydrocron_fields:
+#     nodes:   ["node_id", "node_q", "reach_id", "time_str", "wse", "wse_u", "p_wse",
+#               "geoid_hght", "sword_version", "solid_tide", "load_tidef", "pole_tide",
+#               "width", "width_u", "p_width", "xovr_cal_q", "rdr_sig0", "xovr_cal_c", "dark_frac"]
+#     reaches: ["reach_id", "reach_q", "time_str", "wse", "wse_u", "slope", "slope_u",
+#               "slope2", "slope2_u", "width", "width_u", "geoid_hght", "solid_tide",
+#               "load_tidef", "pole_tide", "p_wse", "p_width"]
+#   quality_filters:
+#     nodes:   {max_q: 2}
+#     reaches: {max_q: 2}
+
+# icesat2:
+#   download_dir: "/custom/path/icesat2"       # default: project.main_dir/icesat2
+#   atl13_fields: []   # extra SlideRule ancillary fields; valid values:
+#                      #   inland_water_body_id, inland_water_body_size, inland_water_body_type,
+#                      #   segment_slope_trk_bdy, err_ht_water_surf, segment_quality,
+#                      #   segment_geoid, segment_geoid_free2mean, segment_dem_ht, segment_near_sat_fract
+#   atl13:
+#     pass_invalid: false   # include segments flagged as invalid
+#     beams: []             # subset beams, e.g. ["gt1l", "gt2r"]; empty = all
+#     spots: []             # subset spots, e.g. [1, 3]; empty = all
+#   processing_filters: ["elevation", "MAD"]
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+
+# sentinel3:
+#   download_dir: "/custom/path/sentinel3"
+#   sigma0_max: 100000.0
+#   download_threads: 1      # parallel CREODIAS download threads
+#   processing_filters: ["elevation", "MAD"]
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+
+# sentinel6:
+#   download_dir: "/custom/path/sentinel6"
+#   sigma0_max: 100000.0
+#   download_threads: 1
+#   processing_filters: ["elevation", "MAD"]
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+
+# swot_raster:
+#   merge_tiles: true           # merge tiles by date/variable and reproject; set false to keep individual tiles
+#   target_crs: "EPSG:32645"   # output CRS for the merge phase; defaults to gis.global_crs
+#   variables: [wse, wse_uncert, wse_qual]   # omit to extract all available variables
+#   quality_filters:
+#     max_wse_uncert: 0.3
+#     max_layover_impact: 0.3

@@ -1,3 +1,8 @@
+# NOTE: This file is kept as a reference. The recommended starting point is
+# example_config.yaml, which covers all three use cases in one file.
+# NOTE: 'node_numbers' and 'reach_numbers' have been replaced by 'feature_numbers'
+# (paired with 'feature_type: nodes' or 'feature_type: reaches').
+
 project :
   main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
 

@@ -1,3 +1,6 @@
+# NOTE: This file is kept as a reference. The recommended starting point is
+# example_config.yaml, which covers all three use cases in one file.
+
 project :
   main_dir : "C:\\Users\\username\\altimetry_project" # main directory in which to store processed outputs
 

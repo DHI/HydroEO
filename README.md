@@ -33,13 +33,13 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-Usage examples are available in [notebooks](./notebooks), with sample configurations for [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), and [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
+A single unified configuration template covers all three use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml). Legacy per-use-case examples are kept for reference: [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
 
 HydroEO projects are configured with:
-- project output location and CRS
-- reservoir polygons and unique reservoir ID key
-- provider credentials (Earthdata, CREODIAS, HydroWeb API key)
-- per-product download/process flags and date ranges
+- project output location, CRS, and shared date range
+- the active water body branch (`reservoirs`, `rivers`, or `swot_raster`) with `enabled: true`
+- provider credentials (Earthdata, CREODIAS, HydroWeb API key) — or equivalent environment variables
+- per-satellite download/process flags; dates default to `project.startdate`/`project.enddate` unless overridden
 
 Minimal workflow:
 
@@ -62,7 +62,7 @@ A HydroEO project is built around a single **water body branch** — reservoirs/
 | Branch | Status | Products | Description |
 | --- | --- | --- | --- |
 | `reservoirs` | ✅ available | SWOT Lake, ICESat-2, Sentinel-3, Sentinel-6 | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. Supports multi-mission downloads and full timeseries processing. |
-| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `node_numbers` / `reach_numbers` inputs are also supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
+| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
 | `swot_raster` | ✅ available | SWOT Rasters (L2 HR/LR products) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT raster products (SWOT_L2_HR_Raster_D, SWOT_L2_LR_SSH_2.0, SWOT_L2_HR_RIVERSP_2.0) via Earthdata. Extracts selected variables, applies quality filters, clips to AOI, and merges/reprojects tiles by date. Requires Earthdata credentials. |
 
 ### Project lifecycle
@@ -166,6 +166,15 @@ Configuration validation happens during `project.initialize()`, which checks req
 ## Configuration controls
 HydroEO exposes mission-level optional parameters with defaults that preserve prior behaviour. Existing configs continue to run unchanged.
 
+### Activating a use case
+Each water body branch (`reservoirs`, `rivers`, `swot_raster`) supports an `enabled` flag (default: `true` when the section is present). Set `enabled: false` to keep a section in the file without activating it — useful in the unified template when switching between use cases without deleting sections.
+
+### Shared date range
+`project.startdate` and `project.enddate` act as a global fallback: any satellite section that omits its own `startdate`/`enddate` inherits these values. Per-satellite overrides are still supported by setting `startdate`/`enddate` inside the mission section.
+
+### Incompatible satellite sources
+ICESat-2, Sentinel-3, and Sentinel-6 require reservoir waterbody polygons for spatial filtering and have no effect in river or SWOT raster projects. Configuring them with `download: true` or `process: true` alongside a `rivers` or `swot_raster` branch (without a `reservoirs` section) emits a `UserWarning` at project load time.
+
 ### Common per-mission processing options
 Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6`):
 - `processing_filters`: list of filters. Allowed values: `elevation`, `MAD`, `daily_mean`, `hampel`, `rolling_median`.
@@ -174,10 +183,10 @@ Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6
 - `mad_threshold`: MAD outlier multiplier.
 
 ### SWOT
-- `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching.
-- `exclude_obs_id_values`: list of SWOT `obs_id` values to exclude during extraction.
-- `hydrocron_fields.nodes` and `hydrocron_fields.reaches`: optional field lists for river Hydrocron requests.
-- `quality_filters.nodes.max_q` and `quality_filters.reaches.max_q`: optional Hydrocron river quality thresholds. The default `2` keeps records where `node_q <= 2` or `reach_q <= 2`.
+- `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching (Use Case A — reservoirs).
+- `exclude_obs_id_values`: list of SWOT `obs_id` values to exclude during extraction (Use Case A).
+- `hydrocron_fields.nodes` and `hydrocron_fields.reaches`: optional field lists for river Hydrocron requests (Use Case B — rivers).
+- `quality_filters.nodes.max_q` and `quality_filters.reaches.max_q`: optional Hydrocron river quality thresholds (Use Case B). The default `2` keeps records where `node_q <= 2` or `reach_q <= 2`.
 - River SWOT downloads currently stop at `project.download()` and write CSV outputs under `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`. Each node/reach gets its own subfolder within the AOI-feature folder, so multiple nodes from the same AOI feature coexist safely.
 
 ### SWOT Rasters

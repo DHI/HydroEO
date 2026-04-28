@@ -161,7 +161,7 @@ def test_validate_config_rejects_both_reservoirs_and_rivers_sections():
     proj.config = {
         "project": {"main_dir": "/tmp/hydroeo"},
         "reservoirs": {"path": "/tmp/reservoirs.shp", "id_key": "rid"},
-        "rivers": {"node_numbers": [1, 2, 3]},
+        "rivers": {"feature_numbers": [1, 2, 3], "feature_type": "reaches", "id": "r"},
     }
 
     with pytest.raises(ValueError, match="mutually exclusive"):
@@ -243,7 +243,7 @@ def test_project_accepts_rivers_node_number_branch(tmp_path):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"node_numbers": [10, 11, 12], "id": "demo-river"},
+            "rivers": {"feature_numbers": [10, 11, 12], "feature_type": "nodes", "id": "demo-river"},
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -253,9 +253,10 @@ def test_project_accepts_rivers_node_number_branch(tmp_path):
         },
     )
 
-    proj = Project(name="rivers-node-numbers", config=str(cfg_path))
+    proj = Project(name="rivers-feature-numbers-nodes", config=str(cfg_path))
     assert hasattr(proj, "rivers")
     assert proj.rivers.target_ids == [10, 11, 12]
+    assert proj.rivers.target_id_col == "node_id"
     proj.initialize()
     assert proj.rivers.target_ids == [10, 11, 12]
 
@@ -270,7 +271,7 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"node_numbers": [10, 11, 12], "id": "demo-river"},
+            "rivers": {"feature_numbers": [10, 11, 12], "feature_type": "nodes", "id": "demo-river"},
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -281,14 +282,14 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
     )
 
     def _unexpected_prepare(*_args, **_kwargs):
-        raise AssertionError("prepare_from_sword should not be called for node_numbers")
+        raise AssertionError("prepare_from_sword should not be called for feature_numbers")
 
     monkeypatch.setattr(
         "HydroEO.project.Rivers.prepare_from_sword",
         _unexpected_prepare,
     )
 
-    proj = Project(name="rivers-node-numbers", config=str(cfg_path))
+    proj = Project(name="rivers-feature-numbers", config=str(cfg_path))
     proj.initialize()
     assert proj.rivers.target_ids == [10, 11, 12]
 
@@ -303,7 +304,7 @@ def test_initialize_logs_resolved_river_target_ids(tmp_path, caplog):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"reach_numbers": [21, 22], "id": "demo-river"},
+            "rivers": {"feature_numbers": [21, 22], "feature_type": "reaches", "id": "demo-river"},
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -313,7 +314,7 @@ def test_initialize_logs_resolved_river_target_ids(tmp_path, caplog):
         },
     )
 
-    proj = Project(name="rivers-reach-numbers", config=str(cfg_path))
+    proj = Project(name="rivers-feature-numbers-reaches", config=str(cfg_path))
 
     with caplog.at_level("INFO"):
         proj.initialize()
@@ -331,7 +332,7 @@ def test_validate_config_rejects_both_node_and_reach_numbers():
         "rivers": {"node_numbers": [1], "reach_numbers": [2]},
     }
 
-    with pytest.raises(ValueError, match="node_numbers"):
+    with pytest.raises(ValueError, match="no longer supported"):
         proj.validate_config()
 
 
@@ -345,7 +346,7 @@ def test_project_applies_swot_hydrocron_defaults_for_rivers(tmp_path):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"node_numbers": [10], "id": "demo-river"},
+            "rivers": {"feature_numbers": [10], "feature_type": "nodes", "id": "demo-river"},
             "swot": {
                 "download": True,
                 "process": False,
@@ -370,7 +371,7 @@ def test_validate_config_rejects_invalid_swot_hydrocron_shapes():
     proj = Project.__new__(Project)
     proj.config = {
         "project": {"main_dir": "/tmp/hydroeo"},
-        "rivers": {"node_numbers": [1], "id": "demo-river"},
+        "rivers": {"feature_numbers": [1], "feature_type": "nodes", "id": "demo-river"},
         "swot": {
             "download": True,
             "process": False,
@@ -397,7 +398,7 @@ def test_validate_config_requires_rivers_id_for_number_inputs():
     proj = Project.__new__(Project)
     proj.config = {
         "project": {"main_dir": "/tmp/hydroeo"},
-        "rivers": {"reach_numbers": [2]},
+        "rivers": {"feature_numbers": [2], "feature_type": "reaches"},
     }
 
     with pytest.raises(ValueError, match="rivers.id"):
@@ -411,7 +412,7 @@ def test_validate_config_rejects_aoi_path_with_number_inputs():
     proj = Project.__new__(Project)
     proj.config = {
         "project": {"main_dir": "/tmp/hydroeo"},
-        "rivers": {"aoi_path": "/tmp/aoi.gpkg", "node_numbers": [1]},
+        "rivers": {"aoi_path": "/tmp/aoi.gpkg", "feature_numbers": [1], "feature_type": "nodes", "id": "r"},
     }
 
     with pytest.raises(ValueError, match="mutually exclusive"):
@@ -450,3 +451,94 @@ def test_validate_config_rejects_negative_river_buffer():
 
     with pytest.raises(ValueError, match="buffer_meters"):
         proj.validate_config()
+
+
+@pytest.mark.unit
+def test_project_global_date_fallback(tmp_path, monkeypatch, _mock_reservoir_gdf):
+    """Mission sections should inherit project-level startdate/enddate when omitted."""
+    from HydroEO.project import Project
+
+    reservoir_path = tmp_path / "reservoirs.shp"
+    reservoir_path.write_text("placeholder", encoding="utf-8")
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {
+                "main_dir": str(tmp_path / "out"),
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 12, 31],
+            },
+            "gis": {"global_crs": "EPSG:4326"},
+            "reservoirs": {"path": str(reservoir_path), "id_key": "project"},
+            "icesat2": {"download": False, "process": False},
+            "sentinel3": {"download": False, "process": False},
+        },
+    )
+
+    monkeypatch.setattr(
+        "HydroEO.project.gpd.read_file",
+        lambda *_args, **_kwargs: _mock_reservoir_gdf.copy(),
+    )
+
+    proj = Project(name="global-dates", config=str(cfg_path))
+    assert proj.startdates["icesat2"] == [2024, 1, 1]
+    assert proj.enddates["icesat2"] == [2024, 12, 31]
+    assert proj.startdates["sentinel3"] == [2024, 1, 1]
+
+
+@pytest.mark.unit
+def test_project_warns_incompatible_satellites_for_rivers(tmp_path):
+    """ICESat-2/Sentinel-3/6 with download/process=True should warn when no reservoirs section."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {"main_dir": str(tmp_path / "out")},
+            "gis": {"global_crs": "EPSG:4326"},
+            "rivers": {"feature_numbers": [10], "feature_type": "nodes", "id": "r"},
+            "icesat2": {
+                "download": True,
+                "process": False,
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 2, 1],
+            },
+        },
+    )
+
+    with pytest.warns(UserWarning, match="icesat2"):
+        Project(name="rivers-warn", config=str(cfg_path))
+
+
+@pytest.mark.unit
+def test_project_enabled_false_skips_mode(tmp_path):
+    """Setting enabled: false on a mode section should skip that mode."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {"main_dir": str(tmp_path / "out")},
+            "rivers": {
+                "enabled": False,
+                "feature_numbers": [10],
+                "feature_type": "nodes",
+                "id": "r",
+            },
+            "swot_raster": {
+                "enabled": True,
+                "aoi": {"name": "test", "type": "bbox", "bbox": [0.0, 0.0, 1.0, 1.0]},
+                "product": "SWOT_L2_HR_Raster_D",
+                "startdate": [2025, 1, 1],
+                "enddate": [2025, 2, 1],
+            },
+        },
+    )
+
+    proj = Project(name="enabled-flag", config=str(cfg_path))
+    assert not hasattr(proj, "rivers")
+    assert hasattr(proj, "swot_raster_config")
