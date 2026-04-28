@@ -14,16 +14,33 @@ from typing import Any
 
 import earthaccess
 import geopandas as gpd
+import numpy as np
 import rasterio
 import xarray as xr
 import rioxarray  # noqa: F401 - required for xarray .rio accessor
 from pyproj import CRS
 from rasterio.merge import merge
 from rasterio.warp import calculate_default_transform, reproject, Resampling
-from shapely.geometry import mapping
+from shapely.geometry import box, mapping
 from tqdm import tqdm
 
+from HydroEO import FLOAT32_NODATA_VALUE
+
 logger = logging.getLogger(__name__)
+
+DEFAULT_VARIABLES = [
+    "wse",
+    "wse_uncert",
+    "wse_qual",
+    "height_cor_xover",
+    "geoid",
+    "n_wse_pix",
+    "n_other_pix",
+    "layover_impact",
+]
+
+# Always extracted: used for quality masking and primary output
+REQUIRED_VARIABLES = {"wse", "wse_uncert", "layover_impact"}
 
 
 def download_raster(
@@ -69,10 +86,13 @@ def download_raster(
     downloaded_files = _download_granules(
         config, raw_dir, processed_granules, credentials
     )
-    if downloaded_files:
-        _preprocess_granules(config, raw_dir, processed_dir, log_path, downloaded_files)
+
+    # Always preprocess if there are NC files in raw_dir (new or from previous runs)
+    nc_files_in_raw = list(raw_dir.glob("*.nc"))
+    if nc_files_in_raw or downloaded_files:
+        _preprocess_granules(config, raw_dir, processed_dir, log_path)
     else:
-        logger.info("No new granules to download")
+        logger.info("No new granules to download and no unprocessed netCDF files found")
 
     processed_files = list(processed_dir.glob("*.tif"))
     if processed_files:
@@ -175,23 +195,18 @@ def _preprocess_granules(
     raw_dir: Path,
     processed_dir: Path,
     log_path: Path,
-    downloaded_files: list[str],
 ) -> None:
-    """Extract layers from netCDF files, clip to AOI, and clean up raw files."""
+    """Extract layers from netCDF files, clip to AOI, and clean up raw files.
+
+    Processes only NC files that haven't already produced output TIFFs.
+    """
     logger.info("=== SWOT Raster Preprocessing Phase ===")
 
     aoi_config = config["aoi"]
 
-    variables = [
-        "wse",
-        "wse_uncert",
-        "wse_qual",
-        "height_cor_xover",
-        "geoid",
-        "n_wse_pix",
-        "n_other_pix",
-        "layover_impact",
-    ]
+    variables = list(
+        REQUIRED_VARIABLES | set(config.get("variables", DEFAULT_VARIABLES))
+    )
 
     aoi_gdf = None
     if aoi_config["type"] in ["shapefile", "geopackage"]:
@@ -202,9 +217,36 @@ def _preprocess_granules(
                 logger.info("Loaded AOI from %s", aoi_path)
             except Exception as e:
                 logger.warning("Could not load AOI file: %s", e)
+    elif aoi_config["type"] == "bbox":
+        bbox = aoi_config["bbox"]
+        aoi_gdf = gpd.GeoDataFrame(geometry=[box(*bbox)], crs="EPSG:4326")
+        logger.info("Created AOI GeoDataFrame from bbox %s", bbox)
 
-    nc_files = list(raw_dir.glob("*.nc"))
-    logger.info("Found %d netCDF files to process", len(nc_files))
+    all_nc_files = list(raw_dir.glob("*.nc"))
+
+    # Filter: only process NC files that haven't produced output TIFFs yet
+    nc_files = []
+    already_processed = []
+    for nc_path in all_nc_files:
+        # Check if any output TIFFs exist for this NC file
+        existing_tiffs = list(processed_dir.glob(f"{nc_path.stem}_*.tif"))
+        if not existing_tiffs:
+            nc_files.append(nc_path)
+        else:
+            already_processed.append(nc_path.name)
+
+    if not nc_files:
+        logger.info(
+            "No unprocessed netCDF files found (all %d already processed)",
+            len(all_nc_files),
+        )
+        return
+
+    logger.info(
+        "Found %d unprocessed netCDF files to process (skipping %d already processed)",
+        len(nc_files),
+        len(already_processed),
+    )
 
     for nc_path in tqdm(nc_files, desc="Processing netCDF files"):
         try:
@@ -219,7 +261,12 @@ def _preprocess_granules(
             continue
 
         try:
-            mask = (ds["wse_uncert"] < 0.3) & (ds["layover_impact"] < 0.3)
+            qf = config.get("quality_filters") or {}
+            max_wse_uncert = qf.get("max_wse_uncert", 0.3)
+            max_layover_impact = qf.get("max_layover_impact", 0.3)
+            mask = (ds["wse_uncert"] < max_wse_uncert) & (
+                ds["layover_impact"] < max_layover_impact
+            )
         except (KeyError, TypeError):
             logger.warning(
                 "Missing required quality fields in %s, skipping", nc_path.name
@@ -284,16 +331,7 @@ def _preprocess_granules(
 
 def _detect_crs(ds: xr.Dataset, nc_path: Path) -> CRS | None:
     """Detect CRS from netCDF metadata or filename."""
-    variables = [
-        "wse",
-        "wse_uncert",
-        "wse_qual",
-        "height_cor_xover",
-        "geoid",
-        "n_wse_pix",
-        "n_other_pix",
-        "layover_impact",
-    ]
+    variables = DEFAULT_VARIABLES
 
     for var in ("crs", "spatial_ref", "transverse_mercator"):
         if var in ds:
@@ -442,8 +480,11 @@ def _merge_rasters(
                     "height": mosaic.shape[1],
                     "transform": out_trans,
                     "crs": f"EPSG:{epsg}",
+                    "nodata": FLOAT32_NODATA_VALUE,
                 }
             )
+            mosaic[mosaic == 0] = FLOAT32_NODATA_VALUE
+            mosaic[mosaic == np.nan] = FLOAT32_NODATA_VALUE
             with rasterio.open(dst_path, "w", **out_meta) as dest:
                 dest.write(mosaic)
         finally:

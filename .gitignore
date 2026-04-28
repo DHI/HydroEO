@@ -153,5 +153,6 @@ dmypy.json
 run.py
 config.yaml
 config_river.yaml
+config_raster.yaml
 notebooks/SWOT_Download.ipynb
 notebooks/swot_examples/*

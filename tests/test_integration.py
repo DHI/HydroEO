@@ -277,7 +277,7 @@ def test_sentinel6_response_shape():
 
 @pytest.mark.integration
 @pytest.mark.sliderule
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(300)
 def test_sliderule_atl13x_query():
     """Live SlideRule atl13x query using confirmed-working AMS coordinates.
 

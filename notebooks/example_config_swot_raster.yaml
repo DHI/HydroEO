@@ -63,7 +63,9 @@ swot_raster:
   # If omitted, merge phase is skipped and individual clipped tiles are kept
   target_crs : "EPSG:4326"  # WGS84 (optional, set to None or omit to skip merging)
   
-  # Quality and processing filters (placeholder for future enhancement)
+  # Quality and processing filters
   quality_filters:
-    # Future filter options will be added here
-    # e.g., elevation_range, confidence_threshold, etc.
+    max_wse_uncert: 0.3
+    max_layover_impact: 0.3
+
+  variables : [wse, wse_uncert, wse_qual]  # omit to use all defaults

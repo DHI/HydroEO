@@ -190,8 +190,11 @@ SWOT raster workflow configuration:
 - `startdate` and `enddate`: temporal range as `[year, month, day]`.
 - `granule_filter`: optional filename pattern to filter granules (e.g., `"*100m*"` for 100m products).
 - `target_crs`: optional target EPSG code for merge/reproject phase (e.g., `"EPSG:32645"` for UTM 45N). If omitted, individual clipped tiles are kept without merging.
+- `variables`: optional list of variables to extract. Defaults to all 8 variables: `wse`, `wse_uncert`, `wse_qual`, `height_cor_xover`, `geoid`, `n_wse_pix`, `n_other_pix`, `layover_impact`. Regardless of the user-supplied list, `wse`, `wse_uncert`, and `layover_impact` are always extracted as they are required for quality masking.
+- `quality_filters.max_wse_uncert`: pixels with `wse_uncert` at or above this value are masked. Default `0.3` (metres).
+- `quality_filters.max_layover_impact`: pixels with `layover_impact` at or above this value are masked. Default `0.3` (metres).
 
-The download phase tracks already-processed granules in `raw/<product>/downloaded.log` to avoid re-downloading on config reruns. Preprocessing extracts 8 default variables (wse, wse_uncert, wse_qual, height_cor_xover, geoid, n_wse_pix, n_other_pix, layover_impact), applies quality filters, clips to AOI geometry if provided, and outputs GeoTIFFs. The merge phase groups clipped tiles by date and variable, merges multiple passes, and reprojects to the target CRS. Raw netCDF files are deleted after preprocessing to save space.
+The download phase tracks already-processed granules in `raw/<product>/downloaded.log` to avoid re-downloading on config reruns. Preprocessing extracts the configured variables, applies quality filters, clips each tile to the AOI, and outputs GeoTIFFs. The merge phase groups clipped tiles by date and variable, merges multiple passes, and reprojects to the target CRS. Only tiles that spatially overlap the AOI are processed — out-of-area tiles (e.g., distant UTM zones fetched by the search API) are discarded before extraction. Raw netCDF files are deleted after preprocessing to save space.
 
 ### Sentinel-3 and Sentinel-6
 - `subset_file_id`: expected source netCDF filename inside each package.
