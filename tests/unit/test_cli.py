@@ -358,7 +358,6 @@ def test_fetch_sentinel_s6_product(tmp_path, monkeypatch):
     monkeypatch.setenv("CREODIAS_PASSWORD", "p")
     with (
         patch("HydroEO.satellites.sentinel.query", return_value=[]) as mock_q,
-        patch("HydroEO.satellites.sentinel.download") as mock_dl,
     ):
         result = runner.invoke(
             app,
