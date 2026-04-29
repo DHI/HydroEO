@@ -13,69 +13,12 @@ import datetime
 
 from HydroEO.waterbody import Reservoirs, Rivers
 from HydroEO import flows
-from HydroEO.satellites.icesat2 import ATL13_DEFAULT_FIELDS
 from HydroEO.satellites.swot.raster import download_raster
 from HydroEO.utils import general
-from HydroEO.validation import (
-    validate_config,
-    SUPPORTED_TRACK_KEYS,
-    DEFAULT_SWOT_HYDROCRON_FIELDS,
-    DEFAULT_SWOT_QUALITY_FILTERS,
-)
+from HydroEO.constants import MISSION_DEFAULTS
+from HydroEO.validation import validate_config
 
 logger = logging.getLogger(__name__)
-
-MISSION_DEFAULTS = {
-    "swot": {
-        "download": False,
-        "process": False,
-        "pld_match_max_distance_m": 100.0,
-        "exclude_obs_id_values": ["no_data"],
-        "hydrocron_fields": DEFAULT_SWOT_HYDROCRON_FIELDS,
-        "quality_filters": DEFAULT_SWOT_QUALITY_FILTERS,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
-    },
-    "icesat2": {
-        "download": False,
-        "process": False,
-        "atl13_fields": ATL13_DEFAULT_FIELDS,
-        "atl13": {"pass_invalid": False, "beams": [], "spots": []},
-        "track_keys": SUPPORTED_TRACK_KEYS,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
-    },
-    "sentinel3": {
-        "download": False,
-        "process": False,
-        "subset_file_id": "enhanced_measurement.nc",
-        "sigma0_max": 1e5,
-        "download_threads": 1,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
-    },
-    "sentinel6": {
-        "download": False,
-        "process": False,
-        "subset_file_id": "enhanced_measurement.nc",
-        "sigma0_max": 1e5,
-        "download_threads": 1,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
-    },
-}
-
-# SlideRule's atl13x always returns the core fields (height, lat/lon in geometry,
-# date index, beam, rgt, cycle_number) — no forced field merging is needed.
-ICESAT2_REQUIRED_FIELDS: list[str] = []
 
 
 @dataclass

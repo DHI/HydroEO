@@ -5,62 +5,22 @@ import datetime
 import logging
 
 from HydroEO.satellites.icesat2 import (
-    ATL13_DEFAULT_FIELDS,
     SR_ATL13_VALID_ANCILLARY_FIELDS,
+    ATL13_DEFAULT_FIELDS,
+)
+from HydroEO.constants import (
+    ICESAT2_SUPPORTED_TRACK_KEYS,
+    SUPPORTED_CLEAN_FILTERS,
+    SWOT_DEFAULT_HYDROCRON_FIELDS,
+    SWOT_DEFAULT_QUALITY_FILTERS,
 )
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_TRACK_KEYS = ["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]
-SUPPORTED_CLEAN_FILTERS = ["elevation", "MAD", "daily_mean", "hampel", "rolling_median"]
-
-DEFAULT_SWOT_HYDROCRON_FIELDS = {
-    "nodes": [
-        "node_id",
-        "node_q",
-        "reach_id",
-        "time_str",
-        "wse",
-        "wse_u",
-        "p_wse",
-        "geoid_hght",
-        "sword_version",
-        "solid_tide",
-        "load_tidef",
-        "pole_tide",
-        "width",
-        "width_u",
-        "p_width",
-        "xovr_cal_q",
-        "rdr_sig0",
-        "xovr_cal_c",
-        "dark_frac",
-    ],
-    "reaches": [
-        "reach_id",
-        "reach_q",
-        "time_str",
-        "wse",
-        "wse_u",
-        "slope",
-        "slope_u",
-        "slope2",
-        "slope2_u",
-        "width",
-        "width_u",
-        "geoid_hght",
-        "solid_tide",
-        "load_tidef",
-        "pole_tide",
-        "p_wse",
-        "p_width",
-    ],
-}
-
-DEFAULT_SWOT_QUALITY_FILTERS = {
-    "nodes": {"max_q": 2},
-    "reaches": {"max_q": 2},
-}
+# Re-export for backward compatibility
+SUPPORTED_TRACK_KEYS = ICESAT2_SUPPORTED_TRACK_KEYS
+DEFAULT_SWOT_HYDROCRON_FIELDS = SWOT_DEFAULT_HYDROCRON_FIELDS
+DEFAULT_SWOT_QUALITY_FILTERS = SWOT_DEFAULT_QUALITY_FILTERS
 
 
 def is_valid_date_tuple(value):
@@ -121,7 +81,9 @@ def validate_config(
         issues.append("Missing required key 'project.main_dir'.")
     else:
         for date_field in ["startdate", "enddate"]:
-            if date_field in cfg["project"] and not is_valid_date_tuple(cfg["project"][date_field]):
+            if date_field in cfg["project"] and not is_valid_date_tuple(
+                cfg["project"][date_field]
+            ):
                 issues.append(
                     f"'project.{date_field}' must be [year, month, day] with valid integer values."
                 )
@@ -349,9 +311,13 @@ def validate_config(
 
         for key in ["startdate", "enddate"]:
             # Allow mission dates to be omitted when project-level dates are provided
-            project_has_date = isinstance(cfg.get("project"), dict) and is_valid_date_tuple(cfg["project"].get(key))
+            project_has_date = isinstance(
+                cfg.get("project"), dict
+            ) and is_valid_date_tuple(cfg["project"].get(key))
             if key not in mission_cfg and not project_has_date:
-                issues.append(f"Missing required key '{mission}.{key}' (or 'project.{key}' as a fallback).")
+                issues.append(
+                    f"Missing required key '{mission}.{key}' (or 'project.{key}' as a fallback)."
+                )
             elif key in mission_cfg and not is_valid_date_tuple(mission_cfg[key]):
                 issues.append(
                     f"'{mission}.{key}' must be [year, month, day] with valid integer values."
