@@ -215,15 +215,14 @@ def test_project_accepts_rivers_aoi_branch(tmp_path, monkeypatch, _mock_river_gd
         lambda *_args, **_kwargs: _mock_river_gdf.copy(),
     )
 
-    def _mock_prepare_from_sword(self, local_crs):
-        _ = local_crs
-        self.target_features = _mock_river_gdf.copy()
-        self.target_id_col = "reach_id"
-        self.target_ids = [1001]
+    def _mock_initialize_rivers(prj):
+        prj.rivers.target_features = _mock_river_gdf.copy()
+        prj.rivers.target_id_col = "reach_id"
+        prj.rivers.target_ids = [1001]
 
     monkeypatch.setattr(
-        "HydroEO.project.Rivers.prepare_from_sword",
-        _mock_prepare_from_sword,
+        "HydroEO.project.flows.initialize_rivers",
+        _mock_initialize_rivers,
     )
 
     proj = Project(name="rivers-aoi", config=str(cfg_path))
@@ -243,7 +242,11 @@ def test_project_accepts_rivers_node_number_branch(tmp_path):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"feature_numbers": [10, 11, 12], "feature_type": "nodes", "id": "demo-river"},
+            "rivers": {
+                "feature_numbers": [10, 11, 12],
+                "feature_type": "nodes",
+                "id": "demo-river",
+            },
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -271,7 +274,11 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"feature_numbers": [10, 11, 12], "feature_type": "nodes", "id": "demo-river"},
+            "rivers": {
+                "feature_numbers": [10, 11, 12],
+                "feature_type": "nodes",
+                "id": "demo-river",
+            },
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -282,10 +289,12 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
     )
 
     def _unexpected_prepare(*_args, **_kwargs):
-        raise AssertionError("prepare_from_sword should not be called for feature_numbers")
+        raise AssertionError(
+            "_prepare_rivers_from_sword should not be called for feature_numbers"
+        )
 
     monkeypatch.setattr(
-        "HydroEO.project.Rivers.prepare_from_sword",
+        "HydroEO.flows._prepare_rivers_from_sword",
         _unexpected_prepare,
     )
 
@@ -304,7 +313,11 @@ def test_initialize_logs_resolved_river_target_ids(tmp_path, caplog):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"feature_numbers": [21, 22], "feature_type": "reaches", "id": "demo-river"},
+            "rivers": {
+                "feature_numbers": [21, 22],
+                "feature_type": "reaches",
+                "id": "demo-river",
+            },
             "icesat2": {
                 "download": False,
                 "process": False,
@@ -346,7 +359,11 @@ def test_project_applies_swot_hydrocron_defaults_for_rivers(tmp_path):
         {
             "project": {"main_dir": str(tmp_path / "out")},
             "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {"feature_numbers": [10], "feature_type": "nodes", "id": "demo-river"},
+            "rivers": {
+                "feature_numbers": [10],
+                "feature_type": "nodes",
+                "id": "demo-river",
+            },
             "swot": {
                 "download": True,
                 "process": False,
@@ -412,7 +429,12 @@ def test_validate_config_rejects_aoi_path_with_number_inputs():
     proj = Project.__new__(Project)
     proj.config = {
         "project": {"main_dir": "/tmp/hydroeo"},
-        "rivers": {"aoi_path": "/tmp/aoi.gpkg", "feature_numbers": [1], "feature_type": "nodes", "id": "r"},
+        "rivers": {
+            "aoi_path": "/tmp/aoi.gpkg",
+            "feature_numbers": [1],
+            "feature_type": "nodes",
+            "id": "r",
+        },
     }
 
     with pytest.raises(ValueError, match="mutually exclusive"):

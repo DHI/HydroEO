@@ -12,6 +12,7 @@ import geopandas as gpd
 import datetime
 
 from HydroEO.waterbody import Reservoirs, Rivers
+from HydroEO import flows
 from HydroEO.satellites.icesat2 import ATL13_DEFAULT_FIELDS
 from HydroEO.satellites.swot.raster import download_raster
 from HydroEO.utils import general
@@ -114,7 +115,7 @@ class Project:
             self.config = {}
 
         self._apply_optional_defaults()
-        self.validate_config()
+        validate_config(self.config)
 
         ### Define the project directory for saving outputs, etc
         if "project" in self.config.keys():
@@ -384,11 +385,6 @@ class Project:
         # SlideRule returns core fields (height, lat/lon, date, rgt, cycle_number, beam)
         # by default — no forced field merging required.
 
-    def validate_config(self):
-        """Validate loaded config and report all discovered issues at once."""
-        validate_config(self.config)
-        return True
-
     def report(self):
         logger.info("Project Name: %s", self.name)
         if hasattr(self, "rivers"):
@@ -404,52 +400,27 @@ class Project:
             )
         return (self.creodias_user, self.creodias_pass)
 
-    def initialize(self):
-        self.validate_config()
+    def validate_config(self):
+        """Validate loaded config and report all discovered issues at once.
 
+        This is kept for backward compatibility with tests. Validation
+        is performed automatically in __post_init__().
+        """
+        validate_config(self.config)
+        return True
+
+    def initialize(self):
         # Checks that we have all information needed for downloads
         if hasattr(self, "reservoirs"):
-            # if we are processing swot data then we will need
-            if "swot" in self.to_download or "swot" in self.to_process:
-                # download PLD if needed
-                self.reservoirs.download_pld(overwrite=False)
-
-                # load the pld and associate the reservoirs with a "lake id"
-                self.reservoirs.assign_pld_id(
-                    local_crs=self.local_crs,
-                    max_distance=self.mission_options.get("swot", {}).get(
-                        "pld_match_max_distance_m", 100
-                    ),
-                )  # take the downloaded PLD and see where we have overlap with the input reservoirs
-                self.reservoirs.flag_missing_priors()  # flag and export which reservoirs have entries in the PLD
-
-            # assign download geometry (for reservoirs this is the same as the input boundaries)
-            self.reservoirs.download_gdf = self.reservoirs.gdf
-
+            flows.initialize_reservoirs(self)
         if hasattr(self, "rivers"):
-            self.rivers.prepare_download_targets(local_crs=self.local_crs)
-            id_label = "node" if self.rivers.target_id_col == "node_id" else "reach"
-            logger.info(
-                "Initialized river %s ids: %s",
-                id_label,
-                ", ".join(str(target_id) for target_id in self.rivers.target_ids),
-            )
+            flows.initialize_rivers(self)
 
     def download(self):
         if hasattr(self, "reservoirs"):
-            self.reservoirs.download(
-                to_download=self.to_download,
-                startdates=self.startdates,
-                enddates=self.enddates,
-                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
-                creodias_credentials_provider=self._require_creodias_credentials,
-            )
+            flows.download_reservoirs(self)
         if hasattr(self, "rivers"):
-            self.rivers.download(
-                to_download=self.to_download,
-                startdates=self.startdates,
-                enddates=self.enddates,
-            )
+            flows.download_rivers(self)
         if hasattr(self, "swot_raster_config"):
             download_raster(
                 config=self.swot_raster_config,
@@ -500,10 +471,7 @@ class Project:
     def create_timeseries(self):
         warnings.filterwarnings("ignore", module="pyogrio\\..*")
         if hasattr(self, "reservoirs"):
-            self.reservoirs.process(
-                to_process=self.to_process,
-                processing_options=self.processing_options,
-            )
+            flows.create_reservoirs_timeseries(self)
         if hasattr(self, "rivers"):
             logger.warning(
                 "Rivers preprocessing is not implemented yet; skipping create_timeseries for rivers."
@@ -512,7 +480,7 @@ class Project:
     def generate_summaries(self, show=False, save=True):
         warnings.filterwarnings("ignore", module="pandas\\..*")
         if hasattr(self, "reservoirs"):
-            self.reservoirs.summarize(show=show, save=save)
+            flows.generate_reservoirs_summaries(self, show=show, save=save)
         if hasattr(self, "rivers"):
             logger.warning(
                 "Rivers plotting is not implemented yet; skipping generate_summaries for rivers."
