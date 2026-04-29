@@ -24,6 +24,7 @@ from HydroEO.satellites.swot.raster import (
     _preprocess_granules,
     _merge_and_reproject_granules,
     _detect_crs,
+    _resampling_for,
 )
 
 
@@ -670,3 +671,104 @@ def test_detect_crs_utm_zones(utm_zone):
 
     assert result is not None
     assert result.to_epsg() == (32600 + utm_zone)  # UTM zone to EPSG
+
+
+@pytest.mark.unit
+def test_swot_raster_download_function_accepts_expected_params():
+    """download_raster is importable and has the expected signature."""
+    import inspect
+
+    sig = inspect.signature(download_raster)
+    assert "config" in sig.parameters
+    assert "project_dir" in sig.parameters
+    assert "credentials" in sig.parameters
+
+
+@pytest.mark.unit
+def test_swot_raster_resampling_selection():
+    """_resampling_for returns correct Resampling enum values."""
+    from rasterio.warp import Resampling
+
+    assert _resampling_for("wse") == Resampling.bilinear
+    assert _resampling_for("wse_uncert") == Resampling.bilinear
+    assert _resampling_for("geoid") == Resampling.bilinear
+    assert _resampling_for("height_cor_xover") == Resampling.bilinear
+
+    assert _resampling_for("n_wse_pix") == Resampling.nearest
+    assert _resampling_for("n_other_pix") == Resampling.nearest
+    assert _resampling_for("wse_qual") == Resampling.nearest
+
+
+@pytest.mark.unit
+def test_swot_raster_crs_detection_from_filename(tmp_path):
+    """_detect_crs extracts UTM CRS from SWOT filename."""
+    import xarray as xr
+
+    ds = xr.Dataset()
+    utm_file = (
+        tmp_path
+        / "SWOT_L2_HR_Raster_D_123_001_UTM45N_20240101T120000_20240101T130000.nc"
+    )
+    crs = _detect_crs(ds, utm_file)
+
+    assert crs is not None
+    assert crs.to_epsg() == 32645  # UTM 45N
+
+
+@pytest.mark.unit
+def test_swot_raster_no_processed_files_skips_merge(tmp_path, caplog):
+    """download_raster skips merge when no processed TIF files exist."""
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+    }
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+
+    with (
+        patch("HydroEO.satellites.swot.raster._download_granules", return_value=[]),
+        patch("HydroEO.satellites.swot.raster._preprocess_granules"),
+    ):
+        with caplog.at_level("INFO"):
+            download_raster(
+                config=config,
+                project_dir=str(project_dir),
+                credentials=("user", "pass"),
+            )
+
+    assert "No processed TIF files found" in caplog.text
+
+
+@pytest.mark.unit
+def test_swot_raster_merge_with_existing_files(tmp_path, caplog):
+    """download_raster calls merge when processed TIF files exist."""
+    config = {
+        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+        "product": "SWOT_L2_HR_Raster_D",
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 2, 1],
+    }
+    project_dir = tmp_path / "project"
+    processed_dir = (
+        project_dir / "swot_raster" / "test_aoi" / "processed" / "SWOT_L2_HR_Raster_D"
+    )
+    processed_dir.mkdir(parents=True)
+    (processed_dir / "20240101T120000_wse.tif").touch()
+
+    with (
+        patch("HydroEO.satellites.swot.raster._download_granules", return_value=[]),
+        patch(
+            "HydroEO.satellites.swot.raster._merge_and_reproject_granules"
+        ) as mock_merge,
+    ):
+        with caplog.at_level("INFO"):
+            download_raster(
+                config=config,
+                project_dir=str(project_dir),
+                credentials=("user", "pass"),
+            )
+
+    mock_merge.assert_called_once()
+    assert "Found 1 processed TIF files" in caplog.text

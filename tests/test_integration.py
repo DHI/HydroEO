@@ -326,19 +326,21 @@ def test_hydrocron_river_download_writes_filtered_csv(tmp_path):
     No credentials required — Hydrocron is a public NASA PO.DAAC endpoint.
     The node 23221000160051 is confirmed to have SWOT data from 2024-01-01.
     """
-    import geopandas as gpd
-    from HydroEO.waterbody import Rivers
+    import pandas as pd
+    from HydroEO import flows
+    from types import SimpleNamespace
 
     swot_dir = tmp_path / "swot"
-    rivers = Rivers(
-        gdf=gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs="EPSG:4326"),
-        id_key="river_id",
-        dirs={"main": str(tmp_path), "swot": str(swot_dir)},
-    )
-    rivers.target_id_col = "node_id"
-    rivers.target_ids = [_HYDROCRON_TEST_NODE_ID]
-    rivers.configured_id = "loire"
-    rivers.mission_options = {
+
+    # Create a minimal mock Project object with the required attributes
+    prj = SimpleNamespace()
+    prj.dirs = {"main": str(tmp_path), "swot": str(swot_dir)}
+    prj.rivers = SimpleNamespace()
+    prj.rivers.target_id_col = "node_id"
+    prj.rivers.target_ids = [_HYDROCRON_TEST_NODE_ID]
+    prj.rivers.target_features = None
+    prj.rivers.configured_id = "loire"
+    prj.mission_options = {
         "swot": {
             "hydrocron_fields": {
                 "nodes": ["node_id", "node_q", "time_str", "wse"],
@@ -351,39 +353,25 @@ def test_hydrocron_river_download_writes_filtered_csv(tmp_path):
         }
     }
 
-    summary = rivers.download_swot_hydrocron(
-        startdate=[2024, 1, 1],
-        enddate=[2024, 6, 1],
-        update_existing=False,
-    )
-
-    assert summary["requested"] == 1, "Expected 1 requested target"
-    assert summary["failed"] == 0, (
-        f"Expected no failures, got {summary['failed']}. "
-        "Check Hydrocron endpoint or node_id validity."
-    )
-    assert summary["successful"] + summary["empty_after_filter"] == 1, (
-        "The one target must be either successful or empty-after-filter."
+    flows._download_swot_hydrocron_timeseries(
+        prj,
+        startdate=datetime.date(2024, 1, 1),
+        enddate=datetime.date(2024, 6, 1),
     )
 
     output_path = swot_dir / "rivers" / "loire" / "timeseries.csv"
-    if summary["successful"] == 1:
-        assert output_path.exists(), (
-            f"Expected timeseries CSV at {output_path} but file was not created."
-        )
-        import pandas as pd
+    assert output_path.exists(), f"Expected output CSV at {output_path}"
 
-        df = pd.read_csv(output_path)
-        assert "node_id" in df.columns, (
-            f"Expected 'node_id' column in output CSV. Got: {list(df.columns)}"
-        )
-        assert "wse" in df.columns, (
-            f"Expected 'wse' column in output CSV. Got: {list(df.columns)}"
-        )
-        assert "node_q" in df.columns, (
-            f"Expected 'node_q' column in output CSV. Got: {list(df.columns)}"
-        )
-        assert (df["node_q"] <= 2).all(), (
-            f"Quality filter failed — found node_q > 2: {df['node_q'].unique()}"
-        )
-        assert len(df) > 0, "Quality-filtered output CSV must have at least 1 row."
+    df = pd.read_csv(output_path)
+    assert not df.empty, "Output CSV should not be empty"
+    assert "node_id" in df.columns, (
+        f"Expected 'node_id' column, got: {list(df.columns)}"
+    )
+    assert "node_q" in df.columns, f"Expected 'node_q' column, got: {list(df.columns)}"
+    assert "wse" in df.columns, f"Expected 'wse' column, got: {list(df.columns)}"
+
+    # Check that quality filtering was applied (all values <= 2)
+    quality_vals = df["node_q"].dropna()
+    assert (quality_vals <= 2).all(), (
+        f"Expected all node_q values <= 2, got max={quality_vals.max()}"
+    )

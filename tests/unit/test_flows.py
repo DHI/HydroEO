@@ -1,267 +1,543 @@
-"""Unit tests for waterbody orchestration methods and SWOT raster pipeline."""
+"""Unit tests for flows.py orchestration functions."""
 
+import datetime
+import os
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import geopandas as gpd
 import pandas as pd
 import pytest
-from unittest.mock import patch, MagicMock, call
+from shapely.geometry import box, Point
 
+from HydroEO import flows
 from HydroEO.waterbody import Reservoirs, Rivers
-from HydroEO.satellites.swot.raster import _resampling_for, _detect_crs, download_raster
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-_STARTDATES = {
-    "swot": [2024, 1, 1],
-    "icesat2": [2024, 1, 2],
-    "sentinel3": [2024, 1, 3],
-    "sentinel6": [2024, 1, 4],
-}
-
-_ENDDATES = {
-    "swot": [2024, 2, 1],
-    "icesat2": [2024, 2, 2],
-    "sentinel3": [2024, 2, 3],
-    "sentinel6": [2024, 2, 4],
-}
+# ============================================================================
+# Fixtures
+# ============================================================================
 
 
-# ---------------------------------------------------------------------------
-# Reservoirs.download()
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_reservoirs_download_dispatches_products_and_credentials():
-    mock_res = MagicMock(spec=Reservoirs)
-
-    Reservoirs.download(
-        mock_res,
-        to_download=["swot", "icesat2", "sentinel3", "sentinel6"],
-        startdates=_STARTDATES,
-        enddates=_ENDDATES,
-        earthdata_credentials=("edl-user", "edl-pass"),
-        creodias_credentials_provider=lambda: ("creo-user", "creo-pass"),
-        update_existing=True,
-        enddate_overrides={"swot": [2024, 3, 1]},
+@pytest.fixture
+def mock_project_reservoirs(tmp_path):
+    """Create a mock Project with Reservoirs configuration."""
+    gdf = gpd.GeoDataFrame(
+        {"id": [1, 2], "geometry": [box(0, 0, 1, 1), box(1, 1, 2, 2)]},
+        crs="EPSG:4326",
     )
+    prj = SimpleNamespace()
+    prj.dirs = {
+        "main": str(tmp_path),
+        "output": str(tmp_path / "reservoirs"),
+        "swot": str(tmp_path / "swot"),
+        "icesat2": str(tmp_path / "icesat2"),
+        "sentinel3": str(tmp_path / "sentinel3"),
+        "sentinel6": str(tmp_path / "sentinel6"),
+        "pld": str(tmp_path / "pld.shp"),
+    }
+    prj.reservoirs = Reservoirs(gdf=gdf, id_key="id", dirs=prj.dirs)
+    prj.reservoirs.download_gdf = gdf
+    prj.local_crs = "EPSG:3857"
+    prj.startdates = {
+        "swot": [2024, 1, 1],
+        "icesat2": [2024, 1, 1],
+        "sentinel3": [2024, 1, 1],
+        "sentinel6": [2024, 1, 1],
+    }
+    prj.enddates = {
+        "swot": [2024, 2, 1],
+        "icesat2": [2024, 2, 1],
+        "sentinel3": [2024, 2, 1],
+        "sentinel6": [2024, 2, 1],
+    }
+    prj.mission_options = {
+        "swot": {"exclude_obs_id_values": ["no_data"]},
+        "icesat2": {"atl13_fields": None, "track_keys": None},
+        "sentinel3": {"sigma0_max": 1e5},
+        "sentinel6": {"sigma0_max": 1e5},
+    }
+    return prj
 
-    calls = mock_res.download_altimetry.call_args_list
-    assert len(calls) == 4
 
-    swot_kw = calls[0].kwargs
-    assert swot_kw["product"] == "SWOT_LAKE"
-    assert swot_kw["enddate"] == [2024, 3, 1]
-    assert swot_kw["update_existing"] is True
+@pytest.fixture
+def mock_project_rivers(tmp_path):
+    """Create a mock Project with Rivers configuration."""
+    gdf = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs="EPSG:4326")
+    prj = SimpleNamespace()
+    prj.dirs = {
+        "main": str(tmp_path),
+        "output": str(tmp_path / "rivers"),
+        "swot": str(tmp_path / "swot"),
+        "sword": str(tmp_path / "SWORD_v17b_gpkg" / "gpkg"),
+    }
+    prj.rivers = Rivers(gdf=gdf, id_key="river_id", dirs=prj.dirs)
+    prj.rivers.target_ids = [101, 102]
+    prj.rivers.target_id_col = "node_id"
+    prj.rivers.target_features = None
+    prj.rivers.configured_id = "loire"
+    prj.rivers.input_mode = "configured_id"
+    prj.local_crs = "EPSG:3857"
+    prj.startdates = {"swot": [2024, 1, 1]}
+    prj.enddates = {"swot": [2024, 2, 1]}
+    prj.mission_options = {
+        "swot": {
+            "hydrocron_fields": {
+                "nodes": ["node_id", "node_q", "time_str", "wse"],
+                "reaches": ["reach_id", "reach_q", "time_str", "wse"],
+            },
+            "quality_filters": {
+                "nodes": {"max_q": 2},
+                "reaches": {"max_q": 2},
+            },
+        }
+    }
+    return prj
 
-    icesat2_kw = calls[1].kwargs
-    assert icesat2_kw["product"] == "ATL13"
-    assert icesat2_kw["credentials"] == ("edl-user", "edl-pass")
 
-    s3_kw = calls[2].kwargs
-    assert s3_kw["product"] == "S3"
-    assert s3_kw["credentials"] == ("creo-user", "creo-pass")
-
-    s6_kw = calls[3].kwargs
-    assert s6_kw["product"] == "S6"
-    assert s6_kw["credentials"] == ("creo-user", "creo-pass")
-
-
-# ---------------------------------------------------------------------------
-# Reservoirs.process()
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Initialization Tests
+# ============================================================================
 
 
 @pytest.mark.unit
-def test_reservoirs_process_runs_extract_clean_merge_in_order():
-    mock_res = MagicMock(spec=Reservoirs)
+def test_initialize_reservoirs_with_pld_download(mock_project_reservoirs, monkeypatch):
+    """initialize_reservoirs calls _download_pld when enabled."""
+    mock_project_reservoirs.to_download = ["swot"]
+    mock_project_reservoirs.to_process = []
+
+    with (
+        patch.object(flows, "_download_pld") as mock_download,
+        patch.object(flows, "_assign_pld_id") as mock_assign,
+        patch.object(flows, "_flag_missing_priors") as mock_flag,
+    ):
+        flows.initialize_reservoirs(mock_project_reservoirs)
+
+        # Verify all helper functions are called
+        mock_download.assert_called_once_with(mock_project_reservoirs)
+        mock_assign.assert_called_once_with(mock_project_reservoirs)
+        mock_flag.assert_called_once_with(mock_project_reservoirs)
+
+
+@pytest.mark.unit
+def test_initialize_rivers_aoi_branch(mock_project_rivers):
+    """initialize_rivers calls _prepare_rivers_from_sword for aoi_path mode."""
+    mock_project_rivers.rivers.input_mode = "aoi_path"
+    mock_project_rivers.rivers.aoi_gdf = gpd.GeoDataFrame(
+        {"river_id": ["a"], "geometry": [box(0, 0, 1, 1)]},
+        crs="EPSG:4326",
+    )
+    mock_project_rivers.rivers.continent_key = "eu"
+    mock_project_rivers.rivers.feature_type = "nodes"
+    mock_project_rivers.rivers.buffer_meters = 500
+
+    with patch.object(flows, "_prepare_rivers_from_sword") as mock_prepare:
+        flows.initialize_rivers(mock_project_rivers)
+        mock_prepare.assert_called_once_with(mock_project_rivers)
+
+
+@pytest.mark.unit
+def test_initialize_rivers_configured_id_branch(mock_project_rivers):
+    """initialize_rivers skips SWORD for configured_id mode."""
+    mock_project_rivers.rivers.input_mode = "configured_id"
+
+    with patch.object(flows, "_prepare_rivers_from_sword") as mock_prepare:
+        flows.initialize_rivers(mock_project_rivers)
+        mock_prepare.assert_not_called()
+
+
+@pytest.mark.unit
+def test_initialize_rivers_logs_target_ids(mock_project_rivers, caplog):
+    """initialize_rivers logs resolved target IDs."""
+    import logging
+
+    mock_project_rivers.rivers.input_mode = "configured_id"
+    mock_project_rivers.rivers.target_ids = [101, 102, 103]
+    mock_project_rivers.rivers.target_id_col = "node_id"
+
+    with caplog.at_level(logging.INFO):
+        flows.initialize_rivers(mock_project_rivers)
+
+    assert "Initialized river node ids" in caplog.text
+    assert "101, 102, 103" in caplog.text
+
+
+# ============================================================================
+# Download Orchestration Tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_reservoirs_dispatches_swot(mock_project_reservoirs):
+    """download_reservoirs calls _download_reservoirs_swot when enabled."""
+    mock_project_reservoirs.to_download = ["swot"]
+
+    with (
+        patch.object(flows, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows, "_download_reservoirs_icesat2") as mock_ice,
+        patch.object(flows, "_download_reservoirs_sentinel") as mock_sent,
+    ):
+        flows.download_reservoirs(mock_project_reservoirs)
+
+        mock_swot.assert_called_once_with(mock_project_reservoirs)
+        mock_ice.assert_not_called()
+        mock_sent.assert_not_called()
+
+
+@pytest.mark.unit
+def test_download_reservoirs_dispatches_all_missions(mock_project_reservoirs):
+    """download_reservoirs dispatches all enabled satellite missions."""
+    mock_project_reservoirs.to_download = [
+        "swot",
+        "icesat2",
+        "sentinel3",
+        "sentinel6",
+    ]
+
+    with (
+        patch.object(flows, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows, "_download_reservoirs_icesat2") as mock_ice,
+        patch.object(flows, "_download_reservoirs_sentinel") as mock_sent,
+    ):
+        flows.download_reservoirs(mock_project_reservoirs)
+
+        mock_swot.assert_called_once()
+        mock_ice.assert_called_once()
+        assert mock_sent.call_count == 2  # sentinel3 and sentinel6
+
+
+@pytest.mark.unit
+def test_download_reservoirs_skips_disabled_missions(mock_project_reservoirs):
+    """download_reservoirs skips missions not in to_download."""
+    mock_project_reservoirs.to_download = ["swot"]
+
+    with (
+        patch.object(flows, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows, "_download_reservoirs_icesat2") as mock_ice,
+    ):
+        flows.download_reservoirs(mock_project_reservoirs)
+
+        mock_swot.assert_called_once()
+        mock_ice.assert_not_called()
+
+
+@pytest.mark.unit
+def test_download_rivers_calls_hydrocron(mock_project_rivers):
+    """download_rivers calls _download_swot_hydrocron_timeseries."""
+    mock_project_rivers.to_download = ["swot"]
+
+    with patch.object(flows, "_download_swot_hydrocron_timeseries") as mock_hydrocron:
+        flows.download_rivers(mock_project_rivers)
+
+        mock_hydrocron.assert_called_once()
+        call_args = mock_hydrocron.call_args
+        assert call_args[0][0] == mock_project_rivers
+        assert isinstance(call_args[0][1], datetime.date)
+        assert isinstance(call_args[0][2], datetime.date)
+
+
+@pytest.mark.unit
+def test_download_rivers_skips_when_swot_not_in_to_download(mock_project_rivers):
+    """download_rivers returns early if swot not in to_download."""
+    mock_project_rivers.to_download = ["icesat2"]
+
+    with patch.object(flows, "_download_swot_hydrocron_timeseries") as mock_hydrocron:
+        flows.download_rivers(mock_project_rivers)
+        mock_hydrocron.assert_not_called()
+
+
+# ============================================================================
+# Timeseries Processing Tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_create_reservoirs_timeseries_orchestrates_steps(mock_project_reservoirs):
+    """create_reservoirs_timeseries calls extract, clean, and merge in order."""
+    mock_project_reservoirs.to_process = ["swot", "icesat2"]
+    mock_project_reservoirs.processing_options = {}
+
     call_order = []
 
-    mock_res.extract_product_timeseries.side_effect = lambda p: call_order.append(
-        "extract"
-    )
-    mock_res.clean_product_timeseries.side_effect = (
-        lambda products, filter_options_by_product: call_order.append("clean")
-    )
-    mock_res.merge_product_timeseries.side_effect = lambda products: call_order.append(
-        "merge"
-    )
+    def track_extract(prj):
+        call_order.append("extract")
 
-    Reservoirs.process(
-        mock_res,
-        to_process=["swot", "icesat2"],
-        processing_options={"swot": {"processing_filters": ["elevation"]}},
-    )
+    def track_clean(prj):
+        call_order.append("clean")
 
-    assert call_order == ["extract", "clean", "merge"]
-    mock_res.extract_product_timeseries.assert_called_once_with(["swot", "icesat2"])
-    mock_res.merge_product_timeseries.assert_called_once_with(
-        products=["swot", "icesat2"]
-    )
+    def track_merge(prj):
+        call_order.append("merge")
 
+    with (
+        patch.object(
+            flows, "_extract_reservoirs_timeseries", side_effect=track_extract
+        ),
+        patch.object(flows, "_clean_reservoirs_timeseries", side_effect=track_clean),
+        patch.object(flows, "_merge_reservoirs_timeseries", side_effect=track_merge),
+    ):
+        flows.create_reservoirs_timeseries(mock_project_reservoirs)
 
-# ---------------------------------------------------------------------------
-# Reservoirs.summarize()
-# ---------------------------------------------------------------------------
+        # Verify all called and in order
+        assert call_order == ["extract", "clean", "merge"]
 
 
 @pytest.mark.unit
-def test_reservoirs_summarize_runs_all_steps_for_each_reservoir():
-    mock_res = MagicMock(spec=Reservoirs)
-    mock_res.download_gdf = pd.DataFrame({"rid": ["A", "B"]})
-    mock_res.id_key = "rid"
-
-    Reservoirs.summarize(mock_res, show=False, save=True)
-
-    mock_res.summarize_crossings_by_id.assert_has_calls(
-        [call("A", show=False, save=True), call("B", show=False, save=True)]
+def test_generate_reservoirs_summaries_iterates_ids(mock_project_reservoirs):
+    """generate_reservoirs_summaries loops over download_gdf IDs."""
+    mock_project_reservoirs.reservoirs.download_gdf = pd.DataFrame(
+        {"id": [1, 2], "geometry": [None, None]}
     )
-    mock_res.summarize_cleaning_by_id.assert_has_calls(
-        [call("A", show=False, save=True), call("B", show=False, save=True)]
-    )
-    mock_res.summarize_merging_by_id.assert_has_calls(
-        [call("A", show=False, save=True), call("B", show=False, save=True)]
-    )
-    assert mock_res.summarize_crossings_by_id.call_count == 2
-    assert mock_res.summarize_cleaning_by_id.call_count == 2
-    assert mock_res.summarize_merging_by_id.call_count == 2
 
-
-# ---------------------------------------------------------------------------
-# Rivers.download()
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_rivers_download_dispatches_swot_and_skips_other_missions(caplog):
-    mock_rivers = MagicMock(spec=Rivers)
-    mock_rivers.download_swot_hydrocron.return_value = {
-        "requested": 1,
-        "successful": 1,
-        "failed": 0,
-        "empty_after_filter": 0,
-    }
-
-    with caplog.at_level("WARNING"):
-        Rivers.download(
-            mock_rivers,
-            to_download=["swot", "icesat2"],
-            startdates={"swot": [2024, 1, 1], "icesat2": [2024, 1, 1]},
-            enddates={"swot": [2024, 2, 1], "icesat2": [2024, 2, 1]},
-            update_existing=True,
-            enddate_overrides={"swot": [2024, 3, 1]},
+    with (
+        patch.object(flows, "_load_product_timeseries"),
+        patch("HydroEO.flows.plotting.plot_crossings") as mock_plot,
+        patch("HydroEO.flows.plotting.plot_cleaning"),
+        patch("HydroEO.flows.plotting.plot_merging"),
+    ):
+        flows.generate_reservoirs_summaries(
+            mock_project_reservoirs, show=False, save=False
         )
 
-    mock_rivers.download_swot_hydrocron.assert_called_once_with(
-        startdate=[2024, 1, 1],
-        enddate=[2024, 3, 1],
-        update_existing=True,
+        # Verify plotting functions were called
+        assert mock_plot.call_count >= 2
+
+
+# ============================================================================
+# Helper Function Tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_group_river_targets_by_waterbody_from_features(mock_project_rivers):
+    """_group_river_targets_by_waterbody uses target_features when available."""
+    mock_project_rivers.rivers.target_features = gpd.GeoDataFrame(
+        {
+            "node_id": [101, 102, 201],
+            "river_id": ["Loire", "Loire", "Rhine"],
+            "geometry": [None, None, None],
+        }
     )
-    assert "Skipping unsupported river mission" in caplog.text
+    mock_project_rivers.rivers.target_id_col = "node_id"
+    mock_project_rivers.rivers.id_key = "river_id"
 
+    result = flows._group_river_targets_by_waterbody(mock_project_rivers)
 
-# ---------------------------------------------------------------------------
-# SWOT raster free functions
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_swot_raster_download_function_accepts_expected_params():
-    """download_raster is importable and has the expected signature."""
-    import inspect
-
-    sig = inspect.signature(download_raster)
-    assert "config" in sig.parameters
-    assert "project_dir" in sig.parameters
-    assert "credentials" in sig.parameters
+    assert result == {"Loire": [101, 102], "Rhine": [201]}
 
 
 @pytest.mark.unit
-def test_swot_raster_resampling_selection():
-    """_resampling_for returns correct Resampling enum values."""
-    from rasterio.warp import Resampling
+def test_group_river_targets_by_waterbody_from_configured_id(mock_project_rivers):
+    """_group_river_targets_by_waterbody falls back to configured_id."""
+    mock_project_rivers.rivers.target_features = None
+    mock_project_rivers.rivers.configured_id = "loire"
+    mock_project_rivers.rivers.target_ids = [101, 102]
 
-    assert _resampling_for("wse") == Resampling.bilinear
-    assert _resampling_for("wse_uncert") == Resampling.bilinear
-    assert _resampling_for("geoid") == Resampling.bilinear
-    assert _resampling_for("height_cor_xover") == Resampling.bilinear
+    result = flows._group_river_targets_by_waterbody(mock_project_rivers)
 
-    assert _resampling_for("n_wse_pix") == Resampling.nearest
-    assert _resampling_for("n_other_pix") == Resampling.nearest
-    assert _resampling_for("wse_qual") == Resampling.nearest
+    assert result == {"loire": [101, 102]}
 
 
 @pytest.mark.unit
-def test_swot_raster_crs_detection_from_filename(tmp_path):
-    """_detect_crs extracts UTM CRS from SWOT filename."""
-    import xarray as xr
+def test_group_river_targets_by_waterbody_raises_when_unconfigured(mock_project_rivers):
+    """_group_river_targets_by_waterbody raises ValueError when no config."""
+    mock_project_rivers.rivers.target_features = None
+    mock_project_rivers.rivers.configured_id = None
 
-    ds = xr.Dataset()
-    utm_file = (
-        tmp_path
-        / "SWOT_L2_HR_Raster_D_123_001_UTM45N_20240101T120000_20240101T130000.nc"
+    with pytest.raises(ValueError, match="Unable to group river targets"):
+        flows._group_river_targets_by_waterbody(mock_project_rivers)
+
+
+@pytest.mark.unit
+def test_get_latest_hydrocron_obs_date_returns_none_when_missing(tmp_path):
+    """_get_latest_hydrocron_obs_date returns None when file doesn't exist."""
+    missing_path = tmp_path / "nonexistent.csv"
+
+    result = flows._get_latest_hydrocron_obs_date(str(missing_path))
+
+    assert result is None
+
+
+@pytest.mark.unit
+def test_get_latest_hydrocron_obs_date_parses_existing_csv(tmp_path):
+    """_get_latest_hydrocron_obs_date extracts latest timestamp from CSV."""
+    csv_path = tmp_path / "timeseries.csv"
+    df = pd.DataFrame(
+        {
+            "time_str": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-05T00:00:00Z",
+                "2024-01-03T00:00:00Z",
+            ]
+        }
     )
-    crs = _detect_crs(ds, utm_file)
+    df.to_csv(csv_path, index=False)
 
-    assert crs is not None
-    assert crs.to_epsg() == 32645  # UTM 45N
+    result = flows._get_latest_hydrocron_obs_date(str(csv_path))
+
+    assert result == datetime.date(2024, 1, 5)
 
 
 @pytest.mark.unit
-def test_swot_raster_no_processed_files_skips_merge(tmp_path, caplog):
-    """download_raster skips merge when no processed TIF files exist."""
-    config = {
-        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
-        "product": "SWOT_L2_HR_Raster_D",
-        "startdate": [2024, 1, 1],
-        "enddate": [2024, 2, 1],
-    }
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
+def test_get_latest_hydrocron_obs_date_handles_invalid_csv(tmp_path):
+    """_get_latest_hydrocron_obs_date handles malformed CSV gracefully."""
+    csv_path = tmp_path / "broken.csv"
+    csv_path.write_text("this is not valid csv, broken here\n")
+
+    result = flows._get_latest_hydrocron_obs_date(str(csv_path))
+
+    assert result is None
+
+
+@pytest.mark.unit
+def test_get_latest_hydrocron_obs_date_handles_missing_time_str_column(tmp_path):
+    """_get_latest_hydrocron_obs_date returns None if time_str column missing."""
+    csv_path = tmp_path / "no_time_str.csv"
+    df = pd.DataFrame({"node_id": [101, 102], "wse": [10.5, 11.0]})
+    df.to_csv(csv_path, index=False)
+
+    result = flows._get_latest_hydrocron_obs_date(str(csv_path))
+
+    assert result is None
+
+
+# ============================================================================
+# PLD Workflow Tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_pld_skips_when_exists(mock_project_reservoirs, tmp_path, caplog):
+    """_download_pld skips download when PLD file exists."""
+    import logging
+
+    pld_path = mock_project_reservoirs.dirs["pld"]
+    Path(pld_path).parent.mkdir(parents=True, exist_ok=True)
+    Path(pld_path).touch()  # Create the file
 
     with (
-        patch("HydroEO.satellites.swot.raster._download_granules", return_value=[]),
-        patch("HydroEO.satellites.swot.raster._preprocess_granules"),
+        caplog.at_level(logging.INFO),
+        patch("HydroEO.downloaders.hydroweb.download_PLD") as mock_dl,
     ):
-        with caplog.at_level("INFO"):
-            download_raster(
-                config=config,
-                project_dir=str(project_dir),
-                credentials=("user", "pass"),
-            )
-
-    assert "No processed TIF files found" in caplog.text
+        flows._download_pld(mock_project_reservoirs)
+        mock_dl.assert_not_called()
+        assert "PLD located" in caplog.text
 
 
 @pytest.mark.unit
-def test_swot_raster_merge_with_existing_files(tmp_path, caplog):
-    """download_raster calls merge when processed TIF files exist."""
-    config = {
-        "aoi": {"name": "test_aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
-        "product": "SWOT_L2_HR_Raster_D",
-        "startdate": [2024, 1, 1],
-        "enddate": [2024, 2, 1],
-    }
-    project_dir = tmp_path / "project"
-    processed_dir = (
-        project_dir / "swot_raster" / "test_aoi" / "processed" / "SWOT_L2_HR_Raster_D"
-    )
-    processed_dir.mkdir(parents=True)
-    (processed_dir / "20240101T120000_wse.tif").touch()
+def test_download_pld_downloads_when_missing(mock_project_reservoirs, caplog):
+    """_download_pld downloads PLD when file doesn't exist."""
+    import logging
 
     with (
-        patch("HydroEO.satellites.swot.raster._download_granules", return_value=[]),
-        patch(
-            "HydroEO.satellites.swot.raster._merge_and_reproject_granules"
-        ) as mock_merge,
+        caplog.at_level(logging.INFO),
+        patch("HydroEO.downloaders.hydroweb.download_PLD") as mock_dl,
     ):
-        with caplog.at_level("INFO"):
-            download_raster(
-                config=config,
-                project_dir=str(project_dir),
-                credentials=("user", "pass"),
-            )
+        flows._download_pld(mock_project_reservoirs)
+        mock_dl.assert_called_once()
+        assert "Downloading PLD" in caplog.text
 
-    mock_merge.assert_called_once()
-    assert "Found 1 processed TIF files" in caplog.text
+
+@pytest.mark.unit
+def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
+    """_assign_pld_id joins PLD data and updates reservoirs gdf."""
+    # Mock PLD GeoDataFrame
+    pld_gdf = gpd.GeoDataFrame(
+        {
+            "lake_id": [1001, 1002],
+            "res_id": [501, 502],
+            "geometry": [Point(0.5, 0.5), Point(1.5, 1.5)],
+        },
+        crs="EPSG:4326",
+    )
+
+    with (
+        patch("geopandas.read_file", return_value=pld_gdf),
+        patch("geopandas.sjoin_nearest") as mock_sjoin,
+    ):
+        # Mock the sjoin result
+        joined_gdf = mock_project_reservoirs.reservoirs.gdf.copy()
+        joined_gdf["prior_lake_id"] = [1001, 1002]
+        joined_gdf["prior_res_id"] = [501, 502]
+        mock_sjoin.return_value = joined_gdf
+
+        flows._assign_pld_id(mock_project_reservoirs)
+
+        mock_sjoin.assert_called_once()
+
+
+# ============================================================================
+# SWORD/Rivers Workflow Tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_ensure_sword_database_returns_existing_path(tmp_path):
+    """_ensure_sword_database returns path if SWORD database exists."""
+    mock_prj = SimpleNamespace()
+    sword_dir = tmp_path / "SWORD_v17b_gpkg" / "gpkg"
+    sword_dir.mkdir(parents=True)
+    mock_prj.dirs = {"main": str(tmp_path)}
+
+    result = flows._ensure_sword_database(mock_prj)
+
+    assert result == str(sword_dir)
+    assert os.path.isdir(result)
+
+
+@pytest.mark.unit
+def test_ensure_sword_database_downloads_when_missing(tmp_path, caplog):
+    """_ensure_sword_database downloads SWORD when database doesn't exist."""
+    import logging
+
+    mock_prj = SimpleNamespace()
+    mock_prj.dirs = {"main": str(tmp_path)}
+
+    with (
+        caplog.at_level(logging.WARNING),
+        patch("urllib.request.urlretrieve") as mock_retrieve,
+        patch("zipfile.ZipFile"),
+        patch("os.remove"),
+    ):
+        flows._ensure_sword_database(mock_prj)
+
+        mock_retrieve.assert_called_once()
+        assert "Downloading" in caplog.text or "SWORD_v17b" in caplog.text
+
+
+@pytest.mark.unit
+def test_prepare_rivers_from_sword_buffers_aoi(mock_project_rivers, tmp_path):
+    """_prepare_rivers_from_sword buffers AOI in local CRS."""
+    sword_gpkg = gpd.GeoDataFrame(
+        {
+            "node_id": [101, 102],
+            "geometry": [Point(0.5, 0.5), Point(1.5, 1.5)],
+        },
+        crs="EPSG:4326",
+    )
+
+    mock_project_rivers.rivers.aoi_gdf = gpd.GeoDataFrame(
+        {
+            "river_id": ["Loire"],
+            "geometry": [box(0, 0, 1, 1)],
+        },
+        crs="EPSG:4326",
+    )
+    mock_project_rivers.rivers.continent_key = "eu"
+    mock_project_rivers.rivers.feature_type = "nodes"
+    mock_project_rivers.rivers.buffer_meters = 1000
+
+    sword_dir = tmp_path / "SWORD_v17b_gpkg" / "gpkg"
+    sword_dir.mkdir(parents=True)
+    gpkg_path = sword_dir / "eu_sword_nodes_v17b.gpkg"
+    gpkg_path.touch()  # Create fake file
+
+    with (
+        patch.object(flows, "_ensure_sword_database", return_value=str(sword_dir)),
+        patch("geopandas.read_file", return_value=sword_gpkg),
+        patch("geopandas.sjoin", return_value=sword_gpkg) as mock_sjoin,
+    ):
+        flows._prepare_rivers_from_sword(mock_project_rivers)
+
+        mock_sjoin.assert_called_once()
+        assert mock_project_rivers.rivers.target_id_col == "node_id"
