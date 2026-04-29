@@ -145,6 +145,7 @@ def plot_cleaning(
     reservoir_type="reservoirs",
     show=True,
     save=False,
+    products=None,
 ):
     """Plot cleaning progression for a reservoir (unfiltered, cleaned, merged).
 
@@ -166,6 +167,8 @@ def plot_cleaning(
         Whether to display the plot.
     save : bool
         Whether to save the plot to PNG.
+    products : list, optional
+        List of products to filter on. Passed to get_*_fn functions.
     """
     sns.set()
     cmap = cm.batlow.resampled(5)
@@ -181,7 +184,7 @@ def plot_cleaning(
     fig.suptitle(f"{reservoir_type}: {reservoir_id}")
 
     # plot unfiltered timeseries
-    df = get_unfiltered_fn(reservoir_id)
+    df = get_unfiltered_fn(reservoir_id, products)
     if df is not None:
         df = df[["date", "height", "platform", "product"]]
 
@@ -207,7 +210,7 @@ def plot_cleaning(
         ax.tick_params(axis="x", rotation=45)
 
         # now plot cleaned timeseries
-        df = get_cleaned_fn(reservoir_id)
+        df = get_cleaned_fn(reservoir_id, products)
         df = df[["date", "height", "platform", "product"]]
 
         ax = main_ax[1]

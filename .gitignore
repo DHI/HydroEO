@@ -154,5 +154,7 @@ run.py
 config.yaml
 config_river.yaml
 config_raster.yaml
+config_pixel_cloud.yaml
 notebooks/SWOT_Download.ipynb
 notebooks/swot_examples/*
+notebooks/swot_pixel_examples/*

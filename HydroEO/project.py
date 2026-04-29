@@ -14,6 +14,7 @@ import datetime
 from HydroEO.waterbody import Reservoirs, Rivers
 from HydroEO import flows
 from HydroEO.satellites.swot.raster import download_raster
+from HydroEO.satellites.swot.pixc import download_pixc
 from HydroEO.utils import general
 from HydroEO.constants import MISSION_DEFAULTS
 from HydroEO.validation import validate_config
@@ -217,6 +218,12 @@ class Project:
             # Will be instantiated in download() when needed
             self.swot_raster_config = self.config["swot_raster"]
 
+        if "swot_pixc" in self.config.keys() and self.config["swot_pixc"].get(
+            "enabled", True
+        ):
+            # Store the SWOT Pixel Cloud config for later use in download/preprocess
+            self.swot_pixc_config = self.config["swot_pixc"]
+
         ### make sure we have a local crs (If we were not able to set it up from the config, grab it from one of the elements)
         if self.local_crs is None:
             if hasattr(self, "rivers"):
@@ -241,6 +248,9 @@ class Project:
                 self.local_crs = self.reservoirs.gdf.estimate_utm_crs()
             elif hasattr(self, "swot_raster_config"):
                 # For swot_raster, use global CRS as local if no local CRS specified
+                self.local_crs = self.global_crs
+            elif hasattr(self, "swot_pixc_config"):
+                # For swot_pixc, use global CRS as local if no local CRS specified
                 self.local_crs = self.global_crs
             else:
                 raise UserWarning(
@@ -370,6 +380,12 @@ class Project:
                 project_dir=self.dirs["main"],
                 credentials=(self.earthdata_user, self.earthdata_pass),
                 global_crs=self.global_crs,
+            )
+        if hasattr(self, "swot_pixc_config"):
+            download_pixc(
+                config=self.swot_pixc_config,
+                project_dir=self.dirs["main"],
+                credentials=(self.earthdata_user, self.earthdata_pass),
             )
 
     def update(self):

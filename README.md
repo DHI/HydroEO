@@ -33,11 +33,11 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-A single unified configuration template covers all three use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml). Legacy per-use-case examples are kept for reference: [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
+A single unified configuration template covers all four use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml). Legacy per-use-case examples are kept for reference: [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
 
 HydroEO projects are configured with:
 - project output location, CRS, and shared date range
-- the active water body branch (`reservoirs`, `rivers`, or `swot_raster`) with `enabled: true`
+- the active water body branch (`reservoirs`, `rivers`, `swot_raster`, or `swot_pixc`) with `enabled: true`
 - provider credentials (Earthdata, CREODIAS, HydroWeb API key) — or equivalent environment variables
 - per-satellite download/process flags; dates default to `project.startdate`/`project.enddate` unless overridden
 
@@ -100,7 +100,24 @@ export EARTHACCESS_PASSWORD=...
 hydroeo fetch swot-raster --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
 ```
 
-Optional flags: `--aoi-name <label>` (default `aoi`), `--product <short-name>` (default `SWOT_L2_HR_PIXC_D`).
+Optional flags: `--aoi-name <label>` (default `aoi`), `--product <short-name>` (default `SWOT_L2_HR_Raster_D`).
+
+#### SWOT pixel cloud
+
+```sh
+hydroeo fetch swot-pixc \
+  --bbox "-10 40 10 60" \
+  --start 2023-01-01 \
+  --end   2023-06-01 \
+  --output ./output \
+  --username <earthaccess-user> \
+  --password <earthaccess-pass>
+
+# Or set credentials as environment variables:
+export EARTHACCESS_USERNAME=...
+export EARTHACCESS_PASSWORD=...
+hydroeo fetch swot-pixc --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
+```
 
 #### SWOT lake
 
@@ -148,7 +165,7 @@ Use `--product S3` for Sentinel-3 (default) or `--product S6` for Sentinel-6.
 
 
 
-A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, or SWOT rasters for arbitrary areas. All three branches are mutually exclusive within one project config; a project targets one type only.
+A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, SWOT rasters, or SWOT Pixel Cloud for arbitrary areas. All four branches are mutually exclusive within one project config; a project targets one type only.
 
 ### Water body branches
 
@@ -157,6 +174,7 @@ A HydroEO project is built around a single **water body branch** — reservoirs/
 | `reservoirs` | ✅ available | SWOT Lake, ICESat-2, Sentinel-3, Sentinel-6 | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. Supports multi-mission downloads and full timeseries processing. |
 | `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
 | `swot_raster` | ✅ available | SWOT Rasters (L2 HR/LR products) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT raster products (SWOT_L2_HR_Raster_D, SWOT_L2_LR_SSH_2.0, SWOT_L2_HR_RIVERSP_2.0) via Earthdata. Extracts selected variables, applies quality filters, clips to AOI, and merges/reprojects tiles by date. Requires Earthdata credentials. |
+| `swot_pixc` | ✅ available | SWOT Pixel Cloud (L2 PIXC) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT Pixel Cloud data (SWOT_L2_HR_PIXC_D, SWOT_L2_HR_PIXC_2.0) via Earthdata. Extracts point data, filters by water class, computes derived heights (heightEGM), clips to AOI, and grids to regular rasters via binned statistics (median, mean, etc.) at specified resolution. Requires Earthdata credentials. |
 
 ### Project lifecycle
 
@@ -169,8 +187,8 @@ report() → initialize() → download() → update() → create_timeseries() �
 | Method | What it does |
 | --- | --- |
 | `project.report()` | Logs the project name, logs the number of loaded water bodies in the active branch, and returns a preview of the branch GeoDataFrame (`gdf.head()`). Useful as a quick inspection step after loading a project. |
-| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. For SWOT rasters, validates AOI geometry and product selection. Reports all config issues in one message before doing any I/O. |
-| `project.download()` | Downloads raw satellite data within the configured date range. **Reservoirs:** downloads from all enabled missions (SWOT, ICESat-2, Sentinel-3, Sentinel-6) keeping their existing raw-download layout. **Rivers:** SWOT Hydrocron API calls write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from `rivers.id_key` value or fallback `rivers.id`. **SWOT Rasters:** downloads SWOT raster granules matching the AOI bounds and temporal range using Earthdata credentials, outputs to `swot_raster/<aoi_name>/raw/<product>/`. |
+| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. For SWOT rasters and Pixel Cloud, validates AOI geometry and product selection. Reports all config issues in one message before doing any I/O. |
+| `project.download()` | Downloads raw satellite data within the configured date range. **Reservoirs:** downloads from all enabled missions (SWOT, ICESat-2, Sentinel-3, Sentinel-6) keeping their existing raw-download layout. **Rivers:** SWOT Hydrocron API calls write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from `rivers.id_key` value or fallback `rivers.id`. **SWOT Rasters:** downloads SWOT raster granules matching the AOI bounds and temporal range using Earthdata credentials, outputs to `swot_raster/<aoi_name>/raw/<product>/`. **SWOT Pixel Cloud:** downloads SWOT Pixel Cloud granules, filters by water class, computes derived heights, clips to AOI, grids via binned statistics, outputs to `swot_pixc/<aoi_name>/raster/`. |
 | `project.update()` | Extends existing downloads from the latest observation up to today. Safe to run repeatedly — already-downloaded data is not re-fetched. |
 | `project.create_timeseries()` | Extracts observations spatially matched to each water body, applies the configured cleaning filters, and writes per-body timeseries shapefiles. |
 | `project.generate_summaries(show, save)` | Produces diagnostic plots for each water body and mission: raw crossings, filter effect, and merged multi-mission timeseries. |

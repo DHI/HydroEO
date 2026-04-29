@@ -1,11 +1,12 @@
 # ══════════════════════════════════════════════════════════════════════════════
 # HydroEO — Unified Configuration Template
 # ══════════════════════════════════════════════════════════════════════════════
-# Three use cases are supported. Enable exactly one by setting enabled: true.
+# Four use cases are supported. Enable exactly one by setting enabled: true.
 #
 #   Use Case A — Lakes & Reservoirs  (multi-satellite: SWOT, ICESat-2, Sentinel-3/6)
 #   Use Case B — Rivers              (SWOT Hydrocron download only)
-#   Use Case C — SWOT Raster tiles   (arbitrary AOI, NASA Earthaccess only)
+#   Use Case C — SWOT Raster tiles   (arbitrary AOI, gridded raster products)
+#   Use Case D — SWOT Pixel Cloud    (arbitrary AOI, point cloud gridding)
 #
 # Quick-start:
 #   1. Set project.main_dir and project.startdate / project.enddate.
@@ -37,7 +38,7 @@ gis:
 #   hydroweb    : EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
 #   creodias    : CREODIAS_USERNAME / CREODIAS_PASSWORD
 
-earthaccess:  # NASA Earthdata — needed for Use Cases A (SWOT/ICESat-2) and C
+earthaccess:  # NASA Earthdata — needed for Use Cases A (SWOT/ICESat-2), C (Raster), and D (Pixel Cloud)
   username: null   # or set EARTHDATA_USERNAME
   password: null   # or set EARTHDATA_PASSWORD
 
@@ -108,6 +109,48 @@ swot_raster:
   #   SWOT_L2_HR_RIVERSP_2.0    — high-resolution river surface product
 
   # granule_filter: "*100m*"   # optional glob filter; omit to download all matching granules
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# USE CASE D — SWOT Pixel Cloud (arbitrary AOI)
+# Point cloud data gridded to regular rasters via median/mean/etc binning.
+# Only earthaccess credentials are needed.
+# Set enabled: true. Satellite sections below are ignored for this use case.
+# ══════════════════════════════════════════════════════════════════════════════
+swot_pixc:
+  enabled: false
+
+  aoi:
+    name: "my_pixc_aoi"      # identifier used in output directory names
+    type: "bbox"             # bbox | shapefile | geopackage
+
+    # Use for type: bbox — [lon_min, lat_min, lon_max, lat_max]
+    bbox: [90.3, 20.9, 91.5, 23.9]
+
+    # Use for type: shapefile or geopackage (comment out bbox above)
+    # path: "/path/to/your/aoi.shp"   # or .gpkg
+
+  product: "SWOT_L2_HR_PIXC_D"
+  # Available PIXC products:
+  #   SWOT_L2_HR_PIXC_D       — high-resolution pixel cloud (default)
+  #   SWOT_L2_HR_PIXC_2.0     — high-resolution pixel cloud v2.0
+
+  # Water classification filtering (optional; defaults to open_water and water_near_land)
+  classes:
+    - open_water
+    - water_near_land
+  # Available classes: land, land_near_water, water_near_land, open_water, dark_water,
+  # low_coh_water_near_land, open_low_coh_water
+
+  # Fields to grid (optional; defaults to heightEGM)
+  # Available fields: heightEGM, height, geoid, water_frac, phase_noise_std, dheight_dphase, sig0, etc.
+  fields:
+    - heightEGM
+
+  # Gridding options
+  grid_resolution: 100          # output pixel size in meters
+  stat_method: "median"         # median | mean | max | min (statistic for binning)
+  # target_crs: "EPSG:32645"    # optional: override auto-detected UTM zone
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -176,7 +176,8 @@ def test_validate_config_rejects_missing_waterbody_branch():
     proj.config = {"project": {"main_dir": "/tmp/hydroeo"}}
 
     with pytest.raises(
-        ValueError, match="provide one of 'reservoirs', 'rivers', or 'swot_raster'"
+        ValueError,
+        match="provide one of 'reservoirs', 'rivers', 'swot_raster', or 'swot_pixc'",
     ):
         proj.validate_config()
 
