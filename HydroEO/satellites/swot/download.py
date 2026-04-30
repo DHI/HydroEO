@@ -1,3 +1,4 @@
+import contextlib
 import datetime
 import logging
 import os
@@ -15,18 +16,123 @@ logger = logging.getLogger(__name__)
 SWOT_LAKE_SHORT_NAME = "SWOT_L2_HR_LakeSP_D"
 
 
+@contextlib.contextmanager
+def _suppress_granule_size_warning():
+    """Suppress known earthaccess DataGranule.size deprecation warning."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
+            category=FutureWarning,
+            module=r"earthaccess\.(results|store)",
+        )
+        yield
+
+
+def _login(credentials=None):
+    """Authenticate with earthaccess, handling credentials if provided.
+
+    Parameters
+    ----------
+    credentials : tuple(str, str) | None
+        (username, password) tuple, or None for anonymous login.
+    """
+    if credentials:
+        username, password = credentials
+        if username and password:
+            try:
+                earthaccess.login(strategy="environment", persist=True)
+            except Exception:
+                earthaccess.login()
+        else:
+            logger.warning(
+                "No Earthdata credentials provided, attempting anonymous login"
+            )
+            earthaccess.login()
+    else:
+        earthaccess.login()
+
+
+def _search(**params):
+    """Search earthaccess for granules matching query parameters.
+
+    Parameters
+    ----------
+    **params
+        Query parameters (short_name, temporal, bounding_box, granule_name, etc.).
+
+    Returns
+    -------
+    list
+        Matching granule results, or empty list on error.
+    """
+    try:
+        with _suppress_granule_size_warning():
+            results = earthaccess.search_data(**params)
+        return results
+    except Exception as e:
+        logger.error("Error searching for data: %s", e)
+        return []
+
+
+def _filter_new(results, processed_granules):
+    """Filter results to keep only granules not yet processed.
+
+    Parameters
+    ----------
+    results : list
+        Granule result objects from earthaccess.search_data().
+    processed_granules : set[str]
+        GranuleUR values already processed, to exclude.
+
+    Returns
+    -------
+    list
+        Granule result objects not in processed_granules.
+    """
+    granule_ids = [result["umm"]["GranuleUR"] for result in results]
+    new_granule_ids = [gid for gid in granule_ids if gid not in processed_granules]
+    return [r for r in results if r["umm"]["GranuleUR"] in new_granule_ids]
+
+
+def _download_files(results, directory):
+    """Download granule files to a local directory.
+
+    Parameters
+    ----------
+    results : list
+        Granule result objects to download.
+    directory : str
+        Local directory to write files to.
+
+    Returns
+    -------
+    list
+        Paths to successfully downloaded files, or empty list on error.
+    """
+    if not results:
+        return []
+
+    try:
+        with _suppress_granule_size_warning():
+            files = earthaccess.download(results, directory, show_progress=True)
+        return files or []
+    except Exception as e:
+        logger.error("Error downloading files: %s", e)
+        return []
+
+
 def query(
     aoi: list,
     startdate: datetime.date,
     enddate: datetime.date,
     product: str = SWOT_LAKE_SHORT_NAME,
-    earthaccess_client=earthaccess,
 ) -> object:
     # format coordinates and extract bounds
     aoi = geometry.format_coord_list(aoi)
 
-    # login and authenticate earthacess
-    earthaccess_client.login()
+    # login and authenticate earthaccess
+    _login()
 
     # define query parameters
     params = {
@@ -35,21 +141,11 @@ def query(
         "bounding_box": shapely.Polygon(aoi).bounds,
     }
 
-    # Silence a known earthaccess deprecation warning until upstream migrates
-    # DataGranule.size() to DataGranule.size attribute access.
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
-            category=FutureWarning,
-            module=r"earthaccess\.results",
-        )
-        results = earthaccess_client.search_data(**params)
-
+    results = _search(**params)
     return results
 
 
-def download(results, download_directory: str, earthaccess_client=earthaccess):
+def download(results, download_directory: str):
     # Check if we have a progress log file in this directory, if not make it
     log_path = os.path.join(download_directory, "downloaded.log")
     if not os.path.exists(log_path):
@@ -71,16 +167,7 @@ def download(results, download_directory: str, earthaccess_client=earthaccess):
     logger.info("%s files shown as downloaded in log", len(results) - len(to_download))
     logger.info("%s files will be downloaded", len(to_download))
     if to_download:
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                message=r"As of version 1\.0, `DataGranule\.size` will be accessed as an attribute",
-                category=FutureWarning,
-                module=r"earthaccess\.(results|store)",
-            )
-            files = earthaccess_client.download(
-                to_download, download_directory, show_progress=True
-            )
+        files = _download_files(to_download, download_directory)
 
         with open(log_path, "a") as log:
             for file in files:

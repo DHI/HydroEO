@@ -18,7 +18,7 @@ def test_swot_query_uses_baseline_d_short_name():
         captured.update(kwargs)
         return []
 
-    with patch("HydroEO.satellites.swot.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         mock_ea.search_data.side_effect = fake_search
         mock_ea.login.return_value = None
 
@@ -40,7 +40,7 @@ def test_swot_download_skips_already_logged(tmp_path, fake_ea_prior_result):
     file_stem = fake_ea_prior_result.data_links()[0].split("/")[-1].split(".")[0]
     log.write_text(file_stem + "\n")
 
-    with patch("HydroEO.satellites.swot.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         mock_ea.download.return_value = []
         result = download([fake_ea_prior_result], str(tmp_path))
 
@@ -53,7 +53,7 @@ def test_swot_download_queues_new_file(tmp_path, fake_ea_prior_result):
     """swot.download() must request a download for files not in the log."""
     from HydroEO.satellites.swot import download
 
-    with patch("HydroEO.satellites.swot.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         fake_path = str(tmp_path / "SWOT_file.zip")
         mock_ea.download.return_value = [fake_path]
         result = download([fake_ea_prior_result], str(tmp_path))
@@ -67,7 +67,7 @@ def test_swot_download_handles_path_objects(tmp_path, fake_ea_prior_result):
     """swot.download() must accept pathlib.Path objects from earthaccess.download."""
     from HydroEO.satellites.swot import download
 
-    with patch("HydroEO.satellites.swot.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         fake_path = tmp_path / "SWOT_file.zip"
         mock_ea.download.return_value = [fake_path]
         result = download([fake_ea_prior_result], str(tmp_path))

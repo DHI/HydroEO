@@ -222,7 +222,7 @@ def shapefile_config(tmp_path):
 @pytest.mark.unit
 def test_download_granules_returns_empty_when_no_results(bbox_config):
     """_download_granules returns empty list when search finds no granules."""
-    with patch("HydroEO.satellites.swot.raster.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         mock_ea.login.return_value = None
         mock_ea.search_data.return_value = []
 
@@ -244,7 +244,7 @@ def test_download_granules_skips_already_processed(bbox_config, tmp_path):
 
     granule_ur = "SWOT_L2_HR_Raster_D_00000000T000000_000000_UTM44N_01_01"
 
-    with patch("HydroEO.satellites.swot.raster.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         mock_ea.login.return_value = None
         granule = MagicMock()
         granule.__getitem__.return_value = {"GranuleUR": granule_ur}
@@ -542,21 +542,21 @@ def test_download_raster_full_pipeline_bbox(
     """Full pipeline: init dirs, mock download, preprocess, merge."""
     project_dir = tmp_path / "project"
 
-    with patch("HydroEO.satellites.swot.raster.earthaccess") as mock_ea:
+    # Create the raw NC file first
+    raw_parent = (
+        project_dir
+        / "swot_raster"
+        / bbox_config["aoi"]["name"]
+        / "raw"
+        / bbox_config["product"]
+    )
+    raw_parent.mkdir(parents=True, exist_ok=True)
+
+    shutil.copy(synthetic_swot_netcdf, raw_parent / synthetic_swot_netcdf.name)
+
+    # Mock earthaccess at the download module level where _download_granules uses it
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         mock_ea.login.return_value = None
-
-        # Create the raw NC file first
-        raw_parent = (
-            project_dir
-            / "swot_raster"
-            / bbox_config["aoi"]["name"]
-            / "raw"
-            / bbox_config["product"]
-        )
-        raw_parent.mkdir(parents=True, exist_ok=True)
-
-        shutil.copy(synthetic_swot_netcdf, raw_parent / synthetic_swot_netcdf.name)
-
         # Mock search to return nothing (files already exist)
         mock_ea.search_data.return_value = []
         mock_ea.download.return_value = []
@@ -600,7 +600,8 @@ def test_download_raster_no_new_granules_processes_existing_nc(
     # Place NC file in raw dir (simulating previous download)
     shutil.copy(synthetic_swot_netcdf, raw_dir / synthetic_swot_netcdf.name)
 
-    with patch("HydroEO.satellites.swot.raster.earthaccess") as mock_ea:
+    # Mock earthaccess at the download module level where _download_granules uses it
+    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
         mock_ea.login.return_value = None
         mock_ea.search_data.return_value = []  # No new granules
         mock_ea.download.return_value = []

@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import earthaccess
 import geopandas as gpd
 import numpy as np
 import rasterio
@@ -25,6 +24,12 @@ from shapely.geometry import box, mapping
 from tqdm import tqdm
 
 from HydroEO import FLOAT32_NODATA_VALUE
+from HydroEO.satellites.swot.download import (
+    _download_files,
+    _filter_new,
+    _login,
+    _search,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -121,15 +126,7 @@ def _download_granules(
     """Download SWOT granules matching query, skipping already processed ones."""
     logger.debug("=== SWOT Raster Download Phase ===")
 
-    username, password = credentials
-    if username and password:
-        try:
-            earthaccess.login(strategy="environment", persist=True)
-        except Exception:
-            earthaccess.login()
-    else:
-        logger.warning("No Earthdata credentials provided, attempting anonymous login")
-        earthaccess.login()
+    _login(credentials)
 
     aoi_config = config["aoi"]
     if aoi_config["type"] == "bbox":
@@ -156,45 +153,35 @@ def _download_granules(
     logger.info(
         "Searching for SWOT product '%s' in AOI %s", product, aoi_config["name"]
     )
-    try:
-        swot_results = earthaccess.search_data(
-            short_name=product,
-            bounding_box=bounds,
-            temporal=(time_start, time_end),
-            granule_name=granule_filter,
-        )
-        logger.debug("Found %d granules matching query", len(swot_results))
-    except Exception as e:
-        logger.error("Error searching for SWOT data: %s", e)
-        return []
+
+    search_params = {
+        "short_name": product,
+        "bounding_box": bounds,
+        "temporal": (time_start, time_end),
+        "granule_name": granule_filter,
+    }
+    swot_results = _search(**search_params)
+    logger.debug("Found %d granules matching query", len(swot_results))
 
     if not swot_results:
         logger.warning("No SWOT granules found matching the query")
         return []
 
-    granule_ids = [result["umm"]["GranuleUR"] for result in swot_results]
-    new_granules = [gid for gid in granule_ids if gid not in processed_granules]
+    new_results = _filter_new(swot_results, processed_granules)
     logger.debug(
         "%d new granules to download (already processed: %d)",
-        len(new_granules),
+        len(new_results),
         len(processed_granules),
     )
 
-    if not new_granules:
+    if not new_results:
         logger.info("All granules already processed, skipping download")
         return []
 
-    new_results = [r for r in swot_results if r["umm"]["GranuleUR"] in new_granules]
     logger.debug("Downloading %d granules to %s", len(new_results), raw_dir)
-    try:
-        downloaded_files = earthaccess.download(
-            new_results, str(raw_dir), show_progress=True
-        )
-        logger.debug("Successfully downloaded %d files", len(downloaded_files))
-        return downloaded_files or []
-    except Exception as e:
-        logger.error("Error downloading SWOT data: %s", e)
-        return []
+    downloaded_files = _download_files(new_results, str(raw_dir))
+    logger.debug("Successfully downloaded %d files", len(downloaded_files))
+    return downloaded_files or []
 
 
 def _preprocess_granules(
