@@ -142,7 +142,7 @@ dmypy.json
 /data/*
 /quarto/*
 /development/*
-
+/logs/*
 
 # development notebooks
 /notebooks/river_development.ipynb
