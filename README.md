@@ -33,7 +33,7 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-A single unified configuration template covers all four use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml). Legacy per-use-case examples are kept for reference: [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
+A single unified configuration template covers all four use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml).
 
 HydroEO projects are configured with:
 - project output location, CRS, and shared date range
@@ -164,10 +164,9 @@ hydroeo fetch sentinel --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
 Use `--product S3` for Sentinel-3 (default) or `--product S6` for Sentinel-6.
 
 
+### Water body branches
 
 A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, SWOT rasters, or SWOT Pixel Cloud for arbitrary areas. All four branches are mutually exclusive within one project config; a project targets one type only.
-
-### Water body branches
 
 | Branch | Status | Products | Description |
 | --- | --- | --- | --- |
@@ -199,12 +198,12 @@ This section consolidates all available data sources across HydroEO's four workf
 
 ### Reservoir & Lake Products
 
-| Product key | Satellite | Archive start | Workflow | Credentials required |
+| Product | Satellite | Archive start | Credentials required |
 | --- | --- | --- | --- | --- |
-| `SWOT_LAKE` | SWOT Lake SP | 2023 | Reservoirs (multi-mission) | Earthdata + HydroWeb API key |
-| `ATL13` | ICESat-2 | 2018 | Reservoirs (multi-mission) | None (SlideRule public API) |
-| `S3` | Sentinel-3A/B | 2016 | Reservoirs (multi-mission) | CREODIAS account |
-| `S6` | Sentinel-6 | 2020 | Reservoirs (multi-mission) | CREODIAS account |
+| `SWOT_L2_HR_LakeSP_D` | SWOT | 2023 | Earthdata + HydroWeb API key |
+| `ATL13` | ICESat-2 | 2018 | None (SlideRule public API) |
+| - | Sentinel-3A/B | 2016 | CREODIAS account |
+| - | Sentinel-6 | 2020 | CREODIAS account |
 
 ### River Products
 
@@ -214,7 +213,7 @@ This section consolidates all available data sources across HydroEO's four workf
 
 ### SWOT Raster Products
 
-| Product key | Resolution | Archive start | Use case |
+| Product | Resolution | Archive start | Use case |
 | --- | --- | --- | --- |
 | `SWOT_L2_HR_Raster_D` | ~100m | 2024 | High-resolution grids: elevation, water surface height |
 | `SWOT_L2_LR_SSH_2.0` | ~250m | 2023 | Low-resolution grids: sea surface height, open water |
@@ -224,7 +223,7 @@ All raster products require Earthdata credentials.
 
 ### SWOT Pixel Cloud Products
 
-| Product key | Archive start | Use case |
+| Product | Archive start | Use case |
 | --- | --- | --- |
 | `SWOT_L2_HR_PIXC_D` | 2024 | Point-based water heights, gridded to rasters via binning |
 | `SWOT_L2_HR_PIXC_2.0` | 2024 | Point-based water heights (v2 format), gridded to rasters |
@@ -240,9 +239,9 @@ All outputs are written under `project.main_dir`. Structure varies by branch:
 main_dir/
   <water_body_id>/
     raw_observations/      # extracted, spatially filtered shapefiles per mission
-    cleaned_timeseries/    # filter-cleaned shapefiles per mission
-    merged_timeseries/     # single merged CSV across all enabled missions
-    plots/                 # PNG diagnostics (crossings, cleaning, merging)
+    cleaned_observations/  # filter-cleaned shapefiles per mission
+    merged_progress/       # merged CSVs across all enabled missions per cleaning method
+    ./                     # PNG diagnostics (crossings, cleaning, merging), single merged CSV across all enabled missions
   swot/                    # raw SWOT Lake SP downloads
   icesat2/                 # raw ICESat-2 downloads
   sentinel3/               # raw Sentinel-3 downloads
@@ -253,8 +252,8 @@ main_dir/
 ```
 main_dir/
   swot/rivers/
-    <per_id>/<node_or_reach_id>/
-      timeseries.csv       # SWOT Hydrocron data per node/reach
+    <aoi_name>/
+      timeseries.csv       # SWOT Hydrocron data
 ```
 
 #### SWOT Rasters
@@ -264,10 +263,6 @@ main_dir/
     raw/<product>/                # raw netCDF granule files
     processed/<product>/          # extracted/clipped GeoTIFFs per granule (temporary, deleted after merge)
     merged/                       # merged mosaics by date/variable
-      20231004_wse_merged.tif
-      20231004_wse_uncert_merged.tif
-      20231005_wse_merged.tif
-      ...
 ```
 
 #### SWOT Pixel Cloud
@@ -277,9 +272,6 @@ main_dir/
     raw/<product>/                # raw netCDF granule files
     trimmed/                      # preprocessed GeoJSON point data (filtered by water class)
     raster/                       # gridded rasters by date/variable
-      20250609_heightEGM_median.tif
-      20250609_heightEGM_uncert_median.tif
-      ...
 ```
 
 ### Reservoir-specific: Cleaning filters
@@ -305,7 +297,7 @@ This table consolidates all credential requirements across workflows and mission
 
 | Mission/Workflow | Product | Credentials | Environment variables | Where needed |
 | --- | --- | --- | --- | --- |
-| Reservoirs (SWOT) | `SWOT_LAKE` | Earthdata account + HydroWeb API key | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD`, `EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY` | PLD lake matching for reservoir outline correction |
+| Reservoirs (SWOT) | `SWOT_L2_HR_LakeSP_D` | Earthdata account + HydroWeb API key | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD`, `EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY` | PLD lake matching for reservoir outline correction |
 | Reservoirs (ICESat-2) | `ATL13` | None required | — | SlideRule public API; optional local caching |
 | Reservoirs (Sentinel-3) | `S3` | CREODIAS account | `CREODIAS_USERNAME`, `CREODIAS_PASSWORD` | CDSE/Copernicus download |
 | Reservoirs (Sentinel-6) | `S6` | CREODIAS account | `CREODIAS_USERNAME`, `CREODIAS_PASSWORD` | CDSE/Copernicus download |
@@ -426,15 +418,6 @@ ICESat-2 ATL13 data is downloaded via [SlideRule](https://slideruleearth.io) usi
 `atl13x` endpoint.  SlideRule streams results directly as a GeoDataFrame — no local HDF5
 files are written.
 
-**Important:** `atl13x` is **water-body-centric**, not polygon-centric.  SlideRule uses
-an internal ATL13 Metadata Service (AMS) to identify which granules contain a given water
-body.  The polygon centroid is passed as `atl13.coord` for the AMS lookup — this is the
-only spatial parameter sent to the server.  The polygon is **not** passed as a spatial
-filter (doing so causes empty results in SlideRule v5 because track segments that cross
-outside a tight bounding box are excluded).  Precise spatial filtering is applied
-client-side in `extract_observations()` using `gdf.within()` after download.
-The reservoir must be registered in HydroLAKES or GRWL for the download to return data.
-
 SlideRule does **not** require Earthdata authentication — no credentials are needed for
 the ICESat-2 download path.
 
@@ -445,7 +428,7 @@ inside that directory.  If `download_dir` is omitted, the directory defaults to
 **Available ICESat-2 configuration options:**
 
 - `atl13_fields`: optional list of ancillary beam-group fields from SlideRule (validated at config load time). Supported fields: `inland_water_body_id`, `inland_water_body_size`, `inland_water_body_type`, `segment_slope_trk_bdy`, `err_ht_water_surf`, `segment_quality`, `segment_geoid`, `segment_geoid_free2mean`, `segment_dem_ht`, `segment_near_sat_fract`.
-- `atl13.pass_invalid`: filter invalid records (default: false).
+- `atl13.pass_invalid`: allow invalid records to pass filtering (default: false).
 - `atl13.beams`: optional list of beam names to select (e.g., `["gt1l", "gt2l", "gt3l"]` for left beams only).
 - `atl13.spots`: optional list of spot numbers.
 
@@ -502,18 +485,6 @@ export CREODIAS_USERNAME="your_creodias_username"
 export CREODIAS_PASSWORD="your_creodias_password"
 export HYDROWEB_API_KEY="your_hydroweb_api_key"
 ```
-
-## Project structure
-Key modules:
-- `HydroEO/project.py`: high-level project workflow orchestration.
-- `HydroEO/waterbody.py`: shared water body base class and reservoir branch implementation.
-- `HydroEO/flows/`: orchestration split into download, preprocessing, and plotting flows.
-- `HydroEO/plotting.py`: shared plotting helpers for crossings, cleaning, and merged outputs.
-- `HydroEO/satellites/swot.py`: public SWOT facade delegating to mission-specific download and preprocess modules.
-- `HydroEO/satellites/icesat2.py`: public ICESat-2 facade delegating to mission-specific download and preprocess modules.
-- `HydroEO/satellites/sentinel.py`: public Sentinel facade delegating to Sentinel-3 and Sentinel-6 download and preprocess logic.
-- `HydroEO/downloaders/creodias.py`: CREODIAS/CDSE queries and download helpers.
-- `HydroEO/downloaders/hydroweb.py`: HydroWeb integration and PLD support.
 
 ## CI/CD and GitHub setup
 

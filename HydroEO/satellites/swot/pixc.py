@@ -58,7 +58,7 @@ def download_pixc(
     credentials:
         ``(earthdata_username, earthdata_password)`` tuple.
     """
-    logger.info(
+    logger.debug(
         "SWOT Pixel Cloud Download - AOI: %s, Product: %s, Temporal range: %s to %s",
         config["aoi"]["name"],
         config.get("product", "SWOT_L2_HR_PIXC_2.0"),
@@ -96,7 +96,7 @@ def download_pixc(
 
     trimmed_files = list(trimmed_dir.glob("*_trimmed.geojson"))
     if trimmed_files:
-        logger.info(
+        logger.debug(
             "Found %d trimmed GeoJSON files, proceeding with rasterization",
             len(trimmed_files),
         )
@@ -104,7 +104,7 @@ def download_pixc(
     else:
         logger.info("No trimmed GeoJSON files found, skipping rasterization phase")
 
-    logger.info("SWOT Pixel Cloud download and processing complete")
+    logger.debug("SWOT Pixel Cloud download and processing complete")
 
 
 def _download_granules(
@@ -114,7 +114,7 @@ def _download_granules(
     credentials: tuple[str | None, str | None],
 ) -> list[str]:
     """Download SWOT PIXC granules matching query, skipping already processed ones."""
-    logger.info("=== SWOT Pixel Cloud Download Phase ===")
+    logger.debug("=== SWOT Pixel Cloud Download Phase ===")
 
     username, password = credentials
     if username and password:
@@ -130,7 +130,7 @@ def _download_granules(
     if aoi_config["type"] == "bbox":
         bbox = aoi_config["bbox"]
         bounds = (bbox[0], bbox[1], bbox[2], bbox[3])
-        logger.info("AOI Type: bbox, Bounds: %s", bounds)
+        logger.debug("AOI Type: bbox, Bounds: %s", bounds)
     else:
         logger.error(
             "AOI type '%s' not yet implemented for download", aoi_config["type"]
@@ -141,7 +141,7 @@ def _download_granules(
     enddate = config["enddate"]
     time_start = f"{startdate[0]:04d}-{startdate[1]:02d}-{startdate[2]:02d} 00:00:00"
     time_end = f"{enddate[0]:04d}-{enddate[1]:02d}-{enddate[2]:02d} 23:59:59"
-    logger.info("Temporal range: %s to %s", time_start, time_end)
+    logger.debug("Temporal range: %s to %s", time_start, time_end)
 
     product = config.get("product", "SWOT_L2_HR_PIXC_2.0")
     logger.info(
@@ -153,7 +153,7 @@ def _download_granules(
             bounding_box=bounds,
             temporal=(time_start, time_end),
         )
-        logger.info("Found %d granules matching query", len(swot_results))
+        logger.debug("Found %d granules matching query", len(swot_results))
     except Exception as e:
         logger.error("Error searching for SWOT data: %s", e)
         return []
@@ -164,7 +164,7 @@ def _download_granules(
 
     granule_ids = [result["umm"]["GranuleUR"] for result in swot_results]
     new_granules = [gid for gid in granule_ids if gid not in processed_granules]
-    logger.info(
+    logger.debug(
         "%d new granules to download (already processed: %d)",
         len(new_granules),
         len(processed_granules),
@@ -175,12 +175,12 @@ def _download_granules(
         return []
 
     new_results = [r for r in swot_results if r["umm"]["GranuleUR"] in new_granules]
-    logger.info("Downloading %d granules to %s", len(new_results), raw_dir)
+    logger.debug("Downloading %d granules to %s", len(new_results), raw_dir)
     try:
         downloaded_files = earthaccess.download(
             new_results, str(raw_dir), show_progress=True
         )
-        logger.info("Successfully downloaded %d files", len(downloaded_files))
+        logger.debug("Successfully downloaded %d files", len(downloaded_files))
         return downloaded_files or []
     except Exception as e:
         logger.error("Error downloading SWOT data: %s", e)
@@ -197,7 +197,7 @@ def _preprocess_granules(
 
     Skips granules that have already produced trimmed output.
     """
-    logger.info("=== SWOT Pixel Cloud Preprocessing Phase ===")
+    logger.debug("=== SWOT Pixel Cloud Preprocessing Phase ===")
 
     aoi_config = config["aoi"]
     classes = config.get("classes", ["open_water", "water_near_land"])
@@ -207,7 +207,7 @@ def _preprocess_granules(
     if not class_flags:
         logger.warning("No valid classes found in config, defaulting to open_water")
         class_flags = [CLASS_MAP["open_water"]]
-    logger.info("Filtering by classes: %s (flags: %s)", classes, class_flags)
+    logger.debug("Filtering by classes: %s (flags: %s)", classes, class_flags)
 
     aoi_gdf = None
     if aoi_config["type"] in ["shapefile", "geopackage"]:
@@ -215,13 +215,13 @@ def _preprocess_granules(
         if aoi_path and Path(aoi_path).exists():
             try:
                 aoi_gdf = gpd.read_file(aoi_path)
-                logger.info("Loaded AOI from %s", aoi_path)
+                logger.debug("Loaded AOI from %s", aoi_path)
             except Exception as e:
                 logger.warning("Could not load AOI file: %s", e)
     elif aoi_config["type"] == "bbox":
         bbox = aoi_config["bbox"]
         aoi_gdf = gpd.GeoDataFrame(geometry=[box(*bbox)], crs="EPSG:4326")
-        logger.info("Created AOI GeoDataFrame from bbox %s", bbox)
+        logger.debug("Created AOI GeoDataFrame from bbox %s", bbox)
 
     all_nc_files = list(raw_dir.glob("*.nc"))
 
@@ -243,11 +243,19 @@ def _preprocess_granules(
         )
         return
 
-    logger.info(
+    logger.debug(
         "Found %d unprocessed netCDF files to process (skipping %d already processed)",
         len(nc_files),
         len(already_processed),
     )
+
+    deferred_warnings = []
+
+    def _defer_warning(message, *args):
+        if args:
+            deferred_warnings.append(message % args)
+        else:
+            deferred_warnings.append(message)
 
     for nc_path in tqdm(nc_files, desc="Processing netCDF files"):
         try:
@@ -346,7 +354,7 @@ def _preprocess_granules(
                 try:
                     gdf = gpd.clip(gdf, aoi_gdf)
                 except Exception as e:
-                    logger.warning("Clip failed for %s: %s", nc_path.name, e)
+                    _defer_warning("Clip failed for %s: %s", nc_path.name, e)
 
             # Skip if resulting GeoDataFrame is empty or very small
             if len(gdf) == 0:
@@ -362,11 +370,11 @@ def _preprocess_granules(
                 gdf.to_file(str(trimmed_path), driver="GeoJSON")
                 logger.debug("Wrote trimmed GeoJSON: %s", trimmed_path.name)
             except Exception as e:
-                logger.warning("Failed to write trimmed GeoJSON: %s", e)
+                _defer_warning("Failed to write trimmed GeoJSON: %s", e)
                 continue
 
         except Exception as e:
-            logger.warning("Cannot process %s: %s", nc_path.name, e)
+            _defer_warning("Cannot process %s: %s", nc_path.name, e)
             continue
 
     # Log processed NC stems
@@ -375,12 +383,19 @@ def _preprocess_granules(
         for name in nc_names:
             log_file.write(name + "\n")
 
-    logger.info("Cleaning up raw netCDF files")
+    for warning in deferred_warnings:
+        logger.debug(warning)
+
+    logger.debug("Cleaning up raw netCDF files")
+    deferred_warnings = []
     for nc_path in tqdm(nc_files, desc="Cleaning up"):
         try:
             nc_path.unlink()
         except Exception as e:
-            logger.warning("Failed to delete %s: %s", nc_path.name, e)
+            _defer_warning("Failed to delete %s: %s", nc_path.name, e)
+
+    for warning in deferred_warnings:
+        logger.debug(warning)
 
 
 def _rasterize_granules(
@@ -392,7 +407,7 @@ def _rasterize_granules(
 
     Groups points by date, rasterizes to a regular grid, and outputs GeoTIFFs.
     """
-    logger.info("=== SWOT Pixel Cloud Rasterization Phase ===")
+    logger.debug("=== SWOT Pixel Cloud Rasterization Phase ===")
 
     fields = config.get("fields", DEFAULT_FIELDS)
     stat_method = config.get("stat_method", DEFAULT_STAT_METHOD)
@@ -414,7 +429,7 @@ def _rasterize_granules(
             target_crs = utm_crs.to_string() if utm_crs else "EPSG:32633"
         else:
             target_crs = "EPSG:32633"  # Default to UTM 33N
-        logger.info("Auto-detected target CRS: %s", target_crs)
+        logger.debug("Auto-detected target CRS: %s", target_crs)
 
     try:
         target_crs_obj = CRS.from_string(target_crs)
@@ -427,7 +442,7 @@ def _rasterize_granules(
         logger.warning("No trimmed GeoJSON files found in %s", trimmed_dir)
         return
 
-    logger.info("Loading %d trimmed GeoJSON files", len(trimmed_files))
+    logger.debug("Loading %d trimmed GeoJSON files", len(trimmed_files))
 
     # Load all GeoJSONs and group by date
     date_map = {}  # date_str -> list of trimmed_file paths
@@ -463,7 +478,7 @@ def _rasterize_granules(
         logger.warning("No valid dates found in GeoJSON files")
         return
 
-    logger.info("Found %d unique dates", len(date_map))
+    logger.debug("Found %d unique dates", len(date_map))
 
     # Process each date
     for date_key in tqdm(sorted(date_map.keys()), desc="Rasterizing by date"):
@@ -576,4 +591,4 @@ def _rasterize_granules(
             logger.warning("Error processing date %s: %s", date_key, e)
             continue
 
-    logger.info("Rasterization complete")
+    logger.debug("Rasterization complete")
