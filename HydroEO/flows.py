@@ -974,6 +974,7 @@ def generate_reservoirs_summaries(
             reservoir_type=prj.reservoirs.type,
             show=show,
             save=save,
+            products=getattr(prj, "to_process", None),
         )
 
         logger.info("Summarizing merged results")

@@ -33,11 +33,11 @@ uv sync
 HydroEO currently runs on Python 3.9 - 3.12.
 
 ## Quick start
-A single unified configuration template covers all three use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml). Legacy per-use-case examples are kept for reference: [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
+A single unified configuration template covers all four use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml). Legacy per-use-case examples are kept for reference: [reservoirs](./notebooks/example_config_reservoirs.yaml), [rivers](./notebooks/example_config_rivers.yaml), [SWOT rasters](./notebooks/example_config_swot_raster.yaml).
 
 HydroEO projects are configured with:
 - project output location, CRS, and shared date range
-- the active water body branch (`reservoirs`, `rivers`, or `swot_raster`) with `enabled: true`
+- the active water body branch (`reservoirs`, `rivers`, `swot_raster`, or `swot_pixc`) with `enabled: true`
 - provider credentials (Earthdata, CREODIAS, HydroWeb API key) — or equivalent environment variables
 - per-satellite download/process flags; dates default to `project.startdate`/`project.enddate` unless overridden
 
@@ -100,7 +100,24 @@ export EARTHACCESS_PASSWORD=...
 hydroeo fetch swot-raster --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
 ```
 
-Optional flags: `--aoi-name <label>` (default `aoi`), `--product <short-name>` (default `SWOT_L2_HR_PIXC_D`).
+Optional flags: `--aoi-name <label>` (default `aoi`), `--product <short-name>` (default `SWOT_L2_HR_Raster_D`).
+
+#### SWOT pixel cloud
+
+```sh
+hydroeo fetch swot-pixc \
+  --bbox "-10 40 10 60" \
+  --start 2023-01-01 \
+  --end   2023-06-01 \
+  --output ./output \
+  --username <earthaccess-user> \
+  --password <earthaccess-pass>
+
+# Or set credentials as environment variables:
+export EARTHACCESS_USERNAME=...
+export EARTHACCESS_PASSWORD=...
+hydroeo fetch swot-pixc --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
+```
 
 #### SWOT lake
 
@@ -148,7 +165,7 @@ Use `--product S3` for Sentinel-3 (default) or `--product S6` for Sentinel-6.
 
 
 
-A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, or SWOT rasters for arbitrary areas. All three branches are mutually exclusive within one project config; a project targets one type only.
+A HydroEO project is built around a single **water body branch** — reservoirs/lakes, rivers, SWOT rasters, or SWOT Pixel Cloud for arbitrary areas. All four branches are mutually exclusive within one project config; a project targets one type only.
 
 ### Water body branches
 
@@ -157,6 +174,7 @@ A HydroEO project is built around a single **water body branch** — reservoirs/
 | `reservoirs` | ✅ available | SWOT Lake, ICESat-2, Sentinel-3, Sentinel-6 | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. Supports multi-mission downloads and full timeseries processing. |
 | `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
 | `swot_raster` | ✅ available | SWOT Rasters (L2 HR/LR products) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT raster products (SWOT_L2_HR_Raster_D, SWOT_L2_LR_SSH_2.0, SWOT_L2_HR_RIVERSP_2.0) via Earthdata. Extracts selected variables, applies quality filters, clips to AOI, and merges/reprojects tiles by date. Requires Earthdata credentials. |
+| `swot_pixc` | ✅ available | SWOT Pixel Cloud (L2 PIXC) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT Pixel Cloud data (SWOT_L2_HR_PIXC_D, SWOT_L2_HR_PIXC_2.0) via Earthdata. Extracts point data, filters by water class, computes derived heights (heightEGM), clips to AOI, and grids to regular rasters via binned statistics (median, mean, etc.) at specified resolution. Requires Earthdata credentials. |
 
 ### Project lifecycle
 
@@ -169,39 +187,49 @@ report() → initialize() → download() → update() → create_timeseries() �
 | Method | What it does |
 | --- | --- |
 | `project.report()` | Logs the project name, logs the number of loaded water bodies in the active branch, and returns a preview of the branch GeoDataFrame (`gdf.head()`). Useful as a quick inspection step after loading a project. |
-| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. For SWOT rasters, validates AOI geometry and product selection. Reports all config issues in one message before doing any I/O. |
-| `project.download()` | Downloads raw satellite data within the configured date range. **Reservoirs:** downloads from all enabled missions (SWOT, ICESat-2, Sentinel-3, Sentinel-6) keeping their existing raw-download layout. **Rivers:** SWOT Hydrocron API calls write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from `rivers.id_key` value or fallback `rivers.id`. **SWOT Rasters:** downloads SWOT raster granules matching the AOI bounds and temporal range using Earthdata credentials, outputs to `swot_raster/<aoi_name>/raw/<product>/`. |
+| `project.initialize()` | Loads and validates config, resolves credentials, prepares output directories, and reads the water body input. For rivers with `aoi_path`, it ensures the SWORD v17b database exists under `project.main_dir`, then subsets the selected continent/layer to the AOI, using `rivers.buffer_meters` before the spatial filter when configured. For SWOT rasters and Pixel Cloud, validates AOI geometry and product selection. Reports all config issues in one message before doing any I/O. |
+| `project.download()` | Downloads raw satellite data within the configured date range. **Reservoirs:** downloads from all enabled missions (SWOT, ICESat-2, Sentinel-3, Sentinel-6) keeping their existing raw-download layout. **Rivers:** SWOT Hydrocron API calls write filtered CSV outputs to `swot/rivers/<per_id>/<node_or_reach_id>/timeseries.csv`, where `<per_id>` comes from `rivers.id_key` value or fallback `rivers.id`. **SWOT Rasters:** downloads SWOT raster granules matching the AOI bounds and temporal range using Earthdata credentials, outputs to `swot_raster/<aoi_name>/raw/<product>/`. **SWOT Pixel Cloud:** downloads SWOT Pixel Cloud granules, filters by water class, computes derived heights, clips to AOI, grids via binned statistics, outputs to `swot_pixc/<aoi_name>/raster/`. |
 | `project.update()` | Extends existing downloads from the latest observation up to today. Safe to run repeatedly — already-downloaded data is not re-fetched. |
 | `project.create_timeseries()` | Extracts observations spatially matched to each water body, applies the configured cleaning filters, and writes per-body timeseries shapefiles. |
 | `project.generate_summaries(show, save)` | Produces diagnostic plots for each water body and mission: raw crossings, filter effect, and merged multi-mission timeseries. |
 
-### Supported missions
+## Products & Data Availability
 
-#### Reservoirs / Lakes
-A reservoir project can enable any combination of the four missions below. Each mission is independently toggled (`download: true/false`, `process: true/false`) and has its own date range.
+This section consolidates all available data sources across HydroEO's four workflows.
 
-| Mission key | Product key | Satellite | Archive start | Required credentials |
+### Reservoir & Lake Products
+
+| Product key | Satellite | Archive start | Workflow | Credentials required |
 | --- | --- | --- | --- | --- |
-| `swot` | `SWOT_LAKE` | SWOT Lake SP | 2023 | Earthdata account + HydroWeb API key (PLD) |
-| `icesat2` | `ATL13` | ICESat-2 ATL13 | 2018 | None (SlideRule — no auth needed) |
-| `sentinel3` | `S3` | Sentinel-3A/B | 2016 | CREODIAS account |
-| `sentinel6` | `S6` | Sentinel-6 | 2020 | CREODIAS account |
+| `SWOT_LAKE` | SWOT Lake SP | 2023 | Reservoirs (multi-mission) | Earthdata + HydroWeb API key |
+| `ATL13` | ICESat-2 | 2018 | Reservoirs (multi-mission) | None (SlideRule public API) |
+| `S3` | Sentinel-3A/B | 2016 | Reservoirs (multi-mission) | CREODIAS account |
+| `S6` | Sentinel-6 | 2020 | Reservoirs (multi-mission) | CREODIAS account |
 
-#### Rivers
-River projects support SWOT data only, via the Hydrocron public API (no credentials required):
+### River Products
 
-| Product | Source | Archive start | Credentials |
+| Product | Satellite | Archive start | Credentials |
 | --- | --- | --- | --- |
 | SWOT Hydrocron (nodes/reaches) | SWOT | 2023 | None (public API) |
 
-#### SWOT Rasters
-SWOT raster projects support three high-resolution and low-resolution SWOT Level-2 products for arbitrary areas:
+### SWOT Raster Products
 
-| Product key | Description | Archive start | Credentials |
+| Product key | Resolution | Archive start | Use case |
 | --- | --- | --- | --- |
-| `SWOT_L2_HR_Raster_D` | High-resolution raster data (~100m pixels) | 2024 | Earthdata account |
-| `SWOT_L2_LR_SSH_2.0` | Low-resolution sea-surface-height raster (~250m pixels) | 2023 | Earthdata account |
-| `SWOT_L2_HR_RIVERSP_2.0` | High-resolution river surface product (~100m pixels) | 2024 | Earthdata account |
+| `SWOT_L2_HR_Raster_D` | ~100m | 2024 | High-resolution grids: elevation, water surface height |
+| `SWOT_L2_LR_SSH_2.0` | ~250m | 2023 | Low-resolution grids: sea surface height, open water |
+| `SWOT_L2_HR_RIVERSP_2.0` | ~100m | 2024 | River surface: channel elevation, width, slope |
+
+All raster products require Earthdata credentials.
+
+### SWOT Pixel Cloud Products
+
+| Product key | Archive start | Use case |
+| --- | --- | --- |
+| `SWOT_L2_HR_PIXC_D` | 2024 | Point-based water heights, gridded to rasters via binning |
+| `SWOT_L2_HR_PIXC_2.0` | 2024 | Point-based water heights (v2 format), gridded to rasters |
+
+Both Pixel Cloud products require Earthdata credentials and support median/mean/max/min binning statistics.
 
 ### Output structure
 
@@ -242,9 +270,21 @@ main_dir/
       ...
 ```
 
-### Cleaning filters
+#### SWOT Pixel Cloud
+```
+main_dir/
+  swot_pixc/<aoi_name>/
+    raw/<product>/                # raw netCDF granule files
+    trimmed/                      # preprocessed GeoJSON point data (filtered by water class)
+    raster/                       # gridded rasters by date/variable
+      20250609_heightEGM_median.tif
+      20250609_heightEGM_uncert_median.tif
+      ...
+```
 
-Applied during `create_timeseries()`. Configured per mission under `processing_filters`:
+### Reservoir-specific: Cleaning filters
+
+Applied during `create_timeseries()` for reservoir workflows only. Configured per mission under `processing_filters`:
 
 | Filter | What it removes |
 | --- | --- |
@@ -259,6 +299,22 @@ Configuration validation happens during `project.initialize()`, which checks req
 ## Configuration controls
 HydroEO exposes mission-level optional parameters with defaults that preserve prior behaviour. Existing configs continue to run unchanged.
 
+### Credentials & Authentication Reference
+
+This table consolidates all credential requirements across workflows and missions:
+
+| Mission/Workflow | Product | Credentials | Environment variables | Where needed |
+| --- | --- | --- | --- | --- |
+| Reservoirs (SWOT) | `SWOT_LAKE` | Earthdata account + HydroWeb API key | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD`, `EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY` | PLD lake matching for reservoir outline correction |
+| Reservoirs (ICESat-2) | `ATL13` | None required | — | SlideRule public API; optional local caching |
+| Reservoirs (Sentinel-3) | `S3` | CREODIAS account | `CREODIAS_USERNAME`, `CREODIAS_PASSWORD` | CDSE/Copernicus download |
+| Reservoirs (Sentinel-6) | `S6` | CREODIAS account | `CREODIAS_USERNAME`, `CREODIAS_PASSWORD` | CDSE/Copernicus download |
+| Rivers (SWOT) | SWOT Hydrocron | None required | — | Public API; no auth needed |
+| SWOT Raster | `SWOT_L2_HR_Raster_D`, `SWOT_L2_LR_SSH_2.0`, `SWOT_L2_HR_RIVERSP_2.0` | Earthdata account | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` | Earthdata/NASA download |
+| SWOT Pixel Cloud | `SWOT_L2_HR_PIXC_D`, `SWOT_L2_HR_PIXC_2.0` | Earthdata account | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` | Earthdata/NASA download |
+
+Note: Credentials can be provided in the config file under `earthaccess`, `hydroweb`, or `creodias` sections, or as environment variables. Environment variables take precedence and are recommended for automated/CI workflows.
+
 ### Activating a use case
 Each water body branch (`reservoirs`, `rivers`, `swot_raster`) supports an `enabled` flag (default: `true` when the section is present). Set `enabled: false` to keep a section in the file without activating it — useful in the unified template when switching between use cases without deleting sections.
 
@@ -266,10 +322,10 @@ Each water body branch (`reservoirs`, `rivers`, `swot_raster`) supports an `enab
 `project.startdate` and `project.enddate` act as a global fallback: any satellite section that omits its own `startdate`/`enddate` inherits these values. Per-satellite overrides are still supported by setting `startdate`/`enddate` inside the mission section.
 
 ### Incompatible satellite sources
-ICESat-2, Sentinel-3, and Sentinel-6 require reservoir waterbody polygons for spatial filtering and have no effect in river or SWOT raster projects. Configuring them with `download: true` or `process: true` alongside a `rivers` or `swot_raster` branch (without a `reservoirs` section) emits a `UserWarning` at project load time.
+ICESat-2, Sentinel-3, and Sentinel-6 require reservoir waterbody polygons for spatial filtering and have no effect in river, SWOT raster, or SWOT Pixel Cloud projects. Configuring them with `download: true` or `process: true` alongside a `rivers`, `swot_raster`, or `swot_pixc` branch (without a `reservoirs` section) emits a `UserWarning` at project load time.
 
-### Common per-mission processing options
-Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6`):
+### Reservoir-specific: Common per-mission processing options
+Applied during `create_timeseries()` for reservoir workflows only. Available under each mission section (`swot`, `icesat2`, `sentinel3`, `sentinel6`):
 - `processing_filters`: list of filters. Allowed values: `elevation`, `MAD`, `daily_mean`, `hampel`, `rolling_median`.
 - `elevation_min_m`: lower bound used by elevation filter.
 - `elevation_max_m`: upper bound used by elevation filter.
@@ -298,7 +354,23 @@ SWOT raster workflow configuration:
 - `quality_filters.max_layover_impact`: pixels with `layover_impact` at or above this value are masked. Default `0.3` (metres).
 
 The download phase tracks already-processed granules in `raw/<product>/downloaded.log` to avoid re-downloading on config reruns. Preprocessing extracts the configured variables, applies quality filters, clips each tile to the AOI, and outputs GeoTIFFs. The merge phase groups clipped tiles by date and variable, merges multiple passes, and reprojects to the target CRS. Only tiles that spatially overlap the AOI are processed — out-of-area tiles (e.g., distant UTM zones fetched by the search API) are discarded before extraction. Raw netCDF files are deleted after preprocessing to save space.
+### SWOT Pixel Cloud
 
+SWOT Pixel Cloud workflow configuration:
+
+- `aoi.name`: identifier for this AOI (used in output directory paths and log files).
+- `aoi.type`: one of `"bbox"`, `"shapefile"`, or `"geopackage"`. For non-bbox types, provide `aoi.path`.
+- `aoi.bbox`: for type `"bbox"`, array of `[lon_min, lat_min, lon_max, lat_max]`.
+- `aoi.path`: for type `"shapefile"` or `"geopackage"`, path to the geometry file.
+- `product`: one of `"SWOT_L2_HR_PIXC_D"` (default) or `"SWOT_L2_HR_PIXC_2.0"`.
+- `startdate` and `enddate`: temporal range as `[year, month, day]`.
+- `classes`: optional water classification filtering (default: `open_water`, `water_near_land`). Available values: `land`, `land_near_water`, `water_near_land`, `open_water`, `dark_water`, `low_coh_water_near_land`, `open_low_coh_water`.
+- `fields`: optional list of point fields to extract and grid (default: `heightEGM`). Available fields include: `heightEGM`, `height`, `geoid`, `water_frac`, `phase_noise_std`, `dheight_dphase`, `sig0`, etc.
+- `grid_resolution`: output pixel size in meters (default: `100`). Must be specified; used for all gridding operations.
+- `stat_method`: statistic method for binning (default: `"median"`). Choices: `median`, `mean`, `max`, `min`. Controls how multiple point observations in each grid cell are aggregated.
+- `target_crs`: optional override — output EPSG code for the final raster (e.g., `"EPSG:32645"` for UTM 45N). By default uses `gis.global_crs`. Only set this when you need a different output CRS.
+
+The download phase queries Earthdata for PIXC granules within the AOI bounding box and temporal range, tracking downloaded granules in `raw/<product>/downloaded.log`. Preprocessing extracts points matching the configured water classes, computes derived heights (e.g., `heightEGM` from geoid corrections), clips to AOI bounds, and saves to GeoJSON. The rasterization phase bins point data into regular grids using the specified statistic and resolution, outputting GeoTIFFs by date and variable. Raw netCDF files are retained for archival but can be deleted manually to save space after rasterization completes.
 ### Sentinel-3 and Sentinel-6
 - `subset_file_id`: expected source netCDF filename inside each package.
 - `sigma0_max`: maximum accepted `sigma0` during extraction.
@@ -326,93 +398,14 @@ If `download_dir` is provided, the returned GeoDataFrame is cached as `atl13.par
 inside that directory.  If `download_dir` is omitted, the directory defaults to
 `{main_dir}/icesat2/` and no extra cache is written between download and process steps.
 
-#### Column changes from prior Harmony-based pipeline
+**Available ICESat-2 configuration options:**
 
-| Column | Status | Notes |
-| --- | --- | --- |
-| `height` | ✅ present | From `ht_ortho` (EGM2008 geoid-corrected server-side — do **not** apply a second correction) |
-| `cycle_number` | ✅ present | From SlideRule `cycle` column |
-| `beam` | ✅ present | From SlideRule `gt` column |
-| `rgt` | ✅ present | Unchanged |
-| `ht_water_surf` | 🆕 new | Instantaneous water surface height |
-| `stdev_water_surf` | 🆕 new | Standard deviation of water surface height |
-| `water_depth` | 🆕 new | Estimated water depth |
-| `spot` | 🆕 new | ICESat-2 spot number |
-| `srcid` | 🆕 new | Source granule ID (map to name via `gdf.attrs["meta"]["srctbl"]`) |
-| `orbit_number` | ❌ removed | Not available from `atl13x`; use `rgt + cycle_number` as equivalent orbit identifier |
-| `file_name` | ❌ removed | No local files; use `gdf.attrs["meta"]["srctbl"][srcid]` if the granule name is needed |
+- `atl13_fields`: optional list of ancillary beam-group fields from SlideRule (validated at config load time). Supported fields: `inland_water_body_id`, `inland_water_body_size`, `inland_water_body_type`, `segment_slope_trk_bdy`, `err_ht_water_surf`, `segment_quality`, `segment_geoid`, `segment_geoid_free2mean`, `segment_dem_ht`, `segment_near_sat_fract`.
+- `atl13.pass_invalid`: filter invalid records (default: false).
+- `atl13.beams`: optional list of beam names to select (e.g., `["gt1l", "gt2l", "gt3l"]` for left beams only).
+- `atl13.spots`: optional list of spot numbers.
 
-#### Supported `atl13_fields` values
-
-Use `icesat2.atl13_fields` to request additional ancillary beam-group fields from
-SlideRule.  These are fetched server-side and returned as extra columns.
-Field names are validated at config load time.
-
-Supported ancillary field names:
-- `inland_water_body_id`
-- `inland_water_body_size`
-- `inland_water_body_type`
-- `segment_slope_trk_bdy`
-- `err_ht_water_surf`
-- `segment_quality`
-- `segment_geoid`
-- `segment_geoid_free2mean`
-- `segment_dem_ht`
-- `segment_near_sat_fract`
-
-Field mapping from config key to output column:
-
-| Config field name | Output column | Description |
-| --- | --- | --- |
-| `inland_water_body_id` | `wb_id` | Unique inland water-body identifier. |
-| `inland_water_body_size` | `wb_size` | Estimated water-body size class. |
-| `inland_water_body_type` | `wb_type` | Inland water-body type classification. |
-| `segment_slope_trk_bdy` | `wb_slope` | Along-track boundary slope estimate. |
-| `err_ht_water_surf` | `height_err` | Estimated uncertainty of water-surface height. |
-| `segment_quality` | `quality_seg` | Segment-level quality flag. |
-| `segment_geoid` | `geoid_track` | Geoid height along the segment track. |
-| `segment_geoid_free2mean` | `geoid_corr_track` | Free-to-mean geoid correction term. |
-| `segment_dem_ht` | `dem` | Reference DEM elevation sampled at segment location. |
-| `segment_near_sat_fract` | `sat_frac_track` | Fraction of pulses flagged as near-saturated. |
-
-Example:
-
-```yaml
-icesat2:
-  atl13_fields:
-    - inland_water_body_id
-    - segment_quality
-  atl13:
-    pass_invalid: false
-    beams: ["gt1l", "gt2l", "gt3l"]  # left beams only
-    spots: []
-```
-
-## Available products
-
-### Lake/Reservoir workflows
-HydroEO supports 4 products for reservoir workflows. These are the product identifiers you will see in extracted outputs, merged timeseries, and lower-level processing methods:
-
-| Product key | Source mission | Typical coverage | Key retrievable parameters |
-| --- | --- | --- | --- |
-| `SWOT_LAKE` | SWOT Lake SP | 2023-present | water surface elevation, water area, storage-related metrics, quality flags |
-| `ATL13` | ICESat-2 | 2018-present | inland water surface elevation, along-track geometry, quality metadata |
-| `S3` | Sentinel-3A/B | 2016-present | latitude, longitude, elevation, waveform, backscatter (`sig0`), time, altitude, tracker/range variables, geoid |
-| `S6` | Sentinel-6 | 2020-present | latitude, longitude, altitude, `range_ocog`, wet/dry tropospheric corrections, backscatter, time, geoid |
-
-Common across reservoir products: geolocation, observation time, water level/elevation measurements, and quality metadata.
-
-### River workflows
-River projects use SWOT Hydrocron, a public API delivering SWOT observations for predefined river nodes and reaches. Returns timeseries CSV with water surface elevation, discharge estimates, and quality flags.
-
-### SWOT Raster workflows
-SWOT raster projects download three L2 raster products via Earthdata. Each product is distributed as geotiff granules, one per satellite pass:
-
-| Product | Resolution | Coverage | Key parameters |
-| --- | --- | --- | --- |
-| `SWOT_L2_HR_Raster_D` | ~100m | Land/water classification, elevation | digital elevation model (DEM), water surface elevation, water area fraction |
-| `SWOT_L2_LR_SSH_2.0` | ~250m | Sea surface height, open water | sea surface height, geoid height, wind speed, wave height |
-| `SWOT_L2_HR_RIVERSP_2.0` | ~100m | River surface | river channel elevation, width, slope, quality flags |
+Common output columns: `height` (water surface elevation, EGM2008-corrected), `cycle_number`, `beam`, `rgt`, `ht_water_surf`, `stdev_water_surf`, `water_depth`, `spot`, `srcid`, and any requested ancillary fields.
 
 ## Running tests
 The development environment with all testing tools is set up via:

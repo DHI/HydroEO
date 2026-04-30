@@ -258,7 +258,7 @@ def fetch_swot_raster(
     end: str = typer.Option(..., "--end", help="End date (YYYY-MM-DD)."),
     aoi_name: str = typer.Option("aoi", "--aoi-name", help="Label for the AOI."),
     product: str = typer.Option(
-        "SWOT_L2_HR_PIXC_D", "--product", help="SWOT raster product short name."
+        "SWOT_L2_HR_PIXC_2.0", "--product", help="SWOT raster product short name."
     ),
     output: str = typer.Option(
         "hydroeo_output", "--output", "-o", help="Output directory (created if absent)."
@@ -298,6 +298,99 @@ def fetch_swot_raster(
 
     download_raster(config=config, project_dir=output, credentials=(u, p))
     typer.echo(f"SWOT raster download complete. Output: {output}")
+
+
+# ---------------------------------------------------------------------------
+# fetch swot-pixc
+# ---------------------------------------------------------------------------
+
+
+@fetch_app.command("swot-pixc")
+def fetch_swot_pixc(
+    bbox: str = typer.Option(
+        ...,
+        "--bbox",
+        help="Bounding box as a quoted string: 'MINLON MINLAT MAXLON MAXLAT'.",
+    ),
+    start: str = typer.Option(..., "--start", help="Start date (YYYY-MM-DD)."),
+    end: str = typer.Option(..., "--end", help="End date (YYYY-MM-DD)."),
+    aoi_name: str = typer.Option("aoi", "--aoi-name", help="Label for the AOI."),
+    product: str = typer.Option(
+        "SWOT_L2_HR_PIXC_D", "--product", help="SWOT pixel cloud product short name."
+    ),
+    output: str = typer.Option(
+        "hydroeo_output", "--output", "-o", help="Output directory (created if absent)."
+    ),
+    classes: Optional[str] = typer.Option(
+        None,
+        "--classes",
+        help="Comma-separated water classes to include (e.g., 'open_water,water_near_land'). "
+        "Default: open_water,water_near_land.",
+    ),
+    fields: Optional[str] = typer.Option(
+        None,
+        "--fields",
+        help="Comma-separated fields to grid (e.g., 'heightEGM,height'). Default: heightEGM.",
+    ),
+    grid_resolution: int = typer.Option(
+        100, "--grid-resolution", help="Grid resolution in meters. Default: 100."
+    ),
+    stat_method: str = typer.Option(
+        "median",
+        "--stat-method",
+        help="Binning statistic method (median, mean, min, max, count). Default: median.",
+    ),
+    username: Optional[str] = typer.Option(
+        None, "--username", help="EarthAccess username (or set EARTHACCESS_USERNAME)."
+    ),
+    password: Optional[str] = typer.Option(
+        None,
+        "--password",
+        help="EarthAccess password (or set EARTHACCESS_PASSWORD).",
+        hide_input=True,
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable debug logging."
+    ),
+):
+    """Download SWOT pixel cloud data, preprocess, and grid to rasters.
+
+    Point cloud data is filtered by water class, extracted with heightEGM computation,
+    and gridded to regular GeoTIFF rasters using specified statistics.
+    """
+    _configure_logging(verbose)
+    parsed_bbox = _parse_bbox(bbox)
+    startdate = _parse_date(start, "--start")
+    enddate = _parse_date(end, "--end")
+    u, p = _resolve_earthaccess_creds(username, password)
+
+    # Parse optional classes and fields
+    classes_list = (
+        [c.strip() for c in classes.split(",")]
+        if classes
+        else ["open_water", "water_near_land"]
+    )
+    fields_list = [f.strip() for f in fields.split(",")] if fields else ["heightEGM"]
+
+    config = {
+        "aoi": {
+            "name": aoi_name,
+            "type": "bbox",
+            "bbox": parsed_bbox,
+        },
+        "product": product,
+        "startdate": [startdate.year, startdate.month, startdate.day],
+        "enddate": [enddate.year, enddate.month, enddate.day],
+        "classes": classes_list,
+        "fields": fields_list,
+        "grid_resolution": grid_resolution,
+        "stat_method": stat_method,
+    }
+
+    from HydroEO.satellites.swot.pixc import download_pixc
+
+    download_pixc(config=config, project_dir=output, credentials=(u, p))
+    typer.echo(f"SWOT pixel cloud download complete. Output: {output}")
 
 
 # ---------------------------------------------------------------------------

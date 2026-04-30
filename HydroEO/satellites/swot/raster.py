@@ -187,7 +187,9 @@ def _download_granules(
     new_results = [r for r in swot_results if r["umm"]["GranuleUR"] in new_granules]
     logger.info("Downloading %d granules to %s", len(new_results), raw_dir)
     try:
-        downloaded_files = earthaccess.download(new_results, str(raw_dir))
+        downloaded_files = earthaccess.download(
+            new_results, str(raw_dir), show_progress=True
+        )
         logger.info("Successfully downloaded %d files", len(downloaded_files))
         return downloaded_files or []
     except Exception as e:

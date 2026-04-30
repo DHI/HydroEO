@@ -43,6 +43,7 @@ def test_fetch_help_exits_zero():
     result = runner.invoke(app, ["fetch", "--help"])
     assert result.exit_code == 0
     assert "swot-raster" in result.output
+    assert "swot-pixc" in result.output
     assert "swot-lake" in result.output
     assert "icesat2" in result.output
     assert "sentinel" in result.output

@@ -97,20 +97,24 @@ def validate_config(
     has_reservoirs = "reservoirs" in cfg
     has_rivers = "rivers" in cfg
     has_swot_raster = "swot_raster" in cfg
+    has_swot_pixc = "swot_pixc" in cfg
 
     # Exclusivity and presence checks apply only to *enabled* sections
     active_reservoirs = has_reservoirs and _is_enabled(cfg.get("reservoirs", {}))
     active_rivers = has_rivers and _is_enabled(cfg.get("rivers", {}))
     active_swot_raster = has_swot_raster and _is_enabled(cfg.get("swot_raster", {}))
-    active_count = sum([active_reservoirs, active_rivers, active_swot_raster])
+    active_swot_pixc = has_swot_pixc and _is_enabled(cfg.get("swot_pixc", {}))
+    active_count = sum(
+        [active_reservoirs, active_rivers, active_swot_raster, active_swot_pixc]
+    )
 
     if active_count > 1:
         issues.append(
-            "Sections 'reservoirs', 'rivers', and 'swot_raster' are mutually exclusive. Configure only one."
+            "Sections 'reservoirs', 'rivers', 'swot_raster', and 'swot_pixc' are mutually exclusive. Configure only one."
         )
     if active_count == 0:
         issues.append(
-            "Missing required section: provide one of 'reservoirs', 'rivers', or 'swot_raster'."
+            "Missing required section: provide one of 'reservoirs', 'rivers', 'swot_raster', or 'swot_pixc'."
         )
 
     if has_reservoirs:
@@ -292,6 +296,121 @@ def validate_config(
                 ):
                     issues.append(
                         f"'swot_raster.{date_field}' must be [year, month, day] format."
+                    )
+
+    if has_swot_pixc:
+        if not isinstance(cfg["swot_pixc"], dict):
+            issues.append("Section 'swot_pixc' must be a mapping of key/value pairs.")
+        else:
+            swot_pixc_cfg = cfg["swot_pixc"]
+
+            # Validate AOI configuration (same as swot_raster)
+            if "aoi" not in swot_pixc_cfg:
+                issues.append("Missing required key 'swot_pixc.aoi'.")
+            elif not isinstance(swot_pixc_cfg["aoi"], dict):
+                issues.append("'swot_pixc.aoi' must be a mapping of key/value pairs.")
+            else:
+                aoi_cfg = swot_pixc_cfg["aoi"]
+
+                if "name" not in aoi_cfg:
+                    issues.append("Missing required key 'swot_pixc.aoi.name'.")
+
+                if "type" not in aoi_cfg:
+                    issues.append("Missing required key 'swot_pixc.aoi.type'.")
+                elif aoi_cfg["type"] not in ["bbox", "shapefile", "geopackage"]:
+                    issues.append(
+                        "'swot_pixc.aoi.type' must be one of ['bbox', 'shapefile', 'geopackage']."
+                    )
+
+                # Validate type-specific requirements
+                aoi_type = aoi_cfg.get("type")
+                if aoi_type == "bbox":
+                    if "bbox" not in aoi_cfg:
+                        issues.append(
+                            "Missing required key 'swot_pixc.aoi.bbox' when type='bbox'."
+                        )
+                    elif (
+                        not isinstance(aoi_cfg["bbox"], (list, tuple))
+                        or len(aoi_cfg["bbox"]) != 4
+                    ):
+                        issues.append(
+                            "'swot_pixc.aoi.bbox' must be a list/tuple of 4 coordinates [lon_min, lat_min, lon_max, lat_max]."
+                        )
+
+                elif aoi_type in ["shapefile", "geopackage"]:
+                    if "path" not in aoi_cfg:
+                        issues.append(
+                            f"Missing required key 'swot_pixc.aoi.path' when type='{aoi_type}'."
+                        )
+                    else:
+                        path = aoi_cfg["path"]
+                        if not os.path.exists(path):
+                            issues.append(
+                                f"Path in 'swot_pixc.aoi.path' does not exist: {path}"
+                            )
+                        else:
+                            expected_suffix = (
+                                ".shp" if aoi_type == "shapefile" else ".gpkg"
+                            )
+                            if not path.lower().endswith(expected_suffix):
+                                issues.append(
+                                    f"'swot_pixc.aoi.path' must reference a '{expected_suffix}' file for type '{aoi_type}'."
+                                )
+
+            # Validate product
+            if "product" not in swot_pixc_cfg:
+                issues.append("Missing required key 'swot_pixc.product'.")
+            elif swot_pixc_cfg["product"] not in [
+                "SWOT_L2_HR_PIXC_D",
+                "SWOT_L2_HR_PIXC_2.0",
+            ]:
+                issues.append(
+                    "'swot_pixc.product' must be one of ['SWOT_L2_HR_PIXC_D', 'SWOT_L2_HR_PIXC_2.0']."
+                )
+
+            # Validate temporal range
+            for date_field in ["startdate", "enddate"]:
+                if date_field not in swot_pixc_cfg:
+                    issues.append(f"Missing required key 'swot_pixc.{date_field}'.")
+                elif (
+                    not isinstance(swot_pixc_cfg[date_field], (list, tuple))
+                    or len(swot_pixc_cfg[date_field]) != 3
+                ):
+                    issues.append(
+                        f"'swot_pixc.{date_field}' must be [year, month, day] format."
+                    )
+
+            # Validate PIXC-specific fields
+            if "classes" in swot_pixc_cfg:
+                classes = swot_pixc_cfg["classes"]
+                if not isinstance(classes, list) or not all(
+                    isinstance(c, str) for c in classes
+                ):
+                    issues.append(
+                        "'swot_pixc.classes' must be a list of strings (e.g., ['open_water', 'water_near_land'])."
+                    )
+
+            if "fields" in swot_pixc_cfg:
+                fields = swot_pixc_cfg["fields"]
+                if not isinstance(fields, list) or not all(
+                    isinstance(f, str) for f in fields
+                ):
+                    issues.append(
+                        "'swot_pixc.fields' must be a list of strings (e.g., ['heightEGM', 'height'])."
+                    )
+
+            if "grid_resolution" in swot_pixc_cfg:
+                grid_res = swot_pixc_cfg["grid_resolution"]
+                if not isinstance(grid_res, (int, float)) or grid_res <= 0:
+                    issues.append(
+                        "'swot_pixc.grid_resolution' must be a positive number (in meters)."
+                    )
+
+            if "stat_method" in swot_pixc_cfg:
+                stat_method = swot_pixc_cfg["stat_method"]
+                if not isinstance(stat_method, str):
+                    issues.append(
+                        "'swot_pixc.stat_method' must be a string (e.g., 'median', 'mean')."
                     )
 
     for mission in ["swot", "icesat2", "sentinel3", "sentinel6"]:
