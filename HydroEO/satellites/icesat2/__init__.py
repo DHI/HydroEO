@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import logging
 
 import geopandas as gpd
 import sliderule
@@ -15,7 +14,7 @@ from HydroEO.satellites.icesat2 import preprocess as _preprocess
 # sliderule.init() only sets the server URL — it does not open a network
 # connection — so it is safe to call at import time.
 sliderule.init("slideruleearth.io")
-sliderule.set_verbose(True, loglevel=logging.WARNING)
+sliderule.set_verbose(False)
 
 SR_DEFAULT_COLUMN_MAP = _download.SR_DEFAULT_COLUMN_MAP
 SR_ANCILLARY_COLUMN_MAP = _download.SR_ANCILLARY_COLUMN_MAP

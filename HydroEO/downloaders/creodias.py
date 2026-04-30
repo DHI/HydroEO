@@ -344,7 +344,7 @@ def download_list(
         logger.info("Generating session token")
         token = _get_token(username, password)
         session_start_time = time.time()
-    logger.info("Session token age: %.2f minutes", _token_age(session_start_time))
+    logger.debug("Session token age: %.2f minutes", _token_age(session_start_time))
 
     if show_progress:
         if len(uids) > 0:
@@ -357,7 +357,7 @@ def download_list(
     for uid in uids:
         # assess age of token, (Expires every ten minutes so we refresh every 9 minutes)
         if _token_age(session_start_time) > 9:
-            logger.info(
+            logger.debug(
                 "Session token age: %.2f minutes. Refreshing session token now.",
                 _token_age(session_start_time),
             )

@@ -78,7 +78,9 @@ def download(results, download_directory: str, earthaccess_client=earthaccess):
                 category=FutureWarning,
                 module=r"earthaccess\.(results|store)",
             )
-            files = earthaccess_client.download(to_download, download_directory)
+            files = earthaccess_client.download(
+                to_download, download_directory, show_progress=True
+            )
 
         with open(log_path, "a") as log:
             for file in files:
