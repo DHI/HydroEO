@@ -315,6 +315,50 @@ This table consolidates all credential requirements across workflows and mission
 
 Note: Credentials can be provided in the config file under `earthaccess`, `hydroweb`, or `creodias` sections, or as environment variables. Environment variables take precedence and are recommended for automated/CI workflows.
 
+## Logging
+
+HydroEO logs to both console and file for debugging and monitoring:
+
+- **Console**: INFO level (key operations and progress messages)
+- **File**: DEBUG level (detailed execution trace, useful for troubleshooting)
+
+Log files are automatically created in a `logs/` folder at the repository root with timestamped filenames (e.g., `HydroEO_2026-04-30_10-00-17.log`). The `logs/` directory is created automatically on the first run and excluded from git.
+
+### Controlling logging output
+
+By default, both console and file logging are enabled:
+
+```python
+from HydroEO.project import Project
+from HydroEO.logging_config import setup_logging
+import logging
+
+setup_logging(logging.INFO)  # Console at INFO, file at DEBUG
+```
+
+To disable file logging (e.g., in tests or scripts where you only want console output):
+
+```python
+setup_logging(logging.INFO, enable_file_logging=False)
+```
+
+To enable DEBUG messages on the console:
+
+```python
+setup_logging(logging.DEBUG)  # Console and file both at DEBUG
+```
+
+### Log file location
+
+All log files are stored in:
+```
+<project_root>/logs/
+```
+
+Log files follow the naming pattern: `HydroEO_YYYY-MM-DD_HH-MM-SS.log`
+
+Multiple runs create separate log files, allowing you to review execution traces from previous runs without overwriting.
+
 ### Activating a use case
 Each water body branch (`reservoirs`, `rivers`, `swot_raster`) supports an `enabled` flag (default: `true` when the section is present). Set `enabled: false` to keep a section in the file without activating it — useful in the unified template when switching between use cases without deleting sections.
 
