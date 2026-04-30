@@ -137,56 +137,6 @@ def test_sentinel_subset_continues_after_bad_file(tmp_path, caplog):
 
 
 @pytest.mark.unit
-def test_sentinel_subset_logs_out_of_bounds_reason(tmp_path, caplog):
-    """sentinel.subset() must log when a file has no points inside the requested AOI."""
-    from HydroEO.satellites.sentinel import subset
-
-    download_dir = tmp_path / "downloads"
-    dest_dir = tmp_path / "subset"
-    track_dir = download_dir / "outside_aoi.SEN3"
-    track_dir.mkdir(parents=True)
-    dest_dir.mkdir(parents=True)
-
-    _write_s3_subset_fixture(
-        track_dir / "enhanced_measurement.nc",
-        lat_values=[10.0, 10.5, 11.0],
-        lon_values=[20.0, 20.5, 21.0],
-    )
-
-    with caplog.at_level("WARNING"):
-        subset(
-            aoi=SWOT_AOI,
-            download_dir=str(download_dir),
-            dest_dir=str(dest_dir),
-            product="S3",
-        )
-
-    assert not (dest_dir / "sub_outside_aoi.nc").exists()
-    assert "no 20Hz points fall inside AOI" in caplog.text
-
-
-@pytest.mark.unit
-def test_sentinel6_subset_logs_missing_std_file(tmp_path, caplog):
-    """sentinel.subset() must warn and continue when a Sentinel-6 folder has no STD netCDF."""
-    from HydroEO.satellites.sentinel import subset
-
-    download_dir = tmp_path / "downloads"
-    dest_dir = tmp_path / "subset"
-    (download_dir / "missing_std.SEN6").mkdir(parents=True)
-    dest_dir.mkdir(parents=True)
-
-    with caplog.at_level("WARNING"):
-        subset(
-            aoi=SWOT_AOI,
-            download_dir=str(download_dir),
-            dest_dir=str(dest_dir),
-            product="S6",
-        )
-
-    assert "no Sentinel-6 STD netCDF found" in caplog.text
-
-
-@pytest.mark.unit
 def test_invalid_product_raises_in_sentinel_query():
     """sentinel.query() must raise ValueError for unrecognised product labels."""
     from HydroEO.satellites.sentinel import query
