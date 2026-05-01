@@ -12,6 +12,7 @@ from io import StringIO
 from typing import TYPE_CHECKING
 
 import geopandas as gpd
+import mikeio
 import pandas as pd
 from tqdm import tqdm
 
@@ -686,6 +687,10 @@ def create_reservoirs_timeseries(prj: "Project") -> None:
     # Clean observations with filters
     _clean_reservoirs_timeseries(prj)
 
+    # Export to dfs0 if enabled
+    if getattr(prj.reservoirs, "export_to_dfs0", False):
+        _export_cleaned_to_dfs0(prj)
+
     # Merge multi-mission timeseries
     _merge_reservoirs_timeseries(prj)
 
@@ -1018,6 +1023,85 @@ def _load_and_parse_cleaned_timeseries(prj, id, products):
         )
         df = df.sort_values(by="date")
     return df
+
+
+def _export_cleaned_to_dfs0(prj: "Project") -> None:
+    """Export cleaned timeseries observations to dfs0 format.
+
+    Parameters
+    ----------
+    prj : Project
+        Project instance with reservoirs configuration
+
+    Notes
+    -----
+    Exports height data from cleaned CSV observations to dfs0 format
+    for each product in each reservoir's cleaned_observations folder.
+    """
+    ids_with_cleaned = [
+        id
+        for id in prj.reservoirs.download_gdf[prj.reservoirs.id_key]
+        if os.path.exists(
+            os.path.join(prj.dirs["output"], f"{id}", "cleaned_observations")
+        )
+    ]
+
+    if not ids_with_cleaned:
+        logger.warning(
+            "No cleaned observations found for any reservoir; skipping dfs0 export."
+        )
+        return
+
+    for id in ids_with_cleaned:
+        cleaned_dir = os.path.join(prj.dirs["output"], f"{id}", "cleaned_observations")
+
+        for product in tqdm(
+            prj.to_process, desc="Exporting cleaned observations to dfs0"
+        ):
+            csv_path = os.path.join(cleaned_dir, f"{product}.csv")
+
+            if not os.path.exists(csv_path):
+                continue
+
+            try:
+                # Load and prepare data
+                df = pd.read_csv(csv_path)
+
+                # Parse and set datetime index
+                df["date"] = pd.to_datetime(
+                    df.date, format="mixed", utc=True
+                ).dt.tz_convert(None)
+                df = df.set_index("date")
+                df = df.sort_index()
+
+                # Remove rows with NaN heights
+                df = df.dropna(subset=["height"])
+
+                if len(df) == 0:
+                    logger.warning(
+                        "No valid height data for %s in %s after cleaning",
+                        product,
+                        id,
+                    )
+                    continue
+
+                # Create Dataset and export to dfs0
+                items = {"height": mikeio.ItemInfo(mikeio.EUMType.Water_Level)}
+                ds = mikeio.from_pandas(df[["height"]], items=items)
+
+                # Write dfs0 file
+                dfs0_path = os.path.join(cleaned_dir, f"{product}.dfs0")
+                ds.to_dfs(dfs0_path)
+
+                logger.debug("Exported dfs0: %s", dfs0_path)
+
+            except Exception as exc:
+                logger.error(
+                    "Failed to export %s to dfs0 for %s: %s",
+                    product,
+                    id,
+                    exc,
+                )
 
 
 def _load_merged_timeseries(prj, id):

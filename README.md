@@ -367,6 +367,10 @@ Applied during `create_timeseries()` for reservoir workflows only. Available und
 - `elevation_max_m`: upper bound used by elevation filter.
 - `mad_threshold`: MAD outlier multiplier.
 
+### Reservoir-specific: Export options
+Available under the `reservoirs` section:
+- `export_to_dfs0`: optional boolean (default: `false`). When `true`, cleaned observations are exported to dfs0 format (DHI MIKE IO format) for integration into DHI tools. Each product (SWOT, ICESat-2, Sentinel-3, Sentinel-6) is written as a separate dfs0 file in the `cleaned_observations/` directory. Requires the optional mikeio library; install with `pip install HydroEO[dfs0]`.
+
 ### SWOT
 - `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching (Use Case A — reservoirs).
 - `exclude_obs_id_values`: list of SWOT `obs_id` values to exclude during extraction (Use Case A).

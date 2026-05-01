@@ -131,6 +131,12 @@ def validate_config(
             if not cfg["reservoirs"].get("id_key"):
                 issues.append("Missing required key 'reservoirs.id_key'.")
 
+            if "export_to_dfs0" in cfg["reservoirs"]:
+                if not isinstance(cfg["reservoirs"]["export_to_dfs0"], bool):
+                    issues.append(
+                        "'reservoirs.export_to_dfs0' must be a boolean value (true or false)."
+                    )
+
     if has_rivers:
         if not isinstance(cfg["rivers"], dict):
             issues.append("Section 'rivers' must be a mapping of key/value pairs.")
