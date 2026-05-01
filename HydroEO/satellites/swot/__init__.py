@@ -2,7 +2,7 @@
 
 import datetime
 
-from HydroEO.satellites.swot import download as _download
+from HydroEO.satellites.swot import _download
 from HydroEO.satellites.swot import preprocess as _preprocess
 
 SWOT_LAKE_SHORT_NAME = _download.SWOT_LAKE_SHORT_NAME

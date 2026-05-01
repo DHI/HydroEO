@@ -24,7 +24,7 @@ from shapely.geometry import box, mapping
 from tqdm import tqdm
 
 from HydroEO import FLOAT32_NODATA_VALUE
-from HydroEO.satellites.swot.download import (
+from HydroEO.satellites.swot._download import (
     _download_files,
     _filter_new,
     _login,

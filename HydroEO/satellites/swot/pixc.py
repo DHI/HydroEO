@@ -22,7 +22,7 @@ from scipy.stats import binned_statistic_2d
 from shapely.geometry import box
 from tqdm import tqdm
 
-from HydroEO.satellites.swot.download import (
+from HydroEO.satellites.swot._download import (
     _download_files,
     _filter_new,
     _login,

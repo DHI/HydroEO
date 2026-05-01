@@ -230,7 +230,7 @@ def test_download_granules_bbox_config(tmp_path, pixc_bbox_config, _fake_pixc_re
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir(parents=True)
 
-    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
         mock_ea.search_data.return_value = [_fake_pixc_result]
         mock_ea.download.return_value = ["file1.nc"]
         mock_ea.login.return_value = None
@@ -252,7 +252,7 @@ def test_download_granules_skip_processed(tmp_path, pixc_bbox_config):
     # Mark a granule as already processed
     processed = {"G1234567890_SWOT_L2_HR_PIXC_D"}
 
-    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
         mock_ea.search_data.return_value = []
         mock_ea.login.return_value = None
 
@@ -376,7 +376,7 @@ def test_download_pixc_end_to_end(tmp_path, pixc_bbox_config, synthetic_pixc_net
     shutil.copy(synthetic_pixc_netcdf, raw_dir / synthetic_pixc_netcdf.name)
 
     # Mock earthaccess at the download module level where _download_granules uses it
-    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
         mock_ea.login.return_value = None
         mock_ea.search_data.return_value = []
         mock_ea.download.return_value = []
@@ -443,7 +443,7 @@ def test_download_granules_no_results(tmp_path, pixc_bbox_config):
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir(parents=True)
 
-    with patch("HydroEO.satellites.swot.download.earthaccess") as mock_ea:
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
         mock_ea.search_data.return_value = []
         mock_ea.login.return_value = None
 
