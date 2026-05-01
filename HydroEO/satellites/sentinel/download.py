@@ -70,9 +70,9 @@ def download(
         already_downloaded = [uid for uid in ids if uid in downloaded_ids]
         ids_to_download = [uid for uid in ids if uid not in downloaded_ids]
 
-    logger.info("%s products returned by query.", len(ids))
-    logger.info("%s products already downloaded.", len(already_downloaded))
-    logger.info("Downloading %s files.", len(ids_to_download))
+    logger.debug("%s products returned by query.", len(ids))
+    logger.debug("%s products already downloaded.", len(already_downloaded))
+    logger.debug("Downloading %s files.", len(ids_to_download))
 
     return creodias_client.download_list(
         ids_to_download,

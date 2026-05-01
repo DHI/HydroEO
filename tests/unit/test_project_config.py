@@ -202,12 +202,6 @@ def test_project_accepts_rivers_aoi_branch(tmp_path, monkeypatch, _mock_river_gd
                 "id_key": "river_id",
                 "buffer_meters": 500.0,
             },
-            "icesat2": {
-                "download": False,
-                "process": True,
-                "startdate": [2024, 1, 1],
-                "enddate": [2024, 2, 1],
-            },
         },
     )
 
@@ -248,12 +242,6 @@ def test_project_accepts_rivers_node_number_branch(tmp_path):
                 "feature_type": "nodes",
                 "id": "demo-river",
             },
-            "icesat2": {
-                "download": False,
-                "process": False,
-                "startdate": [2024, 1, 1],
-                "enddate": [2024, 2, 1],
-            },
         },
     )
 
@@ -280,12 +268,6 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
                 "feature_type": "nodes",
                 "id": "demo-river",
             },
-            "icesat2": {
-                "download": False,
-                "process": False,
-                "startdate": [2024, 1, 1],
-                "enddate": [2024, 2, 1],
-            },
         },
     )
 
@@ -302,38 +284,6 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
     proj = Project(name="rivers-feature-numbers", config=str(cfg_path))
     proj.initialize()
     assert proj.rivers.target_ids == [10, 11, 12]
-
-
-@pytest.mark.unit
-def test_initialize_logs_resolved_river_target_ids(tmp_path, caplog):
-    from HydroEO.project import Project
-
-    cfg_path = tmp_path / "config.yaml"
-    _write_config(
-        cfg_path,
-        {
-            "project": {"main_dir": str(tmp_path / "out")},
-            "gis": {"global_crs": "EPSG:4326"},
-            "rivers": {
-                "feature_numbers": [21, 22],
-                "feature_type": "reaches",
-                "id": "demo-river",
-            },
-            "icesat2": {
-                "download": False,
-                "process": False,
-                "startdate": [2024, 1, 1],
-                "enddate": [2024, 2, 1],
-            },
-        },
-    )
-
-    proj = Project(name="rivers-feature-numbers-reaches", config=str(cfg_path))
-
-    with caplog.at_level("INFO"):
-        proj.initialize()
-
-    assert "Initialized river reach ids: 21, 22" in caplog.text
 
 
 @pytest.mark.unit

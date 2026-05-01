@@ -147,7 +147,12 @@ def initialize_rivers(prj: "Project") -> None:
 
     id_label = "node" if prj.rivers.target_id_col == "node_id" else "reach"
     logger.info(
-        "Initialized river %s ids: %s",
+        "Found river %s %s ids",
+        len(prj.rivers.target_ids),
+        id_label,
+    )
+    logger.debug(
+        "Found river %s ids: %s",
         id_label,
         ", ".join(str(target_id) for target_id in prj.rivers.target_ids),
     )
@@ -217,15 +222,15 @@ def _ensure_sword_database(prj: "Project") -> str:
         "SWORD_v17b database not found in %s. Downloading and extracting it now.",
         sword_dir,
     )
-    general.ifnotmakedirs(sword_dir)
+    general.ifnotmakedirs(os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg"))
 
     zip_path = os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg.zip")
     url_request.urlretrieve(SWORD_V17B_ZIP_URL, zip_path)
 
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(sword_dir)
+        zip_ref.extractall(os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg"))
 
-    os.remove(zip_path)
+    # os.remove(zip_path)
     return sword_dir
 
 
@@ -484,13 +489,14 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
     waterbody_groups = _group_river_targets_by_waterbody(prj)
 
     summary = {
-        "requested": len(waterbody_groups),
+        "requested": 0,
         "successful": 0,
         "failed": 0,
         "empty_after_filter": 0,
     }
 
     for wb_id, target_ids in waterbody_groups.items():
+        summary["requested"] = summary["requested"] + len(target_ids)
         output_path = os.path.join(
             prj.dirs["swot"], "rivers", str(wb_id), "timeseries.csv"
         )
@@ -501,8 +507,16 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
         if latest_obs is not None:
             wb_startdate = latest_obs
 
+        deferred_warnings = []
+
+        def _defer_warning(message, *args):
+            if args:
+                deferred_warnings.append(message % args)
+            else:
+                deferred_warnings.append(message)
+
         frames = []
-        for target_id in target_ids:
+        for target_id in tqdm(target_ids, desc="Downloading hydrocron data"):
             try:
                 query_params = {
                     "feature": feature,
@@ -520,7 +534,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
                     status_code = getattr(response, "status", response.getcode())
                     payload = json.loads(response.read().decode("utf-8"))
             except Exception as exc:
-                logger.warning(
+                _defer_warning(
                     "Hydrocron request failed for %s %s: %s",
                     prj.rivers.target_id_col,
                     target_id,
@@ -535,7 +549,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
                 else None
             )
             if status_code != 200 or not csv_payload:
-                logger.warning(
+                _defer_warning(
                     "Hydrocron returned status %s for %s %s",
                     status_code,
                     prj.rivers.target_id_col,
@@ -547,7 +561,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
             try:
                 df = pd.read_csv(StringIO(csv_payload))
             except Exception as exc:
-                logger.warning(
+                _defer_warning(
                     "Failed to parse CSV for %s %s: %s",
                     prj.rivers.target_id_col,
                     target_id,
@@ -558,13 +572,13 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
 
             if df.empty or quality_column not in df.columns:
                 if df.empty:
-                    logger.info(
+                    _defer_warning(
                         "Hydrocron returned no data for %s %s",
                         prj.rivers.target_id_col,
                         target_id,
                     )
                 else:
-                    logger.warning(
+                    _defer_warning(
                         "Quality column %s not in Hydrocron response for %s %s",
                         quality_column,
                         prj.rivers.target_id_col,
@@ -574,7 +588,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
 
             df = df[df[quality_column] <= max_q]
             if df.empty:
-                logger.info(
+                _defer_warning(
                     "All Hydrocron observations filtered for %s %s (quality > %s)",
                     prj.rivers.target_id_col,
                     target_id,
@@ -590,8 +604,11 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
             combined = pd.concat(frames, ignore_index=True)
             combined.to_csv(output_path, index=False)
 
+        for warning in deferred_warnings:
+            logger.debug(warning)
+
     logger.info(
-        "Hydrocron download complete: %s requested, %s successful, %s failed, %s empty after filtering",
+        "Hydrocron download complete: %s requested, %s successful, %s failed, %s empty after filtering. See file logs for more info.",
         summary["requested"],
         summary["successful"],
         summary["failed"],

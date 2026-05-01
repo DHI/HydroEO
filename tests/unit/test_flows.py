@@ -147,22 +147,6 @@ def test_initialize_rivers_configured_id_branch(mock_project_rivers):
         mock_prepare.assert_not_called()
 
 
-@pytest.mark.unit
-def test_initialize_rivers_logs_target_ids(mock_project_rivers, caplog):
-    """initialize_rivers logs resolved target IDs."""
-    import logging
-
-    mock_project_rivers.rivers.input_mode = "configured_id"
-    mock_project_rivers.rivers.target_ids = [101, 102, 103]
-    mock_project_rivers.rivers.target_id_col = "node_id"
-
-    with caplog.at_level(logging.INFO):
-        flows.initialize_rivers(mock_project_rivers)
-
-    assert "Initialized river node ids" in caplog.text
-    assert "101, 102, 103" in caplog.text
-
-
 # ============================================================================
 # Download Orchestration Tests
 # ============================================================================

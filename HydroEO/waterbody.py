@@ -26,6 +26,7 @@ class Reservoirs:
         general.ifnotmakedirs(self.dirs["output"])
 
         self.geom_type = self.gdf.loc[0, "geometry"].geom_type
+        self.download_gdf = self.gdf
 
     def report(self):
         logger.info("Number of %s: %s", self.type, len(self.gdf))

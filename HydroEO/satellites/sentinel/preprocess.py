@@ -776,7 +776,7 @@ def subset(
     pbar.close()
 
     for warning in deferred_warnings:
-        logger.warning(warning)
+        logger.debug(warning)
 
 
 def __format_coord_bounds(aoi):

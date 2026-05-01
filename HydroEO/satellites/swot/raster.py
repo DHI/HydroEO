@@ -12,7 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import earthaccess
 import geopandas as gpd
 import numpy as np
 import rasterio
@@ -25,6 +24,12 @@ from shapely.geometry import box, mapping
 from tqdm import tqdm
 
 from HydroEO import FLOAT32_NODATA_VALUE
+from HydroEO.satellites.swot._download import (
+    _download_files,
+    _filter_new,
+    _login,
+    _search,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +70,7 @@ def download_raster(
         output CRS for the merge phase unless ``target_crs`` is set in
         ``config``.
     """
-    logger.info(
+    logger.debug(
         "SWOT Raster Download - AOI: %s, Product: %s, Temporal range: %s to %s",
         config["aoi"]["name"],
         config["product"],
@@ -109,7 +114,7 @@ def download_raster(
     else:
         logger.info("No processed TIF files found, skipping merge phase")
 
-    logger.info("SWOT raster download and processing complete")
+    logger.debug("SWOT raster download and processing complete")
 
 
 def _download_granules(
@@ -119,17 +124,9 @@ def _download_granules(
     credentials: tuple[str | None, str | None],
 ) -> list[str]:
     """Download SWOT granules matching query, skipping already processed ones."""
-    logger.info("=== SWOT Raster Download Phase ===")
+    logger.debug("=== SWOT Raster Download Phase ===")
 
-    username, password = credentials
-    if username and password:
-        try:
-            earthaccess.login(strategy="environment", persist=True)
-        except Exception:
-            earthaccess.login()
-    else:
-        logger.warning("No Earthdata credentials provided, attempting anonymous login")
-        earthaccess.login()
+    _login(credentials)
 
     aoi_config = config["aoi"]
     if aoi_config["type"] == "bbox":
@@ -146,55 +143,45 @@ def _download_granules(
     enddate = config["enddate"]
     time_start = f"{startdate[0]:04d}-{startdate[1]:02d}-{startdate[2]:02d} 00:00:00"
     time_end = f"{enddate[0]:04d}-{enddate[1]:02d}-{enddate[2]:02d} 23:59:59"
-    logger.info("Temporal range: %s to %s", time_start, time_end)
+    logger.debug("Temporal range: %s to %s", time_start, time_end)
 
     granule_filter = config.get("granule_filter", None)
     if granule_filter:
-        logger.info("Granule filter: %s", granule_filter)
+        logger.debug("Granule filter: %s", granule_filter)
 
     product = config["product"]
     logger.info(
         "Searching for SWOT product '%s' in AOI %s", product, aoi_config["name"]
     )
-    try:
-        swot_results = earthaccess.search_data(
-            short_name=product,
-            bounding_box=bounds,
-            temporal=(time_start, time_end),
-            granule_name=granule_filter,
-        )
-        logger.info("Found %d granules matching query", len(swot_results))
-    except Exception as e:
-        logger.error("Error searching for SWOT data: %s", e)
-        return []
+
+    search_params = {
+        "short_name": product,
+        "bounding_box": bounds,
+        "temporal": (time_start, time_end),
+        "granule_name": granule_filter,
+    }
+    swot_results = _search(**search_params)
+    logger.debug("Found %d granules matching query", len(swot_results))
 
     if not swot_results:
         logger.warning("No SWOT granules found matching the query")
         return []
 
-    granule_ids = [result["umm"]["GranuleUR"] for result in swot_results]
-    new_granules = [gid for gid in granule_ids if gid not in processed_granules]
-    logger.info(
+    new_results = _filter_new(swot_results, processed_granules)
+    logger.debug(
         "%d new granules to download (already processed: %d)",
-        len(new_granules),
+        len(new_results),
         len(processed_granules),
     )
 
-    if not new_granules:
+    if not new_results:
         logger.info("All granules already processed, skipping download")
         return []
 
-    new_results = [r for r in swot_results if r["umm"]["GranuleUR"] in new_granules]
-    logger.info("Downloading %d granules to %s", len(new_results), raw_dir)
-    try:
-        downloaded_files = earthaccess.download(
-            new_results, str(raw_dir), show_progress=True
-        )
-        logger.info("Successfully downloaded %d files", len(downloaded_files))
-        return downloaded_files or []
-    except Exception as e:
-        logger.error("Error downloading SWOT data: %s", e)
-        return []
+    logger.debug("Downloading %d granules to %s", len(new_results), raw_dir)
+    downloaded_files = _download_files(new_results, str(raw_dir))
+    logger.debug("Successfully downloaded %d files", len(downloaded_files))
+    return downloaded_files or []
 
 
 def _preprocess_granules(
@@ -207,7 +194,7 @@ def _preprocess_granules(
 
     Processes only NC files that haven't already produced output TIFFs.
     """
-    logger.info("=== SWOT Raster Preprocessing Phase ===")
+    logger.debug("=== SWOT Raster Preprocessing Phase ===")
 
     aoi_config = config["aoi"]
 
@@ -221,13 +208,13 @@ def _preprocess_granules(
         if aoi_path and Path(aoi_path).exists():
             try:
                 aoi_gdf = gpd.read_file(aoi_path)
-                logger.info("Loaded AOI from %s", aoi_path)
+                logger.debug("Loaded AOI from %s", aoi_path)
             except Exception as e:
                 logger.warning("Could not load AOI file: %s", e)
     elif aoi_config["type"] == "bbox":
         bbox = aoi_config["bbox"]
         aoi_gdf = gpd.GeoDataFrame(geometry=[box(*bbox)], crs="EPSG:4326")
-        logger.info("Created AOI GeoDataFrame from bbox %s", bbox)
+        logger.debug("Created AOI GeoDataFrame from bbox %s", bbox)
 
     all_nc_files = list(raw_dir.glob("*.nc"))
 
@@ -249,22 +236,30 @@ def _preprocess_granules(
         )
         return
 
-    logger.info(
+    logger.debug(
         "Found %d unprocessed netCDF files to process (skipping %d already processed)",
         len(nc_files),
         len(already_processed),
     )
 
+    deferred_warnings = []
+
+    def _defer_warning(message, *args):
+        if args:
+            deferred_warnings.append(message % args)
+        else:
+            deferred_warnings.append(message)
+
     for nc_path in tqdm(nc_files, desc="Processing netCDF files"):
         try:
             ds = xr.open_dataset(nc_path)
         except Exception as e:
-            logger.warning("Cannot open %s: %s", nc_path.name, e)
+            _defer_warning("Cannot open %s: %s", nc_path.name, e)
             continue
 
         native_crs = _detect_crs(ds, nc_path)
         if native_crs is None:
-            logger.warning("Could not detect CRS for %s, skipping", nc_path.name)
+            _defer_warning("Could not detect CRS for %s, skipping", nc_path.name)
             continue
 
         try:
@@ -275,7 +270,7 @@ def _preprocess_granules(
                 ds["layover_impact"] < max_layover_impact
             )
         except (KeyError, TypeError):
-            logger.warning(
+            _defer_warning(
                 "Missing required quality fields in %s, skipping", nc_path.name
             )
             continue
@@ -291,7 +286,7 @@ def _preprocess_granules(
                 if xmax < left or xmin > right or ymax < bottom or ymin > top:
                     continue
             except Exception as e:
-                logger.warning("Bounds check failed for %s: %s", nc_path.name, e)
+                _defer_warning("Bounds check failed for %s: %s", nc_path.name, e)
 
         for var in tqdm(variables, desc=f"Variables in {nc_path.stem}", leave=False):
             if var not in ds:
@@ -317,23 +312,30 @@ def _preprocess_granules(
                 out_tif = processed_dir / f"{nc_path.stem}_{var}.tif"
                 clipped.rio.to_raster(str(out_tif), driver="GTiff")
             except Exception as e:
-                logger.warning(
+                _defer_warning(
                     "Processing failed for '%s' in %s: %s", var, nc_path.name, e
                 )
 
         ds.close()
+
+    for warning in deferred_warnings:
+        logger.debug(warning)
 
     nc_names = [f.stem for f in nc_files]
     with open(log_path, "a") as log_file:
         for name in nc_names:
             log_file.write(name + "\n")
 
-    logger.info("Cleaning up raw netCDF files")
+    logger.debug("Cleaning up raw netCDF files")
+    deferred_warnings = []
     for nc_path in tqdm(nc_files, desc="Cleaning up"):
         try:
             nc_path.unlink()
         except Exception as e:
-            logger.warning("Failed to delete %s: %s", nc_path.name, e)
+            _defer_warning("Failed to delete %s: %s", nc_path.name, e)
+
+    for warning in deferred_warnings:
+        logger.debug(warning)
 
 
 def _detect_crs(ds: xr.Dataset, nc_path: Path) -> CRS | None:
@@ -379,10 +381,10 @@ def _merge_and_reproject_granules(
     config: dict, processed_dir: Path, global_crs: str = "EPSG:4326"
 ) -> None:
     """Organize processed TIFFs by date and merge/reproject tiles."""
-    logger.info("=== SWOT Raster Merge and Reproject Phase ===")
+    logger.debug("=== SWOT Raster Merge and Reproject Phase ===")
 
     if not config.get("merge_tiles", True):
-        logger.info("merge_tiles is disabled in config, skipping merge phase")
+        logger.debug("merge_tiles is disabled in config, skipping merge phase")
         return
 
     # target_crs in swot_raster config is an optional override; falls back to global_crs
@@ -416,7 +418,7 @@ def _merge_and_reproject_granules(
         key = (var_name, date_str)
         file_groups.setdefault(key, []).append(tif_path)
 
-    logger.info("Grouped into %d variable-date combinations", len(file_groups))
+    logger.debug("Grouped into %d variable-date combinations", len(file_groups))
 
     for (var_name, date_str), tif_list in tqdm(
         file_groups.items(), desc="Merging tiles"

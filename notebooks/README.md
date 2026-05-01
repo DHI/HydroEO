@@ -1,1 +1,0 @@
-Notebooks provide examples into how you can use this HydroEO. Example_A.ipynb provides the hight level use of the package while Example_B.ipynb provides more detail and control over the workflow. Use example_config_reservoirs.yaml for reservoir projects and example_config_rivers.yaml for river projects.

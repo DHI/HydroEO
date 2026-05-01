@@ -2,9 +2,7 @@
 
 import datetime
 
-import earthaccess
-
-from HydroEO.satellites.swot import download as _download
+from HydroEO.satellites.swot import _download
 from HydroEO.satellites.swot import preprocess as _preprocess
 
 SWOT_LAKE_SHORT_NAME = _download.SWOT_LAKE_SHORT_NAME
@@ -21,7 +19,6 @@ def query(
         startdate=startdate,
         enddate=enddate,
         product=product,
-        earthaccess_client=earthaccess,
     )
 
 
@@ -29,7 +26,6 @@ def download(results, download_directory: str):
     return _download.download(
         results=results,
         download_directory=download_directory,
-        earthaccess_client=earthaccess,
     )
 
 

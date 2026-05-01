@@ -3,9 +3,10 @@
 import logging
 import os
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from cmcrameri import cm
-import seaborn as sns
 import pandas as pd
 import geopandas as gpd
 
@@ -41,7 +42,6 @@ def plot_crossings(
     save : bool
         Whether to save the plot to PNG.
     """
-    sns.set()
     cmap = cm.batlow.resampled(5)
     colors = {
         "icesat2": cmap(0),
@@ -66,7 +66,7 @@ def plot_crossings(
     # plot reservoir
     gdf.loc[[indx]].plot(
         ax=ax,
-        edgecolor="black",
+        edgecolor="red",
         facecolor="None",
         zorder=5,
         label="Reservoir outline",
@@ -82,10 +82,13 @@ def plot_crossings(
             gdf_product = gpd.read_file(path_to_file)
             if product == "swot":
                 zorder = 0
-                alpha = 0.1
+                alpha = 0.5
+            elif product == "icesat2":
+                zorder = 8
+                alpha = 0.8
             else:
                 zorder = 10
-                alpha = 0.5
+                alpha = 0.8
             gdf_product.plot(
                 ax=ax,
                 color=colors[product],
@@ -97,27 +100,14 @@ def plot_crossings(
             plotted_products.add(product)
 
     legend_handles = [
-        Line2D(
-            [],
-            [],
-            color="black",
-            linewidth=1.0,
-            label="Reservoir outline",
-        )
+        Line2D([], [], color="red", linewidth=2, label="Reservoir outline"),
     ]
 
     for product in sorted(plotted_products):
         if product in colors:
+            alpha = 0.5 if product == "swot" else 0.8
             legend_handles.append(
-                Line2D(
-                    [],
-                    [],
-                    marker="o",
-                    linestyle="None",
-                    color=colors[product],
-                    label=product,
-                    alpha=0.1 if product == "swot" else 0.5,
-                )
+                Patch(facecolor=colors[product], alpha=alpha, label=product)
             )
 
     if legend_handles:
@@ -127,9 +117,16 @@ def plot_crossings(
             bbox_to_anchor=(1.02, 0.5),
             borderaxespad=0.0,
         )
-    fig.tight_layout(rect=(0, 0, 0.82, 1))
+
+    ax.grid(True, linestyle="--", alpha=0.3)
+    ax.set_xlabel("lon")
+    ax.set_ylabel("lat")
+
+    fig.tight_layout()
     if save:
-        plt.savefig(os.path.join(output_dir, f"{reservoir_id}", "crossing_summary.png"))
+        plt.savefig(
+            os.path.join(output_dir, f"{reservoir_id}", "crossing_summary.png"), dpi=300
+        )
     if show:
         plt.show()
 
@@ -170,7 +167,6 @@ def plot_cleaning(
     products : list, optional
         List of products to filter on. Passed to get_*_fn functions.
     """
-    sns.set()
     cmap = cm.batlow.resampled(5)
     colors = {
         "icesat2": cmap(0),
@@ -187,18 +183,47 @@ def plot_cleaning(
     df = get_unfiltered_fn(reservoir_id, products)
     if df is not None:
         df = df[["date", "height", "platform", "product"]]
+        df["date"] = pd.to_datetime(df["date"], format="mixed", utc=True)
 
         ax = main_ax[0]
         ax.set_title("Unfiltered Products")
         for platform in df.platform.unique():
-            df.loc[df.platform == platform].plot(
+            Q1 = df["height"].quantile(0.25)
+            Q3 = df["height"].quantile(0.75)
+            IQR = Q3 - Q1
+            lower_bound = Q1 - 1.5 * IQR
+            upper_bound = Q3 + 1.5 * IQR
+
+            df_normal = df[
+                (df["height"] >= lower_bound) & (df["height"] <= upper_bound)
+            ]
+            df_outliers = df[
+                (df["height"] < lower_bound) | (df["height"] > upper_bound)
+            ]
+            df_normal.loc[df_normal.platform == platform].plot(
                 ax=ax,
                 x="date",
                 y="height",
                 c=colors[platform],
                 kind="scatter",
                 label=platform,
+                s=5,
             )
+
+        if not df_outliers.empty:
+            for platform in df_outliers.platform.unique():
+                platform_outliers = df_outliers[df_outliers.platform == platform]
+                for __, row in platform_outliers.iterrows():
+                    y_pos = upper_bound if row["height"] > upper_bound else lower_bound
+                    marker = "^" if row["height"] > upper_bound else "v"
+                    ax.scatter(
+                        row["date"],
+                        y_pos,
+                        marker=marker,
+                        color=colors[platform],
+                        s=100,
+                        zorder=5,
+                    )
 
         handles, labels = ax.get_legend_handles_labels()
         if labels:
@@ -207,11 +232,15 @@ def plot_cleaning(
                 bbox_to_anchor=(1.02, 0.5),
                 borderaxespad=0.0,
             )
+        ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
         # now plot cleaned timeseries
         df = get_cleaned_fn(reservoir_id, products)
         df = df[["date", "height", "platform", "product"]]
+        df["date"] = pd.to_datetime(df["date"], format="mixed", utc=True)
 
         ax = main_ax[1]
         ax.set_title("Cleaned Products")
@@ -223,6 +252,7 @@ def plot_cleaning(
                 c=colors[platform],
                 kind="scatter",
                 label=platform,
+                s=5,
             )
 
         handles, labels = ax.get_legend_handles_labels()
@@ -232,16 +262,20 @@ def plot_cleaning(
                 bbox_to_anchor=(1.02, 0.5),
                 borderaxespad=0.0,
             )
+        ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
     # now plot merged timeseries
     df = get_merged_fn(reservoir_id)
     if df is not None:
         df = df[["date", "height"]]
+        df["date"] = pd.to_datetime(df["date"], format="mixed", utc=True)
 
         ax = main_ax[2]
         ax.set_title("Merged Timeseries")
-        df.plot(ax=ax, x="date", y="height", c="k", kind="scatter", label="merged")
+        df.plot(ax=ax, x="date", y="height", c="k", kind="scatter", label="merged", s=5)
 
         handles, labels = ax.get_legend_handles_labels()
         if labels:
@@ -250,12 +284,16 @@ def plot_cleaning(
                 bbox_to_anchor=(1.02, 0.5),
                 borderaxespad=0.0,
             )
+        ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
+        ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
-        fig.tight_layout(rect=(0, 0, 0.82, 1))
+        fig.tight_layout()
         if save:
             plt.savefig(
-                os.path.join(output_dir, f"{reservoir_id}", "cleaning_summary.png")
+                os.path.join(output_dir, f"{reservoir_id}", "cleaning_summary.png"),
+                dpi=300,
             )
         if show:
             plt.show()
@@ -289,7 +327,6 @@ def plot_merging(
         file_names = os.listdir(merged_dir)
         num_files = len(file_names)
 
-        sns.set()
         fig, main_ax = plt.subplots(num_files, 1, figsize=(10, 10))
         fig.suptitle(f"{reservoir_type}: {reservoir_id}")
 
@@ -301,6 +338,7 @@ def plot_merging(
                 df["date"] = pd.to_datetime(df.date)
                 df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
                 ax.set_title(file_name)
+                ax.grid(True, linestyle="--", alpha=0.3)
             return i
 
         i = -1
@@ -313,7 +351,8 @@ def plot_merging(
         fig.tight_layout()
         if save:
             plt.savefig(
-                os.path.join(output_dir, f"{reservoir_id}", "merging_summary.png")
+                os.path.join(output_dir, f"{reservoir_id}", "merging_summary.png"),
+                dpi=300,
             )
         if show:
             plt.show()
