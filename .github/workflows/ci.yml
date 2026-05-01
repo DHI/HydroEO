@@ -52,8 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     if: |
       github.event_name == 'push' &&
-      github.repository_owner == 'DHI' &&
-      vars.RUN_INTEGRATION_TESTS == 'true'
+      github.repository_owner == 'DHI'
 
     steps:
       - uses: actions/checkout@v6
@@ -75,4 +74,5 @@ jobs:
           EDL_PASSWORD: ${{ secrets.EDL_PASSWORD }}
           CREODIAS_USERNAME: ${{ secrets.CREODIAS_USERNAME }}
           CREODIAS_PASSWORD: ${{ secrets.CREODIAS_PASSWORD }}
+          HYDROWEB_API_KEY: ${{ secrets.HYDROWEB_API_KEY }}
         run: pytest -m integration -v --timeout=1200
