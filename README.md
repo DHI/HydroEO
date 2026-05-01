@@ -30,7 +30,7 @@ cd HydroEO
 uv sync
 ```
 #### Python versions
-HydroEO currently runs on Python 3.9 - 3.12.
+HydroEO currently runs on Python 3.10 - 3.12.
 
 ## Quick start
 A single unified configuration template covers all four use cases: [notebooks/example_config.yaml](./notebooks/example_config.yaml).
@@ -491,7 +491,7 @@ export HYDROWEB_API_KEY="your_hydroweb_api_key"
 **Automated checks** run on every push and pull request via GitHub Actions (see [.github/workflows/ci.yml](.github/workflows/ci.yml)):
 
 1. **Lint** (ruff) — checks code style and imports
-2. **Unit tests** — runs on Ubuntu and Windows, Python 3.9 and 3.12; publishes coverage to Codecov
+2. **Unit tests** — runs on Ubuntu and Windows, Python 3.10 and 3.12; publishes coverage to Codecov
 3. **Integration tests** — runs live API calls (only on official repo when enabled)
 
 **For repo maintainers:** To enable live integration tests, set these GitHub secrets and variables:
