@@ -1,0 +1,17 @@
+project:
+  main_dir: "/tmp/hydroeo-e2e-rivers"
+
+gis:
+  global_crs: "EPSG:4326"
+
+rivers:
+  aoi_path: "tests/data/aoi.e2e.gpkg"
+  continent_key: "eu"
+  feature_type: "nodes"
+  id_key: "aoi_name"
+
+swot:
+  download: true
+  process: false
+  startdate: [2024, 1, 1]
+  enddate: [2024, 1, 10]
