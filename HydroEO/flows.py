@@ -212,7 +212,7 @@ def _ensure_sword_database(prj: "Project") -> str:
         "https://zenodo.org/records/15299138/files/SWORD_v17b_gpkg.zip?download=1"
     )
 
-    sword_dir = os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg", "gpkg", "gpkg")
+    sword_dir = os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg", "gpkg")
     prj.dirs["sword"] = sword_dir
 
     if os.path.isdir(sword_dir):
@@ -222,15 +222,15 @@ def _ensure_sword_database(prj: "Project") -> str:
         "SWORD_v17b database not found in %s. Downloading and extracting it now.",
         sword_dir,
     )
-    general.ifnotmakedirs(sword_dir)
+    general.ifnotmakedirs(os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg"))
 
     zip_path = os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg.zip")
     url_request.urlretrieve(SWORD_V17B_ZIP_URL, zip_path)
 
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(sword_dir)
+        zip_ref.extractall(os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg"))
 
-    os.remove(zip_path)
+    # os.remove(zip_path)
     return sword_dir
 
 

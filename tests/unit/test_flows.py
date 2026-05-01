@@ -459,7 +459,7 @@ def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
 def test_ensure_sword_database_returns_existing_path(tmp_path):
     """_ensure_sword_database returns path if SWORD database exists."""
     mock_prj = SimpleNamespace()
-    sword_dir = tmp_path / "SWORD_v17b_gpkg" / "gpkg" / "gpkg"
+    sword_dir = tmp_path / "SWORD_v17b_gpkg" / "gpkg"
     sword_dir.mkdir(parents=True)
     mock_prj.dirs = {"main": str(tmp_path)}
 

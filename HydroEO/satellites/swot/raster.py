@@ -381,10 +381,10 @@ def _merge_and_reproject_granules(
     config: dict, processed_dir: Path, global_crs: str = "EPSG:4326"
 ) -> None:
     """Organize processed TIFFs by date and merge/reproject tiles."""
-    logger.info("=== SWOT Raster Merge and Reproject Phase ===")
+    logger.debug("=== SWOT Raster Merge and Reproject Phase ===")
 
     if not config.get("merge_tiles", True):
-        logger.info("merge_tiles is disabled in config, skipping merge phase")
+        logger.debug("merge_tiles is disabled in config, skipping merge phase")
         return
 
     # target_crs in swot_raster config is an optional override; falls back to global_crs
@@ -418,7 +418,7 @@ def _merge_and_reproject_granules(
         key = (var_name, date_str)
         file_groups.setdefault(key, []).append(tif_path)
 
-    logger.info("Grouped into %d variable-date combinations", len(file_groups))
+    logger.debug("Grouped into %d variable-date combinations", len(file_groups))
 
     for (var_name, date_str), tif_list in tqdm(
         file_groups.items(), desc="Merging tiles"
