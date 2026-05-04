@@ -198,35 +198,35 @@ This section consolidates all available data sources across HydroEO's four workf
 
 ### Reservoir & Lake Products
 
-| Product | Satellite | Archive start | Credentials required |
-| --- | --- | --- | --- | --- |
-| `SWOT_L2_HR_LakeSP_D` | SWOT | 2023 | Earthdata + HydroWeb API key |
-| `ATL13` | ICESat-2 | 2018 | None (SlideRule public API) |
-| - | Sentinel-3A/B | 2016 | CREODIAS account |
-| - | Sentinel-6 | 2020 | CREODIAS account |
+| Product | Satellite | Credentials required |
+| --- | --- | --- |
+| `SWOT_L2_HR_LakeSP_D` | SWOT | Earthdata + HydroWeb API key |
+| `ATL13` | ICESat-2 | None (SlideRule public API) |
+| - | Sentinel-3A/B | CREODIAS account |
+| - | Sentinel-6 | CREODIAS account |
 
 ### River Products
 
-| Product | Satellite | Archive start | Credentials |
-| --- | --- | --- | --- |
-| SWOT Hydrocron (nodes/reaches) | SWOT | 2023 | None (public API) |
+| Product | Credentials |
+| --- | --- |
+| SWOT Hydrocron (nodes/reaches) | None (public API) |
 
 ### SWOT Raster Products
 
-| Product | Resolution | Archive start | Use case |
-| --- | --- | --- | --- |
-| `SWOT_L2_HR_Raster_D` | ~100m | 2024 | High-resolution grids: elevation, water surface height |
-| `SWOT_L2_LR_SSH_2.0` | ~250m | 2023 | Low-resolution grids: sea surface height, open water |
-| `SWOT_L2_HR_RIVERSP_2.0` | ~100m | 2024 | River surface: channel elevation, width, slope |
+| Product |
+| --- |
+| `SWOT_L2_HR_Raster_D` |
+| `SWOT_L2_LR_SSH_2.0` |
+| `SWOT_L2_HR_RIVERSP_2.0` |
 
 All raster products require Earthdata credentials.
 
 ### SWOT Pixel Cloud Products
 
-| Product | Archive start | Use case |
-| --- | --- | --- |
-| `SWOT_L2_HR_PIXC_D` | 2024 | Point-based water heights, gridded to rasters via binning |
-| `SWOT_L2_HR_PIXC_2.0` | 2024 | Point-based water heights (v2 format), gridded to rasters |
+| Product | Use case |
+| --- | --- |
+| `SWOT_L2_HR_PIXC_D` | Point-based water heights, gridded to rasters via binning |
+| `SWOT_L2_HR_PIXC_2.0` | Point-based water heights (v2 format), gridded to rasters |
 
 Both Pixel Cloud products require Earthdata credentials and support median/mean/max/min binning statistics.
 
