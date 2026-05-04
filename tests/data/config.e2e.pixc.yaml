@@ -1,0 +1,19 @@
+project:
+  main_dir: "/tmp/hydroeo-e2e-pixc"
+
+gis:
+  global_crs: "EPSG:4326"
+
+swot_pixc:
+  enabled: true
+  aoi:
+    name: "example_aoi"
+    type: "bbox"
+    bbox: [23.5, 56.5, 24.5, 57.5]
+  product: "SWOT_L2_HR_PIXC_D"
+  startdate: [2024, 1, 1]
+  enddate: [2024, 1, 10]
+  classes: ["open_water", "water_near_land"]
+  fields: ["heightEGM"]
+  grid_resolution: 100
+  stat_method: "median"
