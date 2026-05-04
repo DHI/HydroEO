@@ -247,10 +247,12 @@ def plot_cleaning(
                 bbox_to_anchor=(1.02, 0.5),
                 borderaxespad=0.0,
             )
-        ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.tick_params(direction="in", width=1.5)
+        for spine in ax.spines.values():
+            spine.set_linewidth(1.5)
 
         # now plot cleaned timeseries
         df = get_cleaned_fn(reservoir_id, products)
@@ -277,11 +279,13 @@ def plot_cleaning(
                 bbox_to_anchor=(1.02, 0.5),
                 borderaxespad=0.0,
             )
-        ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
         ax.tick_params(direction="in")
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.tick_params(direction="in", width=1.5)
+        for spine in ax.spines.values():
+            spine.set_linewidth(1.5)
 
     # now plot merged timeseries
     df = get_merged_fn(reservoir_id)
@@ -300,11 +304,13 @@ def plot_cleaning(
                 bbox_to_anchor=(1.02, 0.5),
                 borderaxespad=0.0,
             )
-        ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
         ax.tick_params(direction="in")
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
+        ax.tick_params(direction="in", width=1.5)
+        for spine in ax.spines.values():
+            spine.set_linewidth(1.5)
 
         fig.tight_layout()
         if save:
@@ -355,7 +361,9 @@ def plot_merging(
                 df["date"] = pd.to_datetime(df.date)
                 df.plot(ax=ax, x="date", y="height", c="k", kind="scatter")
                 ax.set_title(file_name)
-                ax.grid(True, linestyle="--", alpha=0.3)
+                ax.tick_params(direction="in", width=1.5)
+                for spine in ax.spines.values():
+                    spine.set_linewidth(1.5)
             return i
 
         i = -1
