@@ -1048,17 +1048,20 @@ def _load_merged_timeseries(prj, id):
 def generate_rivers_summaries(
     prj: "Project", show: bool = False, save: bool = True
 ) -> None:
-    """Generate per-reservoir plotting summaries.
+    """Generate per-river plotting summaries.
 
     Parameters
     ----------
     prj : Project
-        Project instance with reservoirs configuration
+        Project instance with rivers configuration
     show : bool
         Whether to display plots interactively
     save : bool
         Whether to save plots to disk
     """
+    if not hasattr(prj, "rivers"):
+        return
+
     waterbody_groups = _group_river_targets_by_waterbody(prj)
 
     for wb_id, target_ids in waterbody_groups.items():

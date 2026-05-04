@@ -379,13 +379,29 @@ def plot_merging(
 
 def plot_river_crossings(
     prj: "Project",
-    wb_id,
-    target_ids,
-    output_dir,
-    save=False,
-    show=False,
-):
-    """TODO"""
+    wb_id: str,
+    target_ids: list,
+    output_dir: str,
+    save: bool = False,
+    show: bool = False,
+) -> None:
+    """Plot river target locations (nodes or reaches) on a basemap.
+
+    Parameters
+    ----------
+    prj : Project
+        Project instance with rivers configuration
+    wb_id : str
+        Waterbody identifier (river name or ID)
+    target_ids : list
+        List of target node or reach IDs to plot
+    output_dir : str
+        Base output directory where plots will be saved
+    save : bool
+        Whether to save the plot to PNG
+    show : bool
+        Whether to display the plot interactively
+    """
     sword_dir = prj.dirs["sword"]
     gpkg_name = f"{prj.rivers.continent_key}_sword_{prj.rivers.feature_type}_v17b.gpkg"
     gpkg_path = os.path.join(sword_dir, gpkg_name)
@@ -436,14 +452,30 @@ def plot_river_crossings(
 
 
 def plot_river_data(
-    prj,
-    wb_id,
-    target_ids,
-    output_dir,
-    show=False,
-    save=False,
-):
-    """TODO"""
+    prj: "Project",
+    wb_id: str,
+    target_ids: list,
+    output_dir: str,
+    show: bool = False,
+    save: bool = False,
+) -> None:
+    """Plot water surface elevation (WSE) timeseries for river targets.
+
+    Parameters
+    ----------
+    prj : Project
+        Project instance with rivers configuration
+    wb_id : str
+        Waterbody identifier (river name or ID)
+    target_ids : list
+        List of target node or reach IDs to plot
+    output_dir : str
+        Base output directory where plots will be saved
+    show : bool
+        Whether to display the plot interactively
+    save : bool
+        Whether to save the plot to PNG
+    """
     id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
     csv_path = os.path.join(
         prj.dirs["swot"], "rivers", str(wb_id), f"{id_label}_timeseries.csv"

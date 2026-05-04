@@ -236,7 +236,7 @@ def cmd_summaries(
         False, "--verbose", "-v", help="Enable debug logging."
     ),
 ):
-    """Generate plots and summaries (reservoirs only)."""
+    """Generate plots and summaries (reservoirs and rivers)."""
     _configure_logging(verbose)
     prj = _make_project(config, name)
     prj.generate_summaries()

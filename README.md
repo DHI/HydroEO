@@ -69,8 +69,8 @@ hydroeo run config.yaml
 hydroeo initialize config.yaml
 hydroeo download    config.yaml
 hydroeo update      config.yaml   # extend to today
-hydroeo timeseries  config.yaml   # reservoirs only
-hydroeo summaries   config.yaml   # reservoirs only
+hydroeo timeseries  config.yaml   # reservoirs only (rivers preprocessing not implemented)
+hydroeo summaries   config.yaml   # reservoirs and rivers
 ```
 
 Use `--name` to override the project name (defaults to the config file stem) and `--verbose` / `-v` for debug logging:
@@ -171,7 +171,7 @@ A HydroEO project is built around a single **water body branch** — reservoirs/
 | Branch | Status | Products | Description |
 | --- | --- | --- | --- |
 | `reservoirs` | ✅ available | SWOT Lake, ICESat-2, Sentinel-3, Sentinel-6 | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. Supports multi-mission downloads and full timeseries processing. |
-| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
+| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization, SWOT Hydrocron download (public API, no credentials needed), and basic plotting summaries. With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River timeseries filtering/preprocessing remain unimplemented. |
 | `swot_raster` | ✅ available | SWOT Rasters (L2 HR/LR products) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT raster products (SWOT_L2_HR_Raster_D, SWOT_L2_LR_SSH_2.0, SWOT_L2_HR_RIVERSP_2.0) via Earthdata. Extracts selected variables, applies quality filters, clips to AOI, and merges/reprojects tiles by date. Requires Earthdata credentials. |
 | `swot_pixc` | ✅ available | SWOT Pixel Cloud (L2 PIXC) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT Pixel Cloud data (SWOT_L2_HR_PIXC_D, SWOT_L2_HR_PIXC_2.0) via Earthdata. Extracts point data, filters by water class, computes derived heights (heightEGM), clips to AOI, and grids to regular rasters via binned statistics (median, mean, etc.) at specified resolution. Requires Earthdata credentials. |
 
