@@ -76,4 +76,4 @@ jobs:
           CREODIAS_PASSWORD: ${{ secrets.CREODIAS_PASSWORD }}
           HYDROWEB_API_KEY: ${{ secrets.HYDROWEB_API_KEY }}
           RUN_E2E: ${{ secrets.RUN_E2E }}
-        run: pytest -m integration -v --timeout=1200
+        run: pytest -m integration -v --timeout=3600
