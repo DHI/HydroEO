@@ -979,34 +979,34 @@ def generate_reservoirs_summaries(
             save=save,
         )
 
-        logger.info("Summarizing cleaning results")
-        plotting.plot_cleaning(
-            reservoir_id=reservoir_id,
-            output_dir=prj.dirs["output"],
-            get_unfiltered_fn=lambda id, products: _load_product_timeseries(
-                os.path.join(prj.dirs["output"], f"{id}", "raw_observations"),
-                ".shp",
-                products,
-                lambda path: gpd.read_file(path).drop(columns=["geometry"]),
-            ),
-            get_cleaned_fn=lambda id, products: _load_and_parse_cleaned_timeseries(
-                prj, id, products
-            ),
-            get_merged_fn=lambda id: _load_merged_timeseries(prj, id),
-            reservoir_type=prj.reservoirs.type,
-            show=show,
-            save=save,
-            products=getattr(prj, "to_process", None),
-        )
+        # logger.info("Summarizing cleaning results")
+        # plotting.plot_cleaning(
+        #     reservoir_id=reservoir_id,
+        #     output_dir=prj.dirs["output"],
+        #     get_unfiltered_fn=lambda id, products: _load_product_timeseries(
+        #         os.path.join(prj.dirs["output"], f"{id}", "raw_observations"),
+        #         ".shp",
+        #         products,
+        #         lambda path: gpd.read_file(path).drop(columns=["geometry"]),
+        #     ),
+        #     get_cleaned_fn=lambda id, products: _load_and_parse_cleaned_timeseries(
+        #         prj, id, products
+        #     ),
+        #     get_merged_fn=lambda id: _load_merged_timeseries(prj, id),
+        #     reservoir_type=prj.reservoirs.type,
+        #     show=show,
+        #     save=save,
+        #     products=getattr(prj, "to_process", None),
+        # )
 
-        logger.info("Summarizing merged results")
-        plotting.plot_merging(
-            reservoir_id=reservoir_id,
-            output_dir=prj.dirs["output"],
-            reservoir_type=prj.reservoirs.type,
-            show=show,
-            save=save,
-        )
+        # logger.info("Summarizing merged results")
+        # plotting.plot_merging(
+        #     reservoir_id=reservoir_id,
+        #     output_dir=prj.dirs["output"],
+        #     reservoir_type=prj.reservoirs.type,
+        #     show=show,
+        #     save=save,
+        # )
 
 
 def _load_and_parse_cleaned_timeseries(prj, id, products):

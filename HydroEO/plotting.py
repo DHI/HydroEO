@@ -121,6 +121,7 @@ def plot_crossings(
     ax.grid(True, linestyle="--", alpha=0.3)
     ax.set_xlabel("lon")
     ax.set_ylabel("lat")
+    ax.tick_params(direction="in")
 
     fig.tight_layout()
     if save:
@@ -264,6 +265,7 @@ def plot_cleaning(
             )
         ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
+        ax.tick_params(direction="in")
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
@@ -286,6 +288,7 @@ def plot_cleaning(
             )
         ax.grid(True, linestyle="--", alpha=0.3)
         ax.tick_params(axis="x", rotation=45)
+        ax.tick_params(direction="in")
         ax.xaxis.set_major_locator(mdates.AutoDateLocator())
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d"))
 
