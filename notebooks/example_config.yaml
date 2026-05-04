@@ -60,6 +60,7 @@ reservoirs:
   enabled: false
   path: "/path/to/your/reservoirs.shp"   # .shp or .gpkg with one feature per reservoir
   id_key: 'reservoir_id'                 # column in the file used as unique reservoir identifier
+  export_to_dfs0: false                  # export cleaned observations to dfs0 format
 
 
 # ══════════════════════════════════════════════════════════════════════════════

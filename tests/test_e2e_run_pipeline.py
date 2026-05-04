@@ -102,9 +102,7 @@ def test_run_rivers_e2e_one_month_env_credentials(tmp_path):
     config["project"]["main_dir"] = str(work_dir)
 
     # Use repo fixture AOI file for reproducible geometry input.
-    config["rivers"]["aoi_path"] = str(
-        repo_root / "tests" / "data" / "aoi.e2e.gpkg"
-    )
+    config["rivers"]["aoi_path"] = str(repo_root / "tests" / "data" / "aoi.e2e.gpkg")
 
     test_config_path = tmp_path / "config.e2e.rivers.yaml"
     with test_config_path.open("wt", encoding="utf-8") as f:

@@ -149,6 +149,9 @@ class Project:
             self.reservoirs.gdf = self.reservoirs.gdf.to_crs(self.global_crs)
             self.reservoirs.mission_options = self.mission_options
             self.reservoirs.processing_options = self.processing_options
+            self.reservoirs.export_to_dfs0 = self.config["reservoirs"].get(
+                "export_to_dfs0", False
+            )
 
         if "rivers" in self.config.keys() and self.config["rivers"].get(
             "enabled", True

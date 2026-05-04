@@ -4,6 +4,7 @@ import datetime
 import os
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 from unittest.mock import patch
 
 import geopandas as gpd
@@ -264,6 +265,138 @@ def test_create_reservoirs_timeseries_orchestrates_steps(mock_project_reservoirs
 
         # Verify all called and in order
         assert call_order == ["extract", "clean", "merge"]
+
+
+@pytest.mark.unit
+def test_create_reservoirs_timeseries_calls_export_when_toggled(
+    mock_project_reservoirs,
+):
+    """create_reservoirs_timeseries calls _export_cleaned_to_dfs0 when enabled."""
+    mock_project_reservoirs.to_process = ["swot"]
+    mock_project_reservoirs.processing_options = {}
+    mock_project_reservoirs.reservoirs.export_to_dfs0 = True
+
+    call_order = []
+
+    def track_extract(prj):
+        call_order.append("extract")
+
+    def track_clean(prj):
+        call_order.append("clean")
+
+    def track_export(prj):
+        call_order.append("export")
+
+    def track_merge(prj):
+        call_order.append("merge")
+
+    with (
+        patch.object(
+            flows, "_extract_reservoirs_timeseries", side_effect=track_extract
+        ),
+        patch.object(flows, "_clean_reservoirs_timeseries", side_effect=track_clean),
+        patch.object(flows, "_export_cleaned_to_dfs0", side_effect=track_export),
+        patch.object(flows, "_merge_reservoirs_timeseries", side_effect=track_merge),
+    ):
+        flows.create_reservoirs_timeseries(mock_project_reservoirs)
+
+        # Verify export is called in correct position
+        assert call_order == ["extract", "clean", "export", "merge"]
+
+
+@pytest.mark.unit
+def test_create_reservoirs_timeseries_skips_export_when_disabled(
+    mock_project_reservoirs,
+):
+    """create_reservoirs_timeseries skips export when toggle is false."""
+    mock_project_reservoirs.to_process = ["swot"]
+    mock_project_reservoirs.processing_options = {}
+    mock_project_reservoirs.reservoirs.export_to_dfs0 = False
+
+    with (
+        patch.object(flows, "_extract_reservoirs_timeseries"),
+        patch.object(flows, "_clean_reservoirs_timeseries"),
+        patch.object(flows, "_export_cleaned_to_dfs0") as mock_export,
+        patch.object(flows, "_merge_reservoirs_timeseries"),
+    ):
+        flows.create_reservoirs_timeseries(mock_project_reservoirs)
+
+        # Verify export is not called
+        mock_export.assert_not_called()
+
+
+@pytest.mark.unit
+def test_export_cleaned_to_dfs0_writes_files(
+    mock_project_reservoirs, tmp_path, monkeypatch
+):
+    """_export_cleaned_to_dfs0 writes dfs0 files for each product."""
+    # Create mock cleaned_observations directory structure
+    mock_project_reservoirs.to_process = ["swot", "icesat2"]
+    output_dir = tmp_path / "reservoirs" / "1" / "cleaned_observations"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mock_project_reservoirs.dirs["output"] = str(tmp_path / "reservoirs")
+
+    # Create sample CSVs
+    dates = pd.date_range("2024-01-01", periods=3, freq="D")
+    for product in ["swot", "icesat2"]:
+        csv_path = output_dir / f"{product}.csv"
+        df = pd.DataFrame(
+            {
+                "date": dates,
+                "height": [100.5, 101.2, 100.8],
+            }
+        )
+        df.to_csv(csv_path, index=False)
+
+    # Mock mikeio module functions
+    mock_ds = mock.MagicMock()
+
+    with (
+        patch.object(flows.mikeio, "from_pandas", return_value=mock_ds),
+        patch.object(flows.mikeio, "ItemInfo", return_value=mock.MagicMock()),
+        patch.object(
+            flows.mikeio, "EUMType", mock.MagicMock(Water_Level="Water_Level")
+        ),
+    ):
+        flows._export_cleaned_to_dfs0(mock_project_reservoirs)
+
+        # Verify from_pandas was called for each product
+        assert flows.mikeio.from_pandas.call_count >= 2
+        # Verify to_dfs was called for each
+        assert mock_ds.to_dfs.call_count >= 2
+
+
+@pytest.mark.unit
+def test_export_cleaned_to_dfs0_skips_missing_csv(mock_project_reservoirs, tmp_path):
+    """_export_cleaned_to_dfs0 skips products with no CSV file."""
+    mock_project_reservoirs.to_process = ["swot", "icesat2"]
+    output_dir = tmp_path / "reservoirs" / "1" / "cleaned_observations"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    mock_project_reservoirs.dirs["output"] = str(tmp_path / "reservoirs")
+
+    # Create only one CSV (swot missing)
+    dates = pd.date_range("2024-01-01", periods=3, freq="D")
+    df = pd.DataFrame(
+        {
+            "date": dates,
+            "height": [100.5, 101.2, 100.8],
+        }
+    )
+    (output_dir / "icesat2.csv").write_text(df.to_csv(index=False))
+
+    mock_ds = mock.MagicMock()
+
+    with (
+        patch.object(flows.mikeio, "from_pandas", return_value=mock_ds),
+        patch.object(flows.mikeio, "ItemInfo", return_value=mock.MagicMock()),
+        patch.object(
+            flows.mikeio, "EUMType", mock.MagicMock(Water_Level="Water_Level")
+        ),
+    ):
+        flows._export_cleaned_to_dfs0(mock_project_reservoirs)
+
+        # Verify from_pandas was called only for icesat2
+        assert flows.mikeio.from_pandas.call_count == 1
 
 
 @pytest.mark.unit
