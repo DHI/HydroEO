@@ -9,9 +9,18 @@ import matplotlib.pyplot as plt
 from cmcrameri import cm
 import pandas as pd
 import geopandas as gpd
+import contextily as ctx
+from typing import TYPE_CHECKING
+from HydroEO.utils import general
+
+if TYPE_CHECKING:
+    from HydroEO.project import Project
 
 
 logger = logging.getLogger(__name__)
+
+plt.rcParams["font.family"] = "serif"
+plt.rcParams.update({"font.size": 10})
 
 
 def plot_crossings(
@@ -45,7 +54,7 @@ def plot_crossings(
     cmap = cm.batlow.resampled(5)
     colors = {
         "icesat2": cmap(0),
-        "sentinel3": cmap(1),
+        "sentinel3": cmap(2),
         "sentinel6": cmap(3),
         "swot": cmap(4),
     }
@@ -66,10 +75,11 @@ def plot_crossings(
     # plot reservoir
     gdf.loc[[indx]].plot(
         ax=ax,
-        edgecolor="red",
+        edgecolor="blue",
         facecolor="None",
         zorder=5,
         label="Reservoir outline",
+        alpha=0.3,
     )
 
     # loop through each product in file and plot
@@ -81,7 +91,7 @@ def plot_crossings(
             product = file_name.split(".")[0]
             gdf_product = gpd.read_file(path_to_file)
             if product == "swot":
-                zorder = 0
+                zorder = 6
                 alpha = 0.5
             elif product == "icesat2":
                 zorder = 8
@@ -96,11 +106,12 @@ def plot_crossings(
                 alpha=alpha,
                 zorder=zorder,
                 label=product,
+                markersize=8,
             )
             plotted_products.add(product)
 
     legend_handles = [
-        Line2D([], [], color="red", linewidth=2, label="Reservoir outline"),
+        Line2D([], [], color="blue", linewidth=2, label="Reservoir", alpha=0.3),
     ]
 
     for product in sorted(plotted_products):
@@ -113,15 +124,18 @@ def plot_crossings(
     if legend_handles:
         ax.legend(
             handles=legend_handles,
-            loc="center left",
-            bbox_to_anchor=(1.02, 0.5),
-            borderaxespad=0.0,
+            loc="lower center",
+            bbox_to_anchor=(0.5, -0.2),
+            ncol=len(legend_handles),
+            frameon=False,
+            # borderaxespad=0.0,
         )
 
-    ax.grid(True, linestyle="--", alpha=0.3)
     ax.set_xlabel("lon")
     ax.set_ylabel("lat")
-    ax.tick_params(direction="in")
+    ax.tick_params(direction="in", width=1.5)
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
 
     fig.tight_layout()
     if save:
@@ -359,5 +373,117 @@ def plot_merging(
             )
         if show:
             plt.show()
+
+    return
+
+
+def plot_river_crossings(
+    prj: "Project",
+    wb_id,
+    target_ids,
+    output_dir,
+    save=False,
+    show=False,
+):
+    """TODO"""
+    sword_dir = prj.dirs["sword"]
+    gpkg_name = f"{prj.rivers.continent_key}_sword_{prj.rivers.feature_type}_v17b.gpkg"
+    gpkg_path = os.path.join(sword_dir, gpkg_name)
+
+    if not os.path.exists(gpkg_path):
+        raise FileNotFoundError(f"Expected SWORD file not found: {gpkg_path}")
+
+    sword_gdf = gpd.read_file(gpkg_path)
+    id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
+
+    fig, ax = plt.subplots()
+    fig.suptitle(f"{wb_id}: {id_label}")
+
+    features = sword_gdf[sword_gdf[prj.rivers.target_id_col].isin(target_ids)]
+
+    xmin, ymin, xmax, ymax = features["geometry"].total_bounds
+
+    ax.set_xlim([xmin - 0.05, xmax + 0.05])
+    ax.set_ylim([ymin - 0.05, ymax + 0.05])
+
+    if id_label == "nodes":
+        features.plot(ax=ax, color="black", markersize=5, edgecolor="none")
+    else:
+        features.plot(ax=ax, color="black")
+
+    ctx.add_basemap(
+        ax,
+        crs=features.crs,
+        zoom=15,
+        source=ctx.providers.CartoDB.Positron,  # ctx.providers.OpenStreetMap.Mapnik
+    )
+
+    ax.set_xlabel("lon")
+    ax.set_ylabel("lat")
+    ax.tick_params(direction="in", width=1.5)
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+    fig.tight_layout()
+
+    general.ifnotmakedirs(os.path.join(output_dir, f"{wb_id}"))
+
+    if save:
+        plt.savefig(
+            os.path.join(output_dir, f"{wb_id}", f"{id_label}_map.png"), dpi=300
+        )
+    if show:
+        plt.show()
+
+
+def plot_river_data(
+    prj,
+    wb_id,
+    target_ids,
+    output_dir,
+    show=False,
+    save=False,
+):
+    """TODO"""
+    id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
+    csv_path = os.path.join(
+        prj.dirs["swot"], "rivers", str(wb_id), f"{id_label}_timeseries.csv"
+    )
+
+    fig, ax = plt.subplots()
+    fig.suptitle(f"{wb_id}: {id_label}")
+
+    cmap = cm.hawaii
+    n = len(target_ids)
+
+    df = pd.read_csv(csv_path)
+    df["date"] = pd.to_datetime(df.time_str)
+    for idx, target_id in enumerate(target_ids):
+        feature_df = df[df[prj.rivers.target_id_col] == target_id]
+        feature_df = feature_df.sort_values(by="date", ascending=True)
+        feature_df.plot(
+            ax=ax,
+            x="date",
+            y="wse",
+            c=cmap(idx / max(n - 1, 1)),
+            linewidth="0.5",
+            linestyle="-.",
+            legend=False,
+        )
+
+    ax.set_xlabel("date")
+    ax.set_ylabel("wse [m]")
+    ax.tick_params(direction="in", width=1.5)
+    for spine in ax.spines.values():
+        spine.set_linewidth(1.5)
+    fig.tight_layout()
+
+    general.ifnotmakedirs(os.path.join(output_dir, f"{wb_id}"))
+
+    if save:
+        plt.savefig(
+            os.path.join(output_dir, f"{wb_id}", f"{id_label}_timeseries.png"), dpi=300
+        )
+    if show:
+        plt.show()
 
     return

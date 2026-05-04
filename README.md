@@ -253,7 +253,7 @@ main_dir/
 main_dir/
   swot/rivers/
     <aoi_name>/
-      timeseries.csv       # SWOT Hydrocron data
+      nodes_timeseries.csv or reaches_timeseries.csv       # SWOT Hydrocron data
 ```
 
 #### SWOT Rasters

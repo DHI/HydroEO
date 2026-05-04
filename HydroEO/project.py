@@ -441,9 +441,8 @@ class Project:
 
     def generate_summaries(self, show=False, save=True):
         warnings.filterwarnings("ignore", module="pandas\\..*")
+        logger.info("Plotting")
         if hasattr(self, "reservoirs"):
             flows.generate_reservoirs_summaries(self, show=show, save=save)
         if hasattr(self, "rivers"):
-            logger.warning(
-                "Rivers plotting is not implemented yet; skipping generate_summaries for rivers."
-            )
+            flows.generate_rivers_summaries(self, show=show, save=save)

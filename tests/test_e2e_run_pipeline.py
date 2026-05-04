@@ -119,9 +119,9 @@ def test_run_rivers_e2e_one_month_env_credentials(tmp_path):
     rivers_output_dir = work_dir / "swot" / "rivers"
     assert rivers_output_dir.exists(), f"Missing output directory: {rivers_output_dir}"
 
-    timeseries_files = list(rivers_output_dir.rglob("timeseries.csv"))
+    timeseries_files = list(rivers_output_dir.rglob("nodes_timeseries.csv"))
     assert len(timeseries_files) > 0, (
-        "Pipeline completed but no timeseries.csv files were generated in rivers output"
+        "Pipeline completed but no nodes_timeseries.csv files were generated in rivers output"
     )
 
 
