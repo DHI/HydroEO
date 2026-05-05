@@ -478,7 +478,7 @@ def test_get_latest_hydrocron_obs_date_returns_none_when_missing(tmp_path):
 @pytest.mark.unit
 def test_get_latest_hydrocron_obs_date_parses_existing_csv(tmp_path):
     """_get_latest_hydrocron_obs_date extracts latest timestamp from CSV."""
-    csv_path = tmp_path / "timeseries.csv"
+    csv_path = tmp_path / "nodes_timeseries.csv"
     df = pd.DataFrame(
         {
             "time_str": [
