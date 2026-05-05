@@ -163,6 +163,29 @@ hydroeo fetch sentinel --bbox "-10 40 10 60" --start 2023-01-01 --end 2023-06-01
 
 Use `--product S3` for Sentinel-3 (default) or `--product S6` for Sentinel-6.
 
+#### Copernicus DEM (COP-DEM)
+
+```sh
+hydroeo fetch cop-dem \
+  --bbox "-10 40 10 60" \
+  --output ./output \
+  --cdse-username <user> \
+  --cdse-password <pass>
+
+# Or set credentials as environment variables:
+export CDSE_USERNAME=...
+export CDSE_PASSWORD=...
+hydroeo fetch cop-dem --bbox "-10 40 10 60" --output ./output
+```
+
+Optional flags:
+- `--dataset <name>` (default `COP-DEM_GLO-30-DGED/2023_1` for 30 m resolution; use `COP-DEM_GLO-90-DGED/2023_1` for 90 m)
+- `--output-filename <name>` (default `cop_dem_merged.tif`)
+
+Credentials: `--cdse-username` / `--cdse-password` or `CDSE_USERNAME` / `CDSE_PASSWORD`.
+
+Note: A free CDSE account is required with CCM (Copernicus Contributing Missions) data access enabled. Register at https://dataspace.copernicus.eu/.
+
 
 ### Water body branches
 
@@ -304,6 +327,7 @@ This table consolidates all credential requirements across workflows and mission
 | Rivers (SWOT) | SWOT Hydrocron | None required | — | Public API; no auth needed |
 | SWOT Raster | `SWOT_L2_HR_Raster_D`, `SWOT_L2_LR_SSH_2.0`, `SWOT_L2_HR_RIVERSP_2.0` | Earthdata account | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` | Earthdata/NASA download |
 | SWOT Pixel Cloud | `SWOT_L2_HR_PIXC_D`, `SWOT_L2_HR_PIXC_2.0` | Earthdata account | `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` | Earthdata/NASA download |
+| COP-DEM | `COP-DEM_GLO-30/90-DGED/2023_1` | CDSE account (free) | `CDSE_USERNAME`, `CDSE_PASSWORD` | CDSE/Copernicus DEM download |
 
 Note: Credentials can be provided in the config file under `earthaccess`, `hydroweb`, or `creodias` sections, or as environment variables. Environment variables take precedence and are recommended for automated/CI workflows.
 
