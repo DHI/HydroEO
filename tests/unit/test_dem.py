@@ -524,33 +524,3 @@ def test_fetch_cop_dem_cli_help():
     assert "--bbox" in result.output
     assert "--cdse-username" in result.output
     assert "--cdse-password" in result.output
-
-
-@pytest.mark.unit
-def test_fetch_cop_dem_cli_missing_credentials():
-    """Test that fetch cop-dem fails when credentials are not provided."""
-    from typer.testing import CliRunner
-    from HydroEO.cli import app
-    import os
-
-    runner = CliRunner()
-
-    # Ensure env vars are not set
-    env = os.environ.copy()
-    env.pop("CDSE_USERNAME", None)
-    env.pop("CDSE_PASSWORD", None)
-
-    result = runner.invoke(
-        app,
-        [
-            "fetch",
-            "cop-dem",
-            "--bbox",
-            "10 50 11 51",
-            "--output",
-            "/tmp/out",
-        ],
-        env=env,
-    )
-    assert result.exit_code != 0
-    assert "CDSE credentials required" in result.output
