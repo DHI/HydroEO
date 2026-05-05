@@ -9,18 +9,13 @@ Tests cover:
 
 from __future__ import annotations
 
-import json
-import shutil
-import tempfile
 import zipfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import geopandas as gpd
 import numpy as np
 import pytest
 import rasterio
-import xarray as xr
 from pyproj import CRS
 from rasterio.transform import from_bounds
 from shapely.geometry import box
@@ -181,8 +176,6 @@ def test_bbox_to_geojson_polygon():
 @pytest.mark.unit
 def test_clip_tif_to_aoi(synthetic_dem_tif, tmp_path):
     """Test that a single GeoTIFF can be clipped to an AOI."""
-    from HydroEO.downloaders.dem import clip_tif_to_aoi
-    from shapely.geometry import box
 
     # Define AOI as a smaller box within the DEM tile
     aoi = box(10.2, 50.2, 10.8, 50.8)
@@ -208,8 +201,6 @@ def test_clip_tif_to_aoi(synthetic_dem_tif, tmp_path):
 @pytest.mark.unit
 def test_clip_tif_no_overlap(synthetic_dem_tif, tmp_path):
     """Test that clip_tif_to_aoi returns None for non-overlapping AOI."""
-    from HydroEO.downloaders.dem import clip_tif_to_aoi
-    from shapely.geometry import box
 
     # Define AOI that doesn't overlap the DEM tile (15-16°E, 50-51°N)
     aoi = box(15.0, 50.0, 16.0, 51.0)
@@ -226,7 +217,6 @@ def test_clip_tif_no_overlap(synthetic_dem_tif, tmp_path):
 @pytest.mark.unit
 def test_merge_clipped_tifs(tmp_path):
     """Test merging of multiple clipped GeoTIFFs."""
-    from HydroEO.downloaders.dem import merge_clipped_tifs
 
     # Create two synthetic clipped GeoTIFFs
     tif_paths = []
@@ -276,7 +266,6 @@ def test_merge_clipped_tifs(tmp_path):
 @pytest.mark.unit
 def test_process_with_valid_tifs(synthetic_dem_tif, tmp_path):
     """Test the full process() function with a single valid DEM tile."""
-    from shapely.geometry import box
 
     aoi_geojson = {
         "type": "Polygon",
@@ -452,7 +441,7 @@ def test_download_cop_dem_custom_dataset(tmp_path):
         mock_download.return_value = [mock_zip]
 
         custom_dataset = "COP-DEM_GLO-90-DGED/2023_1"
-        result = download_cop_dem(
+        download_cop_dem(
             minx=10.0,
             miny=50.0,
             maxx=11.0,
