@@ -84,3 +84,114 @@ def test_run_reservoir_e2e_one_month_env_credentials(tmp_path):
     assert len(merged_files) > 0, (
         "Pipeline completed but no merged_timeseries.csv files were generated"
     )
+
+
+@pytest.mark.integration
+@_has_e2e_flag
+@_has_required_creds
+def test_run_rivers_e2e_one_month_env_credentials(tmp_path):
+    """Run the full Project pipeline for rivers using a short data window."""
+    repo_root = Path(__file__).resolve().parents[1]
+    base_config_path = repo_root / "tests" / "data" / "config.e2e.rivers.yaml"
+
+    with base_config_path.open("rt", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    # Keep all pipeline outputs inside pytest temp storage.
+    work_dir = tmp_path / "e2e_rivers"
+    config["project"]["main_dir"] = str(work_dir)
+
+    # Use repo fixture AOI file for reproducible geometry input.
+    config["rivers"]["aoi_path"] = str(repo_root / "tests" / "data" / "aoi.e2e.gpkg")
+
+    test_config_path = tmp_path / "config.e2e.rivers.yaml"
+    with test_config_path.open("wt", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+
+    project = Project(name="e2e-rivers", config=str(test_config_path))
+    project.initialize()
+    project.download()
+
+    # Note: rivers timeseries and summaries are not yet implemented.
+    # See: HydroEO/project.py line 436 for details.
+
+    # End-to-end smoke checks: expected output tree should exist and contain data.
+    rivers_output_dir = work_dir / "swot" / "rivers"
+    assert rivers_output_dir.exists(), f"Missing output directory: {rivers_output_dir}"
+
+    timeseries_files = list(rivers_output_dir.rglob("nodes_timeseries.csv"))
+    assert len(timeseries_files) > 0, (
+        "Pipeline completed but no nodes_timeseries.csv files were generated in rivers output"
+    )
+
+
+@pytest.mark.integration
+@_has_e2e_flag
+@_has_required_creds
+def test_run_raster_e2e_one_month_env_credentials(tmp_path):
+    """Run the full Project pipeline for SWOT raster using a short data window."""
+    repo_root = Path(__file__).resolve().parents[1]
+    base_config_path = repo_root / "tests" / "data" / "config.e2e.raster.yaml"
+
+    with base_config_path.open("rt", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    # Keep all pipeline outputs inside pytest temp storage.
+    work_dir = tmp_path / "e2e_raster"
+    config["project"]["main_dir"] = str(work_dir)
+
+    test_config_path = tmp_path / "config.e2e.raster.yaml"
+    with test_config_path.open("wt", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+
+    project = Project(name="e2e-raster", config=str(test_config_path))
+    project.initialize()
+    project.download()
+
+    # Note: timeseries and summaries are not applicable to raster data.
+
+    # End-to-end smoke checks: expected output tree should exist and contain data.
+    aoi_name = config["swot_raster"]["aoi"]["name"]
+    raster_output_dir = work_dir / "swot_raster" / aoi_name / "merged"
+    assert raster_output_dir.exists(), f"Missing output directory: {raster_output_dir}"
+
+    raster_files = list(raster_output_dir.glob("*.tif"))
+    assert len(raster_files) > 0, (
+        "Pipeline completed but no GeoTIFF files were generated in raster merged output"
+    )
+
+
+@pytest.mark.integration
+@_has_e2e_flag
+@_has_required_creds
+def test_run_pixc_e2e_one_month_env_credentials(tmp_path):
+    """Run the full Project pipeline for SWOT pixel cloud using a short data window."""
+    repo_root = Path(__file__).resolve().parents[1]
+    base_config_path = repo_root / "tests" / "data" / "config.e2e.pixc.yaml"
+
+    with base_config_path.open("rt", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    # Keep all pipeline outputs inside pytest temp storage.
+    work_dir = tmp_path / "e2e_pixc"
+    config["project"]["main_dir"] = str(work_dir)
+
+    test_config_path = tmp_path / "config.e2e.pixc.yaml"
+    with test_config_path.open("wt", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, sort_keys=False)
+
+    project = Project(name="e2e-pixc", config=str(test_config_path))
+    project.initialize()
+    project.download()
+
+    # Note: timeseries and summaries are not applicable to pixel cloud data.
+
+    # End-to-end smoke checks: expected output tree should exist and contain data.
+    aoi_name = config["swot_pixc"]["aoi"]["name"]
+    pixc_output_dir = work_dir / "swot_pixc" / aoi_name / "raster"
+    assert pixc_output_dir.exists(), f"Missing output directory: {pixc_output_dir}"
+
+    raster_files = list(pixc_output_dir.glob("*.tif"))
+    assert len(raster_files) > 0, (
+        "Pipeline completed but no GeoTIFF files were generated in pixel cloud raster output"
+    )

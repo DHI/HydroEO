@@ -149,6 +149,9 @@ class Project:
             self.reservoirs.gdf = self.reservoirs.gdf.to_crs(self.global_crs)
             self.reservoirs.mission_options = self.mission_options
             self.reservoirs.processing_options = self.processing_options
+            self.reservoirs.export_to_dfs0 = self.config["reservoirs"].get(
+                "export_to_dfs0", False
+            )
 
         if "rivers" in self.config.keys() and self.config["rivers"].get(
             "enabled", True
@@ -438,9 +441,8 @@ class Project:
 
     def generate_summaries(self, show=False, save=True):
         warnings.filterwarnings("ignore", module="pandas\\..*")
+        logger.info("Plotting")
         if hasattr(self, "reservoirs"):
             flows.generate_reservoirs_summaries(self, show=show, save=save)
         if hasattr(self, "rivers"):
-            logger.warning(
-                "Rivers plotting is not implemented yet; skipping generate_summaries for rivers."
-            )
+            flows.generate_rivers_summaries(self, show=show, save=save)

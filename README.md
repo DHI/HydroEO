@@ -69,8 +69,8 @@ hydroeo run config.yaml
 hydroeo initialize config.yaml
 hydroeo download    config.yaml
 hydroeo update      config.yaml   # extend to today
-hydroeo timeseries  config.yaml   # reservoirs only
-hydroeo summaries   config.yaml   # reservoirs only
+hydroeo timeseries  config.yaml   # reservoirs only (rivers preprocessing not implemented)
+hydroeo summaries   config.yaml   # reservoirs and rivers
 ```
 
 Use `--name` to override the project name (defaults to the config file stem) and `--verbose` / `-v` for debug logging:
@@ -171,7 +171,7 @@ A HydroEO project is built around a single **water body branch** — reservoirs/
 | Branch | Status | Products | Description |
 | --- | --- | --- | --- |
 | `reservoirs` | ✅ available | SWOT Lake, ICESat-2, Sentinel-3, Sentinel-6 | Closed water bodies: lakes, reservoirs. Defined by polygon shapefile + unique ID key. Supports multi-mission downloads and full timeseries processing. |
-| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization plus SWOT Hydrocron download (public API, no credentials needed). With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River preprocessing and plotting remain unimplemented. |
+| `rivers` | 🧪 partial | SWOT Hydrocron | River projects support initialization, SWOT Hydrocron download (public API, no credentials needed), and basic plotting summaries. With `rivers.aoi_path`, `initialize()` downloads SWORD v17b if needed, loads the continent-specific nodes/reaches gpkg, optionally buffers the AOI, subsets SWORD to the AOI, and maps each node/reach to the AOI `id_key` for output naming. Explicit `feature_numbers` (paired with `feature_type: nodes` or `feature_type: reaches`) are supported for SWOT downloads when `rivers.id` is provided as the output folder key. River timeseries filtering/preprocessing remain unimplemented. |
 | `swot_raster` | ✅ available | SWOT Rasters (L2 HR/LR products) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT raster products (SWOT_L2_HR_Raster_D, SWOT_L2_LR_SSH_2.0, SWOT_L2_HR_RIVERSP_2.0) via Earthdata. Extracts selected variables, applies quality filters, clips to AOI, and merges/reprojects tiles by date. Requires Earthdata credentials. |
 | `swot_pixc` | ✅ available | SWOT Pixel Cloud (L2 PIXC) | Arbitrary areas of interest defined by bounding box or shapefile/geopackage geometries. Downloads SWOT Pixel Cloud data (SWOT_L2_HR_PIXC_D, SWOT_L2_HR_PIXC_2.0) via Earthdata. Extracts point data, filters by water class, computes derived heights (heightEGM), clips to AOI, and grids to regular rasters via binned statistics (median, mean, etc.) at specified resolution. Requires Earthdata credentials. |
 
@@ -198,35 +198,35 @@ This section consolidates all available data sources across HydroEO's four workf
 
 ### Reservoir & Lake Products
 
-| Product | Satellite | Archive start | Credentials required |
-| --- | --- | --- | --- | --- |
-| `SWOT_L2_HR_LakeSP_D` | SWOT | 2023 | Earthdata + HydroWeb API key |
-| `ATL13` | ICESat-2 | 2018 | None (SlideRule public API) |
-| - | Sentinel-3A/B | 2016 | CREODIAS account |
-| - | Sentinel-6 | 2020 | CREODIAS account |
+| Product | Satellite | Credentials required |
+| --- | --- | --- |
+| `SWOT_L2_HR_LakeSP_D` | SWOT | Earthdata + HydroWeb API key |
+| `ATL13` | ICESat-2 | None (SlideRule public API) |
+| - | Sentinel-3A/B | CREODIAS account |
+| - | Sentinel-6 | CREODIAS account |
 
 ### River Products
 
-| Product | Satellite | Archive start | Credentials |
-| --- | --- | --- | --- |
-| SWOT Hydrocron (nodes/reaches) | SWOT | 2023 | None (public API) |
+| Product | Credentials |
+| --- | --- |
+| SWOT Hydrocron (nodes/reaches) | None (public API) |
 
 ### SWOT Raster Products
 
-| Product | Resolution | Archive start | Use case |
-| --- | --- | --- | --- |
-| `SWOT_L2_HR_Raster_D` | ~100m | 2024 | High-resolution grids: elevation, water surface height |
-| `SWOT_L2_LR_SSH_2.0` | ~250m | 2023 | Low-resolution grids: sea surface height, open water |
-| `SWOT_L2_HR_RIVERSP_2.0` | ~100m | 2024 | River surface: channel elevation, width, slope |
+| Product |
+| --- |
+| `SWOT_L2_HR_Raster_D` |
+| `SWOT_L2_LR_SSH_2.0` |
+| `SWOT_L2_HR_RIVERSP_2.0` |
 
 All raster products require Earthdata credentials.
 
 ### SWOT Pixel Cloud Products
 
-| Product | Archive start | Use case |
-| --- | --- | --- |
-| `SWOT_L2_HR_PIXC_D` | 2024 | Point-based water heights, gridded to rasters via binning |
-| `SWOT_L2_HR_PIXC_2.0` | 2024 | Point-based water heights (v2 format), gridded to rasters |
+| Product | Use case |
+| --- | --- |
+| `SWOT_L2_HR_PIXC_D` | Point-based water heights, gridded to rasters via binning |
+| `SWOT_L2_HR_PIXC_2.0` | Point-based water heights (v2 format), gridded to rasters |
 
 Both Pixel Cloud products require Earthdata credentials and support median/mean/max/min binning statistics.
 
@@ -253,7 +253,7 @@ main_dir/
 main_dir/
   swot/rivers/
     <aoi_name>/
-      timeseries.csv       # SWOT Hydrocron data
+      nodes_timeseries.csv or reaches_timeseries.csv       # SWOT Hydrocron data
 ```
 
 #### SWOT Rasters
@@ -366,6 +366,10 @@ Applied during `create_timeseries()` for reservoir workflows only. Available und
 - `elevation_min_m`: lower bound used by elevation filter.
 - `elevation_max_m`: upper bound used by elevation filter.
 - `mad_threshold`: MAD outlier multiplier.
+
+### Reservoir-specific: Export options
+Available under the `reservoirs` section:
+- `export_to_dfs0`: optional boolean (default: `false`). When `true`, cleaned observations are exported to dfs0 format (DHI MIKE IO format) for integration into DHI tools. Each product (SWOT, ICESat-2, Sentinel-3, Sentinel-6) is written as a separate dfs0 file in the `cleaned_observations/` directory. Requires the optional mikeio library; install with `pip install HydroEO[dfs0]`.
 
 ### SWOT
 - `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching (Use Case A — reservoirs).

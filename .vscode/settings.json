@@ -10,4 +10,5 @@
     "python.testing.pytestEnabled": true,
     "notebook.formatOnSave.enabled": true,
     "makefile.configureOnOpen": true,
+    "ruff.configuration": "pyproject.toml"
 }
