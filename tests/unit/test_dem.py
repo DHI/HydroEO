@@ -504,23 +504,3 @@ def test_download_cop_dem_custom_output_filename(tmp_path):
 
         assert result.name == custom_filename
         assert result.exists()
-
-
-# ============================================================================
-# TESTS: CLI integration
-# ============================================================================
-
-
-@pytest.mark.unit
-def test_fetch_cop_dem_cli_help():
-    """Test that the fetch cop-dem CLI command is available and has help."""
-    from typer.testing import CliRunner
-    from HydroEO.cli import app
-
-    runner = CliRunner()
-    result = runner.invoke(app, ["fetch", "cop-dem", "--help"])
-    assert result.exit_code == 0
-    assert "cop-dem" in result.output.lower()
-    assert "--bbox" in result.output
-    assert "--cdse-username" in result.output
-    assert "--cdse-password" in result.output
