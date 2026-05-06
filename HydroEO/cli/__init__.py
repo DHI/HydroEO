@@ -571,5 +571,88 @@ def fetch_sentinel(
     typer.echo(f"Sentinel download complete. Output: {output}")
 
 
+# ---------------------------------------------------------------------------
+# fetch cop-dem
+# ---------------------------------------------------------------------------
+
+
+@fetch_app.command("cop-dem")
+def fetch_cop_dem(
+    bbox: str = typer.Option(
+        ...,
+        "--bbox",
+        help="Bounding box as a quoted string: 'MINLON MINLAT MAXLON MAXLAT'.",
+    ),
+    output: str = typer.Option(
+        "hydroeo_output", "--output", "-o", help="Output directory (created if absent)."
+    ),
+    cdse_username: Optional[str] = typer.Option(
+        None,
+        "--cdse-username",
+        help="CDSE username (or set CDSE_USERNAME).",
+    ),
+    cdse_password: Optional[str] = typer.Option(
+        None,
+        "--cdse-password",
+        help="CDSE password (or set CDSE_PASSWORD).",
+        hide_input=True,
+    ),
+    dataset: str = typer.Option(
+        "COP-DEM_GLO-30-DGED/2023_1",
+        "--dataset",
+        help="COP-DEM dataset name (30 m or 90 m resolution). "
+        "Default: COP-DEM_GLO-30-DGED/2023_1 (30 m). "
+        "Alternative: COP-DEM_GLO-90-DGED/2023_1 (90 m).",
+    ),
+    output_filename: str = typer.Option(
+        "cop_dem_merged.tif",
+        "--output-filename",
+        help="Name of the final merged DEM GeoTIFF.",
+    ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable debug logging."
+    ),
+):
+    """Download, merge, and clip COP-DEM for a bounding box.
+
+    Downloads Copernicus DEM tiles from CDSE, merges them, and clips to the
+    specified bounding box, producing a single GeoTIFF output.
+
+    Requires CDSE credentials (register at https://dataspace.copernicus.eu/
+    and request CCM data access).
+    """
+    _configure_logging(verbose)
+    parsed_bbox = _parse_bbox(bbox)
+
+    u = cdse_username or os.environ.get("CDSE_USERNAME")
+    p = cdse_password or os.environ.get("CDSE_PASSWORD")
+
+    if not u or not p:
+        typer.echo(
+            "Error: CDSE credentials required. Pass --cdse-username/--cdse-password "
+            "or set CDSE_USERNAME / CDSE_PASSWORD environment variables.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    minx, miny, maxx, maxy = parsed_bbox
+    os.makedirs(output, exist_ok=True)
+
+    from HydroEO.downloaders.dem import download_cop_dem
+
+    output_path = download_cop_dem(
+        minx=minx,
+        miny=miny,
+        maxx=maxx,
+        maxy=maxy,
+        output_dir=output,
+        username=u,
+        password=p,
+        dataset=dataset,
+        output_filename=output_filename,
+    )
+    typer.echo(f"COP-DEM download complete. Output: {output_path}")
+
+
 if __name__ == "__main__":
     app()
