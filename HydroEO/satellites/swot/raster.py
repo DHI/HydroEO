@@ -51,7 +51,6 @@ REQUIRED_VARIABLES = {"wse", "wse_uncert", "layover_impact"}
 def download_raster(
     config: dict[str, Any],
     project_dir: str,
-    credentials: tuple[str | None, str | None],
     global_crs: str = "EPSG:4326",
 ) -> None:
     """Download, preprocess, and merge SWOT raster data for an AOI.
@@ -63,8 +62,6 @@ def download_raster(
     project_dir:
         Root project directory; outputs are written to
         ``<project_dir>/swot_raster/<aoi_name>/``.
-    credentials:
-        ``(earthdata_username, earthdata_password)`` tuple.
     global_crs:
         Project-level CRS (from ``gis.global_crs``). Used as the default
         output CRS for the merge phase unless ``target_crs`` is set in
@@ -93,9 +90,7 @@ def download_raster(
     with open(log_path, "r") as log_file:
         processed_granules = {line.rstrip() for line in log_file}
 
-    downloaded_files = _download_granules(
-        config, raw_dir, processed_granules, credentials
-    )
+    downloaded_files = _download_granules(config, raw_dir, processed_granules)
 
     # Always preprocess if there are NC files in raw_dir (new or from previous runs)
     nc_files_in_raw = list(raw_dir.glob("*.nc"))
@@ -121,12 +116,11 @@ def _download_granules(
     config: dict,
     raw_dir: Path,
     processed_granules: set[str],
-    credentials: tuple[str | None, str | None],
 ) -> list[str]:
     """Download SWOT granules matching query, skipping already processed ones."""
     logger.debug("=== SWOT Raster Download Phase ===")
 
-    _login(credentials)
+    _login()
 
     aoi_config = config["aoi"]
     if aoi_config["type"] == "bbox":

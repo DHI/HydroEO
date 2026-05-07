@@ -230,7 +230,6 @@ def test_download_granules_returns_empty_when_no_results(bbox_config):
             bbox_config,
             Path("/tmp/raw"),
             set(),  # processed_granules
-            ("user", "pass"),
         )
 
     assert result == []
@@ -255,7 +254,6 @@ def test_download_granules_skips_already_processed(bbox_config, tmp_path):
             bbox_config,
             raw_dir,
             {granule_ur},  # Already processed
-            ("user", "pass"),
         )
 
     mock_ea.download.assert_not_called()
@@ -565,7 +563,6 @@ def test_download_raster_full_pipeline_bbox(
         download_raster(
             bbox_config,
             str(project_dir),
-            ("user", "pass"),
         )
 
     # Verify outputs were created
@@ -609,7 +606,6 @@ def test_download_raster_no_new_granules_processes_existing_nc(
         download_raster(
             bbox_config,
             str(project_dir),
-            ("user", "pass"),
         )
 
     # Verify preprocessing happened despite no new downloads
@@ -682,7 +678,6 @@ def test_swot_raster_download_function_accepts_expected_params():
     sig = inspect.signature(download_raster)
     assert "config" in sig.parameters
     assert "project_dir" in sig.parameters
-    assert "credentials" in sig.parameters
 
 
 @pytest.mark.unit
@@ -736,7 +731,6 @@ def test_swot_raster_no_processed_files_skips_merge(tmp_path, caplog):
             download_raster(
                 config=config,
                 project_dir=str(project_dir),
-                credentials=("user", "pass"),
             )
 
     assert "No processed TIF files found" in caplog.text
@@ -768,7 +762,6 @@ def test_swot_raster_merge_with_existing_files(tmp_path, caplog):
             download_raster(
                 config=config,
                 project_dir=str(project_dir),
-                credentials=("user", "pass"),
             )
 
     mock_merge.assert_called_once()

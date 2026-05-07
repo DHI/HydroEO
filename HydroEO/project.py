@@ -120,6 +120,11 @@ class Project:
         if self.creodias_pass:
             os.environ["CREODIAS_PASSWORD"] = self.creodias_pass
 
+        ##### Set spatialite folder in PATH if provided
+        spatialite_folder = self.config.get("spatialite_folder")
+        if spatialite_folder:
+            os.environ["PATH"] = spatialite_folder + os.pathsep + os.environ["PATH"]
+
         ##### Set attributes for each satellite to be downloaded or processed
         self.__sat_init("swot")
         self.__sat_init("icesat2")
@@ -381,14 +386,12 @@ class Project:
             download_raster(
                 config=self.swot_raster_config,
                 project_dir=self.dirs["main"],
-                credentials=(self.earthdata_user, self.earthdata_pass),
                 global_crs=self.global_crs,
             )
         if hasattr(self, "swot_pixc_config"):
             download_pixc(
                 config=self.swot_pixc_config,
                 project_dir=self.dirs["main"],
-                credentials=(self.earthdata_user, self.earthdata_pass),
             )
 
     def update(self):
