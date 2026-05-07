@@ -29,28 +29,14 @@ def _suppress_granule_size_warning():
         yield
 
 
-def _login(credentials=None):
-    """Authenticate with earthaccess, handling credentials if provided.
+def _login():
+    """Authenticate with earthaccess.
 
     Parameters
     ----------
-    credentials : tuple(str, str) | None
-        (username, password) tuple, or None for anonymous login.
+    None
     """
-    if credentials:
-        username, password = credentials
-        if username and password:
-            try:
-                earthaccess.login(strategy="environment", persist=True)
-            except Exception:
-                earthaccess.login()
-        else:
-            logger.warning(
-                "No Earthdata credentials provided, attempting anonymous login"
-            )
-            earthaccess.login()
-    else:
-        earthaccess.login()
+    earthaccess.login()
 
 
 def _search(**params):

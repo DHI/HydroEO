@@ -88,6 +88,19 @@ def validate_config(
                     f"'project.{date_field}' must be [year, month, day] with valid integer values."
                 )
 
+    # Validate optional spatialite_folder key
+    if "spatialite_folder" in cfg:
+        spatialite_folder = cfg.get("spatialite_folder")
+        if spatialite_folder is not None:
+            if not isinstance(spatialite_folder, str):
+                issues.append(
+                    "'spatialite_folder' must be a string path or null."
+                )
+            elif not os.path.exists(spatialite_folder):
+                issues.append(
+                    f"Path in 'spatialite_folder' does not exist: {spatialite_folder}"
+                )
+
     def _is_enabled(section_cfg) -> bool:
         """Return True if a mode section is active (enabled key absent or True)."""
         if not isinstance(section_cfg, dict):

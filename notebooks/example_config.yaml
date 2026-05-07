@@ -38,7 +38,7 @@ gis:
 #   hydroweb    : EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
 #   creodias    : CREODIAS_USERNAME / CREODIAS_PASSWORD
 
-earthaccess:  # NASA Earthdata — needed for Use Cases A (SWOT/ICESat-2), C (Raster), and D (Pixel Cloud)
+earthaccess:  # NASA Earthdata — needed for Use Cases A (SWOT), C (Raster), and D (Pixel Cloud)
   username: null   # or set EARTHDATA_USERNAME
   password: null   # or set EARTHDATA_PASSWORD
 
@@ -49,6 +49,11 @@ hydroweb:     # needed for Use Case A (SWOT lake matching via PLD)
 creodias:     # needed for Use Case A — Sentinel-3 and Sentinel-6 only
   username: null   # or set CREODIAS_USERNAME
   password: null   # or set CREODIAS_PASSWORD
+
+# ─── SPATIALITE (OPTIONAL) ────────────────────────────────────────────────────
+# If using SWOT for reservoirs on Windows, that requires spatialite,
+# set the path to your spatialite folder. This will prepend it to the system PATH.
+# spatialite_folder: "/path/to/your/spatialite"  # optional; prepended to PATH
 
 
 # ══════════════════════════════════════════════════════════════════════════════

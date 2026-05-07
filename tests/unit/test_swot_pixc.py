@@ -235,9 +235,7 @@ def test_download_granules_bbox_config(tmp_path, pixc_bbox_config, _fake_pixc_re
         mock_ea.download.return_value = ["file1.nc"]
         mock_ea.login.return_value = None
 
-        downloaded = _download_granules(
-            pixc_bbox_config, raw_dir, set(), ("user", "pass")
-        )
+        downloaded = _download_granules(pixc_bbox_config, raw_dir, set())
 
         assert len(downloaded) == 1
         mock_ea.search_data.assert_called_once()
@@ -256,9 +254,7 @@ def test_download_granules_skip_processed(tmp_path, pixc_bbox_config):
         mock_ea.search_data.return_value = []
         mock_ea.login.return_value = None
 
-        downloaded = _download_granules(
-            pixc_bbox_config, raw_dir, processed, ("user", "pass")
-        )
+        downloaded = _download_granules(pixc_bbox_config, raw_dir, processed)
 
         assert len(downloaded) == 0
 
@@ -384,7 +380,6 @@ def test_download_pixc_end_to_end(tmp_path, pixc_bbox_config, synthetic_pixc_net
         download_pixc(
             pixc_bbox_config,
             str(tmp_path),
-            ("user", "pass"),
         )
 
     # Verify outputs
@@ -447,8 +442,6 @@ def test_download_granules_no_results(tmp_path, pixc_bbox_config):
         mock_ea.search_data.return_value = []
         mock_ea.login.return_value = None
 
-        downloaded = _download_granules(
-            pixc_bbox_config, raw_dir, set(), ("user", "pass")
-        )
+        downloaded = _download_granules(pixc_bbox_config, raw_dir, set())
 
         assert len(downloaded) == 0

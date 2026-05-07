@@ -50,7 +50,6 @@ DEFAULT_GRID_RESOLUTION = 100  # meters
 def download_pixc(
     config: dict[str, Any],
     project_dir: str,
-    credentials: tuple[str | None, str | None],
 ) -> None:
     """Download, preprocess, and rasterize SWOT Pixel Cloud data for an AOI.
 
@@ -61,8 +60,6 @@ def download_pixc(
     project_dir:
         Root project directory; outputs are written to
         ``<project_dir>/swot_pixc/<aoi_name>/``.
-    credentials:
-        ``(earthdata_username, earthdata_password)`` tuple.
     """
     logger.debug(
         "SWOT Pixel Cloud Download - AOI: %s, Product: %s, Temporal range: %s to %s",
@@ -89,9 +86,7 @@ def download_pixc(
     with open(log_path, "r") as log_file:
         processed_granules = {line.rstrip() for line in log_file}
 
-    downloaded_files = _download_granules(
-        config, raw_dir, processed_granules, credentials
-    )
+    downloaded_files = _download_granules(config, raw_dir, processed_granules)
 
     # Always preprocess if there are NC files in raw_dir (new or from previous runs)
     nc_files_in_raw = list(raw_dir.glob("*.nc"))
@@ -117,12 +112,11 @@ def _download_granules(
     config: dict,
     raw_dir: Path,
     processed_granules: set[str],
-    credentials: tuple[str | None, str | None],
 ) -> list[str]:
     """Download SWOT PIXC granules matching query, skipping already processed ones."""
     logger.debug("=== SWOT Pixel Cloud Download Phase ===")
 
-    _login(credentials)
+    _login()
 
     aoi_config = config["aoi"]
     if aoi_config["type"] == "bbox":

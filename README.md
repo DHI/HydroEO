@@ -7,7 +7,7 @@ Repo to allow users with little EO (Earth Observation) knowledge to access and d
 > HydroEO has had limited testing and further developments are likely to come. Please report any bugs or issues here: https://github.com/DHI/HydroEO/issues
 
 ## Installation
-> Note: Ensure that `uv` and `git` are installed on your system before running the following command.
+> Note: Ensure that `uv` and `git` are installed on your system before running the following command. For `uv`, follow [this link](https://docs.astral.sh/uv/getting-started/installation/) or execute this command in PowerShell (on Windows): `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`.
 
 **System dependency:** If you plan to download SWOT data, you must have **spatialite** installed at the OS level for spatial SQLite query support:
 
@@ -20,6 +20,20 @@ sudo apt-get install libspatialite-dev libspatialite7
 
 # Fedora/RHEL
 sudo dnf install spatialite-libs spatialite-devel
+```
+
+On **Windows**, try using the package first, you might have spatialite already set up. If not, and you get a s=message similar to this:
+
+```
+  File "C:\git\HydroEO\run.py", line 11, in <module>
+    con.execute('SELECT load_extension("mod_spatialite")')
+sqlite3.OperationalError: The specified module could not be found.
+```
+
+Download spatialite files from [here](https://www.gaia-gis.it/gaia-sins/windows-bin-amd64/). Unzip the folder to a stable location. Point to that folder in the config, see the [notebooks/example_config.yaml](./notebooks/example_config.yaml):
+
+```
+spatialite_folder: "/path/to/your/spatialite"
 ```
 
 Then install HydroEO:
@@ -330,6 +344,11 @@ This table consolidates all credential requirements across workflows and mission
 | COP-DEM | `COP-DEM_GLO-30/90-DGED/2023_1` | CDSE account (free) | `CDSE_USERNAME`, `CDSE_PASSWORD` | CDSE/Copernicus DEM download |
 
 Note: Credentials can be provided in the config file under `earthaccess`, `hydroweb`, or `creodias` sections, or as environment variables. Environment variables take precedence and are recommended for automated/CI workflows.
+
+> NB: There might be issues with reading credentials from config file on Windows. If you encounter issues with logging into earthaccess, set the credentials directly in the environment via code before calling prj.download(), e.g.:
+> ```
+> os.environ["EARTHDATA_USERNAME"] = "..."
+> ```
 
 ## Logging
 
