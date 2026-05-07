@@ -46,7 +46,7 @@ authors = [
 ]
 description = "Easy access altimetry for water resource applications"
 readme = "README.md"
-requires-python = ">=3.10,<=3.12"
+requires-python = ">=3.10,<=3.12.13"
 license = {file = "LICENSE"}
 keywords = ["altimetry", "hydrology", "satellite", "SWOT", "Sentinel", "ICESat-2", "water-resources", "earth-observation"]
 classifiers = [
