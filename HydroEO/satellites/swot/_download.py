@@ -101,7 +101,7 @@ def _download_files(results, directory):
 
     try:
         with _suppress_granule_size_warning():
-            files = earthaccess.download(results, directory, show_progress=True)
+            files = earthaccess.download(results, directory)
         return files or []
     except Exception as e:
         logger.error("Error downloading files: %s", e)
