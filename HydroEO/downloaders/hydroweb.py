@@ -4,7 +4,6 @@ import zipfile
 import logging
 
 import py_hydroweb
-import sqlite3
 
 import pandas as pd
 import geopandas as gpd
@@ -31,67 +30,87 @@ For more documentation about how to use the py-hydroweb lib, please refer to htt
 
 
 def download_PLD(download_dir: str, file_name: str, bounds: list):
-    # TODO: add check that .zip exists and is not empty before downloading, to avoid unnecessary downloads and unzipping.
-
     # create download directory if needed
     general.ifnotmakedirs(download_dir)
 
-    # Create a client
-    #  - either using the API-Key environment variable
-    client: py_hydroweb.Client = py_hydroweb.Client(
-        "https://hydroweb.next.theia-land.fr/api"
-    )
-
-    # Initiate a new download basket (input the name you want here)
-    basket: py_hydroweb.DownloadBasket = py_hydroweb.DownloadBasket("pld_download")
-
-    # Add collections in our basket
-    basket.add_collection("SWOT_PRIOR_LAKE_DATABASE", bbox=bounds)
-
-    # Do download (input the archive name you want here, and optionally an output folder)
+    # Define paths early to enable skip logic
     zipped_name = "PLD_temp.zip"
-    downloaded_zip_path = client.submit_and_download_zip(
-        basket, zip_filename=zipped_name, output_folder=download_dir
-    )
-
-    # unzip files
-    with zipfile.ZipFile(downloaded_zip_path, "r") as zip_ref:
-        unzipped_dir = os.path.join(download_dir, "PLD_temp")
-        zip_ref.extractall(unzipped_dir)
-
+    downloaded_zip_path = os.path.join(download_dir, zipped_name)
+    unzipped_dir = os.path.join(download_dir, "PLD_temp")
     extracted_dir = os.path.join(
         unzipped_dir, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
     )
+
+    # Check if extracted files already exist
+    extracted_files_exist = os.path.isdir(extracted_dir) and any(
+        f.endswith(".sqlite") for f in os.listdir(extracted_dir)
+    )
+
+    # Download only if zip file doesn't exist and extracted files don't exist
+    if os.path.isfile(downloaded_zip_path):
+        logger.info(
+            "Zip file already exists at %s, skipping download", downloaded_zip_path
+        )
+    elif extracted_files_exist:
+        logger.info(
+            "Extracted files already exist in %s, skipping download", extracted_dir
+        )
+    else:
+        logger.info("Downloading SWOT Prior Lake Database")
+        # Create a client
+        #  - either using the API-Key environment variable
+        client: py_hydroweb.Client = py_hydroweb.Client(
+            "https://hydroweb.next.theia-land.fr/api"
+        )
+
+        # Initiate a new download basket (input the name you want here)
+        basket: py_hydroweb.DownloadBasket = py_hydroweb.DownloadBasket("pld_download")
+
+        # Add collections in our basket
+        basket.add_collection("SWOT_PRIOR_LAKE_DATABASE", bbox=bounds)
+
+        # Do download (input the archive name you want here, and optionally an output folder)
+        downloaded_zip_path = client.submit_and_download_zip(
+            basket, zip_filename=zipped_name, output_folder=download_dir
+        )
+
+    # Extract only if extracted files don't already exist
+    if not extracted_files_exist:
+        if os.path.isfile(downloaded_zip_path):
+            logger.info("Extracting zip file")
+            with zipfile.ZipFile(downloaded_zip_path, "r") as zip_ref:
+                zip_ref.extractall(unzipped_dir)
+        else:
+            logger.warning(
+                "No zip file found at %s and no extracted files at %s",
+                downloaded_zip_path,
+                extracted_dir,
+            )
+            return
+    else:
+        logger.info("Extracted files already exist, skipping extraction")
+
+    # Get list of downloaded files
     downloaded_files = os.listdir(extracted_dir)
 
     # now clean up and merge lake datafiles
     logger.info("Merging products and removing temporary files")
     gdf_list = list()
     for file in downloaded_files:
-        # read any sqlite files within the downloads folders and extract data
         if file.endswith(".sqlite"):
-            logger.info("found %s", os.path.join(extracted_dir, file))
+            filepath = os.path.join(extracted_dir, file)
+            logger.info("found %s", filepath)
 
-            # Establish sql connection
-            con = sqlite3.connect(os.path.join(extracted_dir, file))
-            con.enable_load_extension(True)
-            con.execute('SELECT load_extension("mod_spatialite")')
-
-            # query the needed columns, make into df and close connection
-            query = "SELECT lake_id, res_id, AsBinary(GEOMETRY) as 'geometry' FROM lake"
-            df = pd.read_sql_query(query, con)
-            con.close()
-
-            # transfer df to gdf
-            geometry = [shapely.wkb.loads(binary_rep) for binary_rep in df.geometry]
-            gdf = gpd.GeoDataFrame(
-                df[["lake_id", "res_id"]], geometry=geometry, crs=4326
+            # Read layer directly as GeoDataFrame and normalize column names
+            gdf = gpd.read_file(filepath, layer="lake")
+            gdf.columns = [c.lower() for c in gdf.columns]
+            # Select basin_id (unique lake identifier) and rename to lake_id
+            gdf = gdf[["basin_id", "res_id", "geometry"]].rename(
+                columns={"basin_id": "lake_id"}
             )
 
-            # filter loaded data to bounds
+            # Filter to bounds and append
             gdf = gdf.loc[gdf.within(shapely.Polygon.from_bounds(*bounds))]
-
-            # add the remaining shapes to the list for concatenation
             gdf_list.append(gdf)
 
     # once we have processed all files, concatenate them
@@ -103,8 +122,9 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
     logger.info("Merged data saved to: %s", export_path)
 
     # once we have processed the files within the download directory, remove the folder
-    os.remove(downloaded_zip_path)
-    shutil.rmtree(unzipped_dir)
+    # TODO
+    # os.remove(downloaded_zip_path)
+    # shutil.rmtree(unzipped_dir)
 
     # we also remove the .downloads cache that is left from dag
     cache_path = os.path.join(download_dir, ".downloaded")
