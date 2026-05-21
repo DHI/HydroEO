@@ -76,8 +76,11 @@ class Project:
         if hydroweb_api_key:
             os.environ["HYDROWEB_API_KEY"] = hydroweb_api_key
 
-        if "PLD_path" in hydroweb_cfg:
-            self.dirs["pld"] = hydroweb_cfg["PLD_path"]
+        # Set PLD paths and configuration
+        self.dirs["pld"] = os.path.join(self.dirs["main"], "aux", "PLD", "PLD_subset.gpkg")
+        if "raw_pld_path" in hydroweb_cfg:
+            self.dirs["pld_raw"] = hydroweb_cfg["raw_pld_path"]
+        self.keep_raw_pld = hydroweb_cfg.get("keep_raw_pld", False)
 
         earthaccess_cfg = self.config.get("earthaccess", {})
         self.earthdata_user = (

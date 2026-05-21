@@ -72,9 +72,25 @@ def _download_pld(prj: "Project") -> None:
 
     logger.info("Downloading PLD")
     download_dir = os.path.dirname(pld_path)
-    file_name = os.path.basename(pld_path)
     bounds = list(prj.reservoirs.gdf.unary_union.bounds)
-    hydroweb.download_PLD(download_dir=download_dir, file_name=file_name, bounds=bounds)
+    raw_pld_path = prj.dirs.get("pld_raw")
+    
+    # Determine if raw_pld_path is inside project main_dir
+    keep_raw = getattr(prj, "keep_raw_pld", False)
+    effective_keep_raw = keep_raw
+    if raw_pld_path is not None and os.path.exists(raw_pld_path):
+        if not os.path.abspath(raw_pld_path).startswith(os.path.abspath(prj.dirs["main"])):
+            logger.warning(
+                "raw_pld_path '%s' is outside project folder '%s'. "
+                "Skipping deletion of raw PLD files to preserve external data.",
+                raw_pld_path, prj.dirs["main"]
+            )
+            effective_keep_raw = True
+    
+    hydroweb.download_PLD(
+        download_dir=download_dir, bounds=bounds, 
+        raw_pld_path=raw_pld_path, keep_raw=effective_keep_raw
+    )
 
 
 def _assign_pld_id(prj: "Project") -> None:
@@ -102,22 +118,18 @@ def _assign_pld_id(prj: "Project") -> None:
 
 
 def _flag_missing_priors(prj: "Project") -> None:
-    """Export shapefiles of reservoirs present/missing in PLD."""
+    """Export geopackages of reservoirs present/missing in PLD to aux/PLD folder."""
     gdf = prj.reservoirs.gdf
     present = gdf.loc[gdf.prior_lake_id > 0].reset_index(drop=True)
     missing = gdf.loc[gdf.prior_lake_id < 0].reset_index(drop=True)
 
-    shp_field_map = {
-        "index_right": "idx_right",
-        "prior_lake_id": "prior_lake",
-        "prior_res_id": "prior_res",
-        "dist_to_pld": "dist_pld",
-    }
-    present_out = present.rename(columns=shp_field_map)
-    missing_out = missing.rename(columns=shp_field_map)
-
-    present_out.to_file(os.path.join(prj.dirs["output"], "present_in_pld.shp"))
-    missing_out.to_file(os.path.join(prj.dirs["output"], "missing_in_pld.shp"))
+    # Output to aux/PLD/ folder
+    pld_dir = os.path.dirname(prj.dirs["pld"])
+    present_path = os.path.join(pld_dir, "present_in_pld.gpkg")
+    missing_path = os.path.join(pld_dir, "missing_in_pld.gpkg")
+    
+    present.to_file(present_path, driver="GPKG")
+    missing.to_file(missing_path, driver="GPKG")
 
     logger.info(
         "Out of the %s reservoirs, %s are present and %s are missing from the PLD.",

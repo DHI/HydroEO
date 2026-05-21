@@ -247,6 +247,10 @@ All outputs are written under `project.main_dir`. Structure varies by branch:
 #### Reservoirs
 ```
 main_dir/
+  aux/PLD/
+    PLD_subset.gpkg        # SWOT Prior Lake Database subset (merged, spatially filtered)
+    present_in_pld.gpkg    # reservoirs matched to PLD lakes
+    missing_in_pld.gpkg    # reservoirs NOT matched to PLD lakes
   <water_body_id>/
     raw_observations/      # extracted, spatially filtered shapefiles per mission
     cleaned_observations/  # filter-cleaned shapefiles per mission
@@ -386,6 +390,14 @@ Applied during `create_timeseries()` for reservoir workflows only. Available und
 ### Reservoir-specific: Export options
 Available under the `reservoirs` section:
 - `export_to_dfs0`: optional boolean (default: `false`). When `true`, cleaned observations are exported to dfs0 format (DHI MIKE IO format) for integration into DHI tools. Each product (SWOT, ICESat-2, Sentinel-3, Sentinel-6) is written as a separate dfs0 file in the `cleaned_observations/` directory. Requires the optional mikeio library; install with `pip install HydroEO[dfs0]`.
+
+### HydroWeb (SWOT Prior Lake Database)
+Configuration options under the `hydroweb` section for Use Case A (Reservoirs):
+- `api_key`: HydroWeb API key (required for PLD download). Can be set in config file or via environment variable `HYDROWEB_API_KEY`.
+- `raw_pld_path`: optional path to existing PLD data (zip file or extracted directory). If provided, the download step is skipped and this path is used instead. Allows bring-your-own PLD or local caching. If not provided, PLD is downloaded automatically.
+- `keep_raw_pld`: optional boolean (default: `false`). When `false`, the raw PLD zip file and temporary extraction folder are deleted after the subset is created. When `true`, both are retained for inspection or later reuse. Only applies to HydroEO-managed downloads; user-provided `raw_pld_path` data is never deleted if it resides outside the project folder (a warning is logged).
+
+The PLD subset is always written to `{project.main_dir}/aux/PLD/PLD_subset.gpkg`, along with QA/QC files `present_in_pld.gpkg` (matched reservoirs) and `missing_in_pld.gpkg` (unmatched reservoirs).
 
 ### SWOT
 - `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching (Use Case A — reservoirs).

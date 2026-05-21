@@ -37,7 +37,12 @@ def subset_by_id(files: list, ids: list):
             gdf = gdf.loc[gdf.obs_id != "no_data"].reset_index(drop=True)
 
             # extract entries that are in id list
-            gdf = gdf.loc[np.in1d(gdf.lake_id.astype(int).values, ids)]
+            id_prefixes = [str(id_val) for id_val in ids]
+            gdf = gdf.loc[
+                gdf["lake_id"]
+                .astype(str)
+                .apply(lambda x: any(x.startswith(p) for p in id_prefixes))
+            ]
 
             if len(gdf) > 0:
                 # save file
@@ -90,10 +95,13 @@ def extract_observations(
         dl_id = str(feat[id_key])
         if not np.isnan(feat["prior_lake_id"]):
             lake_id = str(int(feat["prior_lake_id"]))
+            print(lake_id)
 
             # filter observations to keep only the ones associated with this lake/reservoir
             observations = (
-                data_gdf.loc[data_gdf.lake_id.astype(int).astype(str) == lake_id]
+                data_gdf.loc[
+                    data_gdf.lake_id.astype(int).astype(str).str.startswith(lake_id)
+                ]
                 .reset_index(drop=True)
                 .sort_values(by="time")
             )

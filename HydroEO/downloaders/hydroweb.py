@@ -29,7 +29,20 @@ For more documentation about how to use the py-hydroweb lib, please refer to htt
 """
 
 
-def download_PLD(download_dir: str, file_name: str, bounds: list):
+def download_PLD(download_dir: str, bounds: list, raw_pld_path: str = None, keep_raw: bool = True):
+    """Download and subset SWOT Prior Lake Database.
+
+    Parameters
+    ----------
+    download_dir : str
+        Directory where PLD files will be stored (typically {main_dir}/aux/PLD/)
+    bounds : list
+        Geographic bounds [lon_min, lat_min, lon_max, lat_max] for subsetting
+    raw_pld_path : str, optional
+        Path to existing PLD zip file or extracted folder. If provided, skips download.
+    keep_raw : bool, default True
+        If False, delete raw zip and temp extraction folder after subset is created.
+    """
     # create download directory if needed
     general.ifnotmakedirs(download_dir)
 
@@ -41,13 +54,48 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
         unzipped_dir, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
     )
 
+    # Track whether the zip was downloaded by HydroEO (vs user-provided)
+    hydroweb_managed_zip = True
+
     # Check if extracted files already exist
     extracted_files_exist = os.path.isdir(extracted_dir) and any(
         f.endswith(".sqlite") for f in os.listdir(extracted_dir)
     )
 
+    # Handle user-provided raw_pld_path
+    if raw_pld_path is not None and os.path.exists(raw_pld_path):
+        if os.path.isfile(raw_pld_path) and raw_pld_path.endswith(".zip"):
+            # User provided a zip file
+            logger.info("Using provided PLD zip file: %s", raw_pld_path)
+            downloaded_zip_path = raw_pld_path
+            hydroweb_managed_zip = False
+        elif os.path.isdir(raw_pld_path):
+            # User provided a directory
+            logger.info("Using provided PLD directory: %s", raw_pld_path)
+            # Check if it contains .sqlite files directly
+            if any(f.endswith(".sqlite") for f in os.listdir(raw_pld_path)):
+                extracted_dir = raw_pld_path
+                extracted_files_exist = True
+            else:
+                # Check for nested SWOT_PRIOR_LAKE_DATABASE structure
+                nested_path = os.path.join(
+                    raw_pld_path, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
+                )
+                if os.path.isdir(nested_path) and any(
+                    f.endswith(".sqlite") for f in os.listdir(nested_path)
+                ):
+                    extracted_dir = nested_path
+                    extracted_files_exist = True
+                    unzipped_dir = raw_pld_path  # track parent for deletion logic
+                else:
+                    logger.warning(
+                        "Provided directory does not contain .sqlite files: %s",
+                        raw_pld_path,
+                    )
+                    return
+            hydroweb_managed_zip = False
     # Download only if zip file doesn't exist and extracted files don't exist
-    if os.path.isfile(downloaded_zip_path):
+    elif os.path.isfile(downloaded_zip_path):
         logger.info(
             "Zip file already exists at %s, skipping download", downloaded_zip_path
         )
@@ -89,6 +137,12 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
             return
     else:
         logger.info("Extracted files already exist, skipping extraction")
+    
+    # Ensure extracted_dir is set (in case raw_pld_path was a directory)
+    if not os.path.isdir(extracted_dir):
+        extracted_dir = os.path.join(
+            unzipped_dir, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
+        )
 
     # Get list of downloaded files
     downloaded_files = os.listdir(extracted_dir)
@@ -116,17 +170,23 @@ def download_PLD(download_dir: str, file_name: str, bounds: list):
     # once we have processed all files, concatenate them
     gdf = pd.concat(gdf_list).reset_index(drop=True)
 
-    # save the concatenated dataframe in the output folder
-    export_path = os.path.join(download_dir, file_name)
-    gdf.to_file(export_path)
+    # save the concatenated dataframe as GPKG
+    export_path = os.path.join(download_dir, "PLD_subset.gpkg")
+    gdf.to_file(export_path, driver="GPKG")
     logger.info("Merged data saved to: %s", export_path)
 
-    # once we have processed the files within the download directory, remove the folder
-    # TODO
-    # os.remove(downloaded_zip_path)
-    # shutil.rmtree(unzipped_dir)
+    # Cleanup raw files if requested
+    if not keep_raw:
+        # Only delete the zip if HydroEO downloaded it (not user-provided)
+        if hydroweb_managed_zip and os.path.isfile(downloaded_zip_path):
+            logger.info("Deleting raw zip file: %s", downloaded_zip_path)
+            os.remove(downloaded_zip_path)
+        # Always delete the temp extraction folder (HydroEO always manages it)
+        if os.path.isdir(unzipped_dir):
+            logger.info("Deleting temp extraction directory: %s", unzipped_dir)
+            shutil.rmtree(unzipped_dir)
 
-    # we also remove the .downloads cache that is left from dag
+    # we also remove the .downloads cache that is left from hydroweb
     cache_path = os.path.join(download_dir, ".downloaded")
     if os.path.exists(cache_path):
         shutil.rmtree(cache_path)

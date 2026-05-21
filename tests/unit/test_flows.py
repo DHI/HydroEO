@@ -36,11 +36,12 @@ def mock_project_reservoirs(tmp_path):
         "icesat2": str(tmp_path / "icesat2"),
         "sentinel3": str(tmp_path / "sentinel3"),
         "sentinel6": str(tmp_path / "sentinel6"),
-        "pld": str(tmp_path / "pld.shp"),
+        "pld": str(tmp_path / "aux" / "PLD" / "PLD_subset.gpkg"),
     }
     prj.reservoirs = Reservoirs(gdf=gdf, id_key="id", dirs=prj.dirs)
     prj.reservoirs.download_gdf = gdf
     prj.local_crs = "EPSG:3857"
+    prj.keep_raw_pld = False
     prj.startdates = {
         "swot": [2024, 1, 1],
         "icesat2": [2024, 1, 1],

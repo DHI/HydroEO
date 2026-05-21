@@ -44,7 +44,8 @@ earthaccess:  # NASA Earthdata — needed for Use Cases A (SWOT), C (Raster), an
 
 hydroweb:     # needed for Use Case A (SWOT lake matching via PLD)
   api_key: null    # or set EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
-  PLD_path: "/path/to/your/project/PLD_subset.shp"
+  # raw_pld_path: "/path/to/PLD.zip"  # optional: existing PLD zip or folder; if provided, download is skipped
+  keep_raw_pld: false  # if true, keep raw PLD zip and temp folder; if false, delete after subset is created
 
 creodias:     # needed for Use Case A — Sentinel-3 and Sentinel-6 only
   username: null   # or set CREODIAS_USERNAME

@@ -57,8 +57,7 @@ def test_run_reservoir_e2e_one_month_env_credentials(tmp_path):
         repo_root / "notebooks" / "example_data" / "example_res.shp"
     )
 
-    # PLD is downloaded or reused from this test-local path.
-    config["hydroweb"]["PLD_path"] = str(work_dir / "PLD_subset.shp")
+    # PLD is auto-placed in aux/PLD/PLD_subset.gpkg under the project folder
 
     # Re-point download dirs to temp storage for isolation.
     config["swot"]["download_dir"] = str(work_dir / "swot")
