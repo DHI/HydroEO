@@ -22,7 +22,7 @@ class Reservoirs:
     def __post_init__(self):
         self.type = "reservoirs"
 
-        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
+        self.dirs["output"] = os.path.join(self.dirs["main"], "results")
         general.ifnotmakedirs(self.dirs["output"])
 
         self.geom_type = self.gdf.loc[0, "geometry"].geom_type
@@ -42,7 +42,7 @@ class Rivers:
     def __post_init__(self):
         self.type = "rivers"
 
-        self.dirs["output"] = os.path.join(self.dirs["main"], self.type)
+        self.dirs["output"] = os.path.join(self.dirs["main"], "results")
         general.ifnotmakedirs(self.dirs["output"])
 
         if len(self.gdf) > 0 and "geometry" in self.gdf.columns:

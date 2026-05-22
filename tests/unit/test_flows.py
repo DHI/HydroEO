@@ -31,11 +31,12 @@ def mock_project_reservoirs(tmp_path):
     prj = SimpleNamespace()
     prj.dirs = {
         "main": str(tmp_path),
-        "output": str(tmp_path / "reservoirs"),
-        "swot": str(tmp_path / "swot"),
-        "icesat2": str(tmp_path / "icesat2"),
-        "sentinel3": str(tmp_path / "sentinel3"),
-        "sentinel6": str(tmp_path / "sentinel6"),
+        "output": str(tmp_path / "results"),
+        "swot": str(tmp_path / "raw" / "swot"),
+        "icesat2": str(tmp_path / "raw" / "icesat2"),
+        "icesat2_processed": str(tmp_path / "processed" / "icesat2"),
+        "sentinel3": str(tmp_path / "raw" / "sentinel3"),
+        "sentinel6": str(tmp_path / "raw" / "sentinel6"),
         "pld": str(tmp_path / "aux" / "PLD" / "PLD_subset.gpkg"),
     }
     prj.reservoirs = Reservoirs(gdf=gdf, id_key="id", dirs=prj.dirs)
@@ -70,8 +71,8 @@ def mock_project_rivers(tmp_path):
     prj = SimpleNamespace()
     prj.dirs = {
         "main": str(tmp_path),
-        "output": str(tmp_path / "rivers"),
-        "swot": str(tmp_path / "swot"),
+        "output": str(tmp_path / "results"),
+        "swot": str(tmp_path / "raw" / "swot"),
         "sword": str(tmp_path / "aux" / "SWORD" / "gpkg"),
         "sword_subset": str(tmp_path / "aux" / "SWORD" / "SWORD_subset.gpkg"),
     }

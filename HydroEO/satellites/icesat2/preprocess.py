@@ -37,12 +37,11 @@ def extract_observations(
     elif gdf.crs != features.crs:
         gdf = gdf.to_crs(features.crs)
 
-    # Strip timezone info so shapefiles can represent the date column.
+    # Strip timezone info for consistent datetime representation.
     if "date" in gdf.columns:
         gdf["date"] = pd.to_datetime(gdf["date"]).dt.tz_localize(None)
 
-    gdf = _to_shapefile_safe_columns(gdf)
-    gdf.to_file(dst_path)
+    gdf.to_file(dst_path, driver="GPKG")
 
 
 def _to_shapefile_safe_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
@@ -70,7 +69,7 @@ def _to_shapefile_safe_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def get_latest_obs_date(data_dir):
-    shp_path = os.path.join(data_dir, "icesat2.shp")
+    shp_path = os.path.join(data_dir, "icesat2.gpkg")
     if os.path.exists(shp_path):
         gdf = gpd.read_file(shp_path)
         last_obs_date = max(gdf.date.values).astype(datetime.date)

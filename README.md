@@ -242,7 +242,7 @@ Both Pixel Cloud products require Earthdata credentials and support median/mean/
 
 ### Output structure
 
-All outputs are written under `project.main_dir`. Structure varies by branch:
+All outputs are written under `project.main_dir` using a three-tier folder layout: `raw/` for downloads, `processed/` for intermediate outputs, and `results/` for final products.
 
 #### Reservoirs
 ```
@@ -251,15 +251,20 @@ main_dir/
     PLD_subset.gpkg        # SWOT Prior Lake Database subset (merged, spatially filtered)
     present_in_pld.gpkg    # reservoirs matched to PLD lakes
     missing_in_pld.gpkg    # reservoirs NOT matched to PLD lakes
-  <water_body_id>/
-    raw_observations/      # extracted, spatially filtered shapefiles per mission
-    cleaned_observations/  # filter-cleaned shapefiles per mission
-    merged_progress/       # merged CSVs across all enabled missions per cleaning method
-    ./                     # PNG diagnostics (crossings, cleaning, merging), single merged CSV across all enabled missions
-  swot/                    # raw SWOT Lake SP downloads
-  icesat2/                 # raw ICESat-2 downloads
-  sentinel3/               # raw Sentinel-3 downloads
-  sentinel6/               # raw Sentinel-6 downloads
+  raw/
+    swot/                  # raw SWOT Lake SP granule downloads
+    icesat2/               # ICESat-2 download directory (empty; SlideRule writes to processed/)
+    sentinel3/<id>/        # raw Sentinel-3 subsets per reservoir
+    sentinel6/<id>/        # raw Sentinel-6 subsets per reservoir
+  processed/
+    icesat2/<id>/
+      atl13.parquet        # ICESat-2 SlideRule output per reservoir
+  results/
+    <reservoir_id>/
+      raw_observations/    # extracted, spatially filtered shapefiles per mission
+      cleaned_observations/# filter-cleaned CSVs per mission
+      merged_progress/     # intermediate merged CSVs per cleaning method
+      ./                   # PNG diagnostics, merged timeseries CSV
 ```
 
 #### Rivers
@@ -267,30 +272,35 @@ main_dir/
 main_dir/
   aux/SWORD/
     SWORD_subset.gpkg     # SWORD v17b subset (spatial intersection with AOI)
-    gpkg/                 # full SWORD v17b database (if downloaded, or from raw_sword_path)
-      <continent>_sword_nodes_v17b.gpkg      # SWORD nodes per continent
-      <continent>_sword_reaches_v17b.gpkg    # SWORD reaches per continent
-  swot/rivers/
-    <aoi_name>/
-      nodes_timeseries.csv or reaches_timeseries.csv       # SWOT Hydrocron data
+    gpkg/                 # full SWORD v17b database (if downloaded)
+  raw/
+    swot/
+      <wb_id>/
+        nodes_timeseries.csv or reaches_timeseries.csv   # SWOT Hydrocron downloads
+  results/
+    <wb_id>/              # diagnostic plots (map, timeseries)
 ```
 
 #### SWOT Rasters
 ```
 main_dir/
-  swot_raster/<aoi_name>/
-    raw/<product>/                # raw netCDF granule files
-    processed/<product>/          # extracted/clipped GeoTIFFs per granule (temporary, deleted after merge)
-    merged/                       # merged mosaics by date/variable
+  raw/
+    swot_raster/<aoi_name>/<product>/   # raw netCDF granule files
+  processed/
+    swot_raster/<aoi_name>/<product>/   # extracted/clipped GeoTIFFs per granule per variable
+  results/
+    <aoi_name>/                         # merged mosaics by date/variable
 ```
 
 #### SWOT Pixel Cloud
 ```
 main_dir/
-  swot_pixc/<aoi_name>/
-    raw/<product>/                # raw netCDF granule files
-    trimmed/                      # preprocessed GeoJSON point data (filtered by water class)
-    raster/                       # gridded rasters by date/variable
+  raw/
+    swot_pixc/<aoi_name>/<product>/     # raw netCDF granule files
+  processed/
+    swot_pixc/<aoi_name>/               # trimmed GeoJSON point data (filtered by water class)
+  results/
+    <aoi_name>/                         # gridded rasters by date/field
 ```
 
 ### Reservoir-specific: Cleaning filters

@@ -362,7 +362,7 @@ def download_reservoirs(prj: "Project") -> None:
 
 def _download_reservoirs_swot(prj: "Project") -> None:
     """Download SWOT Lake SP data for reservoirs."""
-    download_dir = os.path.join(prj.dirs["swot"], "reservoirs")
+    download_dir = prj.dirs["swot"]
     general.ifnotmakedirs(download_dir)
 
     startdate = prj.startdates["swot"]
@@ -419,8 +419,8 @@ def _download_reservoirs_icesat2(prj: "Project") -> None:
             geom = geom.geoms[0]
         coords = list(geom.exterior.coords)
 
-        download_dir = os.path.join(prj.dirs["icesat2"], "reservoirs", rf"{id}")
-        general.ifnotmakedirs(download_dir)
+        parquet_dir = os.path.join(prj.dirs["icesat2_processed"], rf"{id}")
+        general.ifnotmakedirs(parquet_dir)
 
         startdate = prj.startdates["icesat2"]
         enddate = prj.enddates["icesat2"]
@@ -438,7 +438,7 @@ def _download_reservoirs_icesat2(prj: "Project") -> None:
                 aoi=coords,
                 startdate=startdate,
                 enddate=enddate,
-                download_directory=download_dir,
+                download_directory=parquet_dir,
                 atl13_options=prj.mission_options.get("icesat2", {}).get("atl13", {}),
                 atl13_fields=prj.mission_options.get("icesat2", {}).get("atl13_fields")
                 or None,
@@ -468,7 +468,7 @@ def _download_reservoirs_sentinel(prj: "Project", mission: str) -> None:
             ].envelope.exterior.coords
         ]
 
-        download_dir = os.path.join(prj.dirs[dir_key], "reservoirs", rf"{id}")
+        download_dir = os.path.join(prj.dirs[dir_key], rf"{id}")
         general.ifnotmakedirs(download_dir)
 
         startdate = prj.startdates[mission]
@@ -601,7 +601,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
     for wb_id, target_ids in waterbody_groups.items():
         summary["requested"] = summary["requested"] + len(target_ids)
         output_path = os.path.join(
-            prj.dirs["swot"], "rivers", str(wb_id), f"{id_label}_timeseries.csv"
+            prj.dirs["swot"], str(wb_id), f"{id_label}_timeseries.csv"
         )
         general.ifnotmakedirs(os.path.dirname(output_path))
 
@@ -818,7 +818,7 @@ def _extract_icesat2_observations(prj: "Project") -> None:
         id
         for id in prj.reservoirs.download_gdf[prj.reservoirs.id_key]
         if os.path.exists(
-            os.path.join(prj.dirs["icesat2"], "reservoirs", f"{id}", "atl13.parquet")
+            os.path.join(prj.dirs["icesat2_processed"], f"{id}", "atl13.parquet")
         )
     ]
     if not available_ids:
@@ -830,10 +830,10 @@ def _extract_icesat2_observations(prj: "Project") -> None:
         sub_gdf = prj.reservoirs.download_gdf.loc[
             prj.reservoirs.download_gdf[prj.reservoirs.id_key] == id
         ]
-        download_dir = os.path.join(prj.dirs["icesat2"], "reservoirs", f"{id}")
+        download_dir = os.path.join(prj.dirs["icesat2_processed"], f"{id}")
         dst_dir = os.path.join(prj.dirs["output"], f"{id}", "raw_observations")
         general.ifnotmakedirs(dst_dir)
-        dst_path = os.path.join(dst_dir, "icesat2.shp")
+        dst_path = os.path.join(dst_dir, "icesat2.gpkg")
 
         try:
             icesat2.extract_observations(
@@ -863,7 +863,7 @@ def _extract_sentinel_observations(
     available_ids = [
         id
         for id in prj.reservoirs.download_gdf[prj.reservoirs.id_key]
-        if os.path.exists(os.path.join(prj.dirs[mission_key], "reservoirs", f"{id}"))
+        if os.path.exists(os.path.join(prj.dirs[mission_key], f"{id}"))
     ]
     if not available_ids:
         logger.warning(
@@ -876,10 +876,10 @@ def _extract_sentinel_observations(
         sub_gdf = prj.reservoirs.download_gdf.loc[
             prj.reservoirs.download_gdf[prj.reservoirs.id_key] == id
         ]
-        download_dir = os.path.join(prj.dirs[mission_key], "reservoirs", f"{id}")
+        download_dir = os.path.join(prj.dirs[mission_key], f"{id}")
         dst_dir = os.path.join(prj.dirs["output"], f"{id}", "raw_observations")
         general.ifnotmakedirs(dst_dir)
-        dst_path = os.path.join(dst_dir, f"{mission_key}.shp")
+        dst_path = os.path.join(dst_dir, f"{mission_key}.gpkg")
 
         try:
             sentinel.extract_observations(
@@ -906,7 +906,7 @@ def _extract_sentinel_observations(
 
 def _extract_swot_observations(prj: "Project") -> None:
     """Extract SWOT Lake SP observations for all reservoirs."""
-    download_dir = os.path.join(prj.dirs["swot"], "reservoirs")
+    download_dir = prj.dirs["swot"]
     if not os.path.exists(download_dir):
         logger.warning("No SWOT downloads found; skipping timeseries extraction.")
         return
@@ -914,7 +914,7 @@ def _extract_swot_observations(prj: "Project") -> None:
     empty_ids = swot.extract_observations(
         src_dir=download_dir,
         dst_dir=prj.dirs["output"],
-        dst_file_name="swot.shp",
+        dst_file_name="swot.gpkg",
         features=prj.reservoirs.download_gdf,
         id_key=prj.reservoirs.id_key,
         exclude_obs_id_values=prj.mission_options.get("swot", {}).get(
@@ -945,7 +945,7 @@ def _clean_reservoirs_timeseries(prj: "Project") -> None:
         for product in prj.to_process:
             df = _load_product_timeseries(
                 os.path.join(prj.dirs["output"], f"{id}", "raw_observations"),
-                ".shp",
+                ".gpkg",
                 [product],
                 lambda path: gpd.read_file(path).drop(columns=["geometry"]),
             )
@@ -1085,7 +1085,7 @@ def generate_reservoirs_summaries(
             output_dir=prj.dirs["output"],
             get_unfiltered_fn=lambda id, products: _load_product_timeseries(
                 os.path.join(prj.dirs["output"], f"{id}", "raw_observations"),
-                ".shp",
+                ".gpkg",
                 products,
                 lambda path: gpd.read_file(path).drop(columns=["geometry"]),
             ),

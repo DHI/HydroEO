@@ -323,7 +323,12 @@ class Project:
             if "download_dir" in self.config[name].keys():
                 self.dirs[name] = self.config[name]["download_dir"]
             else:
-                self.dirs[name] = os.path.join(self.dirs["main"], name)
+                self.dirs[name] = os.path.join(self.dirs["main"], "raw", name)
+
+            if name == "icesat2":
+                self.dirs["icesat2_processed"] = os.path.join(
+                    self.dirs["main"], "processed", "icesat2"
+                )
 
             project_cfg = self.config.get("project", {})
             self.startdates[name] = self.config[name].get(

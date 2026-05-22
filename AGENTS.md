@@ -280,32 +280,54 @@ HydroEO/
 
 ### Project Root (`{main_dir}`)
 
-All outputs are placed under `{main_dir}` (from config `project.main_dir`). **Subfolders:**
+All outputs are placed under `{main_dir}` (from config `project.main_dir`) using a three-tier layout:
 
-- `aux/PLD/` — PLD subset (GPKG) + QA/QC outputs
-- `aux/SWORD/` — SWORD v17b subset (GPKG) + full database GPKGs (if using rivers with aoi_path)
-- `reservoirs/` — per-reservoir results (timeseries, plots)
-- `rivers/` — per-river results (SWOT Hydrocron timeseries)
-- `swot/`, `icesat2/`, `sentinel3/`, `sentinel6/` — raw satellite downloads
-- `swot_raster/{aoi_name}/` — SWOT raster products (raw, processed, merged)
-- `swot_pixc/{aoi_name}/` — SWOT pixel cloud products (raw, gridded rasters)
+- `aux/PLD/` — PLD subset (GPKG) + QA/QC outputs (unchanged)
+- `aux/SWORD/` — SWORD v17b subset (GPKG) + full database GPKGs (unchanged)
+- `raw/` — downloaded satellite data
+  - `raw/swot/` — SWOT Lake SP granule files; `raw/swot/{wb_id}/` — rivers Hydrocron CSVs
+  - `raw/icesat2/` — defined but empty (SlideRule writes to `processed/`)
+  - `raw/sentinel3/{id}/`, `raw/sentinel6/{id}/` — per-reservoir Sentinel subsets
+  - `raw/swot_raster/{aoi}/{product}/` — SWOT raster netCDF granules
+  - `raw/swot_pixc/{aoi}/{product}/` — SWOT pixel cloud netCDF granules
+- `processed/` — intermediate/modified outputs
+  - `processed/icesat2/{id}/atl13.parquet` — ICESat-2 SlideRule output
+  - `processed/swot_raster/{aoi}/{product}/` — extracted per-variable GeoTIFFs
+  - `processed/swot_pixc/{aoi}/` — trimmed GeoJSON point data
+- `results/` — final outputs (flat namespace; reservoir IDs, river wb_ids, and AOI names are peers)
+  - `results/{reservoir_id}/` — per-reservoir timeseries, observations, plots
+  - `results/{wb_id}/` — per-river diagnostic plots
+  - `results/{aoi}/` — merged SWOT raster TIFFs and SWOT pixc gridded rasters
 
 ### Per-Reservoir Outputs
 
 ```
-{main_dir}/reservoirs/{reservoir_id}/
+{main_dir}/results/{reservoir_id}/
 ├── raw_observations/           # Raw extracted observations (SHP per mission)
 ├── cleaned_observations/       # Cleaned timeseries (CSV per mission)
 ├── merged_progress/            # Intermediate merged files
 ├── merged_timeseries.csv       # All missions merged (wide format)
 ├── all_cleaned_timeseries.csv  # Long format with metadata
-├── plots/
-│   ├── {mission}_crossings.png
-│   ├── {mission}_cleaning_effect.png
-│   ├── merged_timeseries_all_methods.png
-│   └── ...
+├── crossing_summary.png
+├── cleaning_summary.png
+├── merging_summary.png
 └── [dfs0 files]               # If export_to_dfs0: true
 ```
+
+### Key `prj.dirs` keys
+
+| Key | Path | Notes |
+|-----|------|-------|
+| `main` | `{main_dir}` | |
+| `pld` | `{main}/aux/PLD/PLD_subset.gpkg` | |
+| `sword` | `{main}/aux/SWORD/gpkg` | |
+| `sword_subset` | `{main}/aux/SWORD/SWORD_subset.gpkg` | |
+| `swot` | `{main}/raw/swot` | |
+| `icesat2` | `{main}/raw/icesat2` | defined; empty |
+| `icesat2_processed` | `{main}/processed/icesat2` | SlideRule parquet output |
+| `sentinel3` | `{main}/raw/sentinel3` | |
+| `sentinel6` | `{main}/raw/sentinel6` | |
+| `output` | `{main}/results` | both Reservoirs and Rivers |
 
 ---
 

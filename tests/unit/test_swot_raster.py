@@ -441,7 +441,7 @@ def test_merge_and_reproject_single_tile(
 
     _merge_and_reproject_granules(bbox_config, processed_dir)
 
-    merged_dir = processed_dir.parent.parent / "merged"
+    merged_dir = processed_dir.parent / "merged"
     merged_tiffs = list(merged_dir.glob("*.tif"))
     assert len(merged_tiffs) == 1
 
@@ -459,7 +459,7 @@ def test_merge_and_reproject_multiple_tiles(
 
     _merge_and_reproject_granules(bbox_config, processed_dir)
 
-    merged_dir = processed_dir.parent.parent / "merged"
+    merged_dir = processed_dir.parent / "merged"
     merged_tiffs = list(merged_dir.glob("*.tif"))
     assert len(merged_tiffs) == 1
 
@@ -481,7 +481,7 @@ def test_merge_tiles_false_skips_merge(synthetic_geotiff_utm44, tmp_path):
     _merge_and_reproject_granules(config, processed_dir)
 
     # No merged dir should be created
-    merged_dir = processed_dir.parent.parent / "merged"
+    merged_dir = processed_dir.parent / "merged"
     assert not merged_dir.exists() or len(list(merged_dir.glob("*.tif"))) == 0
 
 
@@ -518,7 +518,7 @@ def test_merge_and_reproject_groups_by_date_and_variable(tmp_path):
 
     _merge_and_reproject_granules(config, processed_dir, "EPSG:32644")
 
-    merged_dir = processed_dir.parent.parent / "merged"
+    merged_dir = processed_dir.parent / "merged"
     merged_tiffs = list(merged_dir.glob("*.tif"))
 
     # Should have 2 outputs: one per variable
@@ -543,9 +543,9 @@ def test_download_raster_full_pipeline_bbox(
     # Create the raw NC file first
     raw_parent = (
         project_dir
+        / "raw"
         / "swot_raster"
         / bbox_config["aoi"]["name"]
-        / "raw"
         / bbox_config["product"]
     )
     raw_parent.mkdir(parents=True, exist_ok=True)
@@ -568,9 +568,9 @@ def test_download_raster_full_pipeline_bbox(
     # Verify outputs were created
     processed_dir = (
         project_dir
+        / "processed"
         / "swot_raster"
         / bbox_config["aoi"]["name"]
-        / "processed"
         / bbox_config["product"]
     )
     assert processed_dir.exists()
@@ -587,9 +587,9 @@ def test_download_raster_no_new_granules_processes_existing_nc(
     project_dir = tmp_path / "project"
     raw_dir = (
         project_dir
+        / "raw"
         / "swot_raster"
         / bbox_config["aoi"]["name"]
-        / "raw"
         / bbox_config["product"]
     )
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -611,9 +611,9 @@ def test_download_raster_no_new_granules_processes_existing_nc(
     # Verify preprocessing happened despite no new downloads
     processed_dir = (
         project_dir
+        / "processed"
         / "swot_raster"
         / bbox_config["aoi"]["name"]
-        / "processed"
         / bbox_config["product"]
     )
     tiffs = list(processed_dir.glob("*.tif"))
@@ -747,7 +747,7 @@ def test_swot_raster_merge_with_existing_files(tmp_path, caplog):
     }
     project_dir = tmp_path / "project"
     processed_dir = (
-        project_dir / "swot_raster" / "test_aoi" / "processed" / "SWOT_L2_HR_Raster_D"
+        project_dir / "processed" / "swot_raster" / "test_aoi" / "SWOT_L2_HR_Raster_D"
     )
     processed_dir.mkdir(parents=True)
     (processed_dir / "20240101T120000_wse.tif").touch()

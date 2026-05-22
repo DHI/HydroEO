@@ -86,7 +86,7 @@ def plot_crossings(
     data_dir = os.path.join(output_dir, f"{reservoir_id}", "raw_observations")
     plotted_products = set()
     for file_name in os.listdir(data_dir):
-        if file_name.endswith(".shp"):
+        if file_name.endswith(".gpkg"):
             path_to_file = os.path.join(data_dir, file_name)
             product = file_name.split(".")[0]
             gdf_product = gpd.read_file(path_to_file)
@@ -482,9 +482,7 @@ def plot_river_data(
         Whether to save the plot to PNG
     """
     id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
-    csv_path = os.path.join(
-        prj.dirs["swot"], "rivers", str(wb_id), f"{id_label}_timeseries.csv"
-    )
+    csv_path = os.path.join(prj.dirs["swot"], str(wb_id), f"{id_label}_timeseries.csv")
 
     fig, ax = plt.subplots()
     fig.suptitle(f"{wb_id}: {id_label}")

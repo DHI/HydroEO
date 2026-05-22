@@ -128,7 +128,7 @@ def get_latest_obs_date(data_dir):
     dates = list()
 
     for dir in os.listdir(data_dir):
-        shp_path = os.path.join(data_dir, dir, "raw_observations", "swot.shp")
+        shp_path = os.path.join(data_dir, dir, "raw_observations", "swot.gpkg")
 
         if os.path.exists(shp_path):
             gdf = gpd.read_file(shp_path)
