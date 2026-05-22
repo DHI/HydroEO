@@ -356,7 +356,7 @@ Config validation occurs in `project.initialize()` (before any I/O):
 ### Documentation
 
 - Update README.md when adding config keys or changing output structure
-- Keep config examples in `notebooks/example_config.yaml` in sync with defaults
+- Keep config examples in `configs/` in sync with defaults
 - Document new CLI subcommands in README's "CLI" section
 
 ---
@@ -372,7 +372,7 @@ Config validation occurs in `project.initialize()` (before any I/O):
 
 ## References
 
-- **Config Schema:** See `notebooks/example_config.yaml` (complete documented example)
+- **Config Schema:** See `configs/` for per-scenario templates and `notebooks/example_config.yaml` for the unified all-in-one reference
 - **Constants:** `HydroEO/constants.py` (MISSION_DEFAULTS, field mappings)
 - **Validation Rules:** `HydroEO/validation.py` (config checks)
 - **Build/Packaging:** `pyproject.toml` (dependencies, Python version)

@@ -1,0 +1,69 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HydroEO — Rivers Configuration (Use Case B)
+# ══════════════════════════════════════════════════════════════════════════════
+# SWOT Hydrocron download for river nodes and reaches.
+# No credentials required — Hydrocron is a public API.
+# SWORD v17b is downloaded automatically from Zenodo when using aoi_path mode.
+#
+# Quick-start (AOI mode — recommended):
+#   1. Set project.main_dir and project.startdate / project.enddate.
+#   2. Set rivers.aoi_path to your AOI shapefile or geopackage.
+#   3. Set rivers.continent_key to the matching SWORD continent code.
+#   4. Run project.initialize() to download and subset SWORD, then download().
+#
+# See configs/rivers.md for a full configuration reference.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── PROJECT ──────────────────────────────────────────────────────────────────
+project:
+  main_dir: "/path/to/your/project"
+  startdate: [2024, 1, 1]
+  enddate:   [2024, 12, 31]
+
+gis:
+  global_crs: 'EPSG:4326'
+
+
+# ─── SWORD DATABASE ───────────────────────────────────────────────────────────
+# Optional shortcuts to skip download or subsetting steps.
+sword_db:
+  # raw_sword_path: "/path/to/SWORD_v17b_gpkg.zip"  # reuse existing zip or folder; skip download
+  # sword_subset_path: "/path/to/SWORD_subset.gpkg"  # pre-made subset; skip download + subsetting
+  keep_raw_sword: false  # true = keep raw SWORD zip after extraction; false = delete
+
+
+# ─── RIVERS ───────────────────────────────────────────────────────────────────
+rivers:
+  enabled: true
+
+  # Option A — AOI file (recommended): subsets SWORD river database to your area.
+  aoi_path: "/path/to/your/river_aoi.gpkg"   # .shp or .gpkg
+  continent_key: 'eu'        # SWORD continent code: af | as | eu | na | oc | sa
+  feature_type: 'reaches'    # nodes | reaches
+  id_key: 'river_id'         # AOI column used to name per-river output folders
+  # buffer_meters: 1000.0    # optional AOI buffer (metres) before SWORD subsetting
+
+  # Option B — explicit IDs (comment out aoi_path + continent_key + id_key above).
+  # feature_type must match the IDs: 'nodes' for node IDs, 'reaches' for reach IDs.
+  # feature_numbers: [24292000031, 24292000041]
+  # feature_type: 'reaches'
+  # id: 'my_river'           # used as the output folder name
+
+
+# ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
+# Hydrocron field lists and quality filters for SWOT river downloads.
+# All fields below have sensible defaults and can be omitted.
+# Uncomment and add a top-level `swot:` section to apply these.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# swot:
+#   hydrocron_fields:
+#     nodes:   ["node_id", "node_q", "reach_id", "time_str", "wse", "wse_u", "p_wse",
+#               "geoid_hght", "sword_version", "solid_tide", "load_tidef", "pole_tide",
+#               "width", "width_u", "p_width", "xovr_cal_q", "rdr_sig0", "xovr_cal_c", "dark_frac"]
+#     reaches: ["reach_id", "reach_q", "time_str", "wse", "wse_u", "slope", "slope_u",
+#               "slope2", "slope2_u", "width", "width_u", "geoid_hght", "solid_tide",
+#               "load_tidef", "pole_tide", "p_wse", "p_width"]
+#   quality_filters:
+#     nodes:   {max_q: 2}
+#     reaches: {max_q: 2}

@@ -1,0 +1,129 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HydroEO — Reservoirs & Lakes Configuration (Use Case A)
+# ══════════════════════════════════════════════════════════════════════════════
+# Multi-satellite download and timeseries extraction for reservoirs and lakes.
+# Supported satellites: SWOT Lake SP, ICESat-2 ATL13, Sentinel-3, Sentinel-6.
+#
+# Quick-start:
+#   1. Set project.main_dir and project.startdate / project.enddate.
+#   2. Set reservoirs.path to your shapefile or geopackage.
+#   3. Set reservoirs.id_key to the column used as unique reservoir identifier.
+#   4. Add credentials (or export them as environment variables — see below).
+#   5. Enable the satellite sources you need and set download/process flags.
+#
+# See configs/reservoirs.md for a full configuration reference.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── PROJECT ──────────────────────────────────────────────────────────────────
+project:
+  main_dir: "/path/to/your/project"   # all outputs written here
+
+  # Shared temporal range — each satellite section inherits these dates unless
+  # overridden with its own startdate / enddate.
+  startdate: [2024, 1, 1]             # [year, month, day]
+  enddate:   [2024, 12, 31]
+
+gis:
+  global_crs: 'EPSG:4326'
+  # local_crs: 'EPSG:32633'           # optional: override UTM zone (auto-detected if omitted)
+
+
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+# Tip: set credentials as environment variables to avoid storing secrets in files.
+#
+#   earthaccess : EARTHDATA_USERNAME / EARTHDATA_PASSWORD
+#   hydroweb    : EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+#   creodias    : CREODIAS_USERNAME / CREODIAS_PASSWORD
+
+earthaccess:           # NASA Earthdata — required for SWOT download
+  username: null       # or set EARTHDATA_USERNAME
+  password: null       # or set EARTHDATA_PASSWORD
+
+hydroweb:              # HydroWeb API — required for Prior Lake Database (PLD) matching
+  api_key: null        # or set EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+  # raw_pld_path: "/path/to/PLD.zip"  # optional: reuse an existing PLD zip or folder
+  keep_raw_pld: false  # true = keep raw PLD zip after subset; false = delete
+
+creodias:              # CREODIAS/CDSE — required for Sentinel-3 and Sentinel-6
+  username: null       # or set CREODIAS_USERNAME
+  password: null       # or set CREODIAS_PASSWORD
+
+
+# ─── RESERVOIRS ───────────────────────────────────────────────────────────────
+reservoirs:
+  enabled: true
+  path: "/path/to/your/reservoirs.shp"   # .shp or .gpkg with one feature per reservoir
+  id_key: 'reservoir_id'                 # column used as unique reservoir identifier
+  export_to_dfs0: false                  # export cleaned observations to dfs0 format (requires mikeio)
+
+
+# ─── SATELLITE SOURCES ────────────────────────────────────────────────────────
+# Set download/process flags for the sources you need.
+# Omit a section entirely to skip that satellite.
+# Dates default to project.startdate / project.enddate unless overridden here.
+
+swot:
+  download: true
+  process: true
+  # startdate: [2024, 3, 1]   # override project dates for this satellite only
+  # enddate:   [2024, 9, 30]
+
+icesat2:
+  download: true
+  process: true
+
+sentinel3:
+  download: false
+  process: false
+
+sentinel6:
+  download: false
+  process: false
+
+
+# ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
+# All fields below have sensible defaults and can be omitted.
+# Uncomment and merge the keys you want into the live sections above.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# swot:
+#   pld_match_max_distance_m: 100.0            # max distance to match reservoirs to PLD lakes
+#   exclude_obs_id_values: ["no_data"]         # SWOT obs_id values to drop during extraction
+#   processing_filters: ["elevation", "MAD"]   # elevation | MAD | daily_mean | hampel | rolling_median
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+#   download_dir: "/custom/path/swot"          # default: project.main_dir/raw/swot
+
+# icesat2:
+#   download_dir: "/custom/path/icesat2"       # default: project.main_dir/raw/icesat2
+#   atl13_fields: []   # extra SlideRule ancillary fields; valid values:
+#                      #   inland_water_body_id, inland_water_body_size, inland_water_body_type,
+#                      #   segment_slope_trk_bdy, err_ht_water_surf, segment_quality,
+#                      #   segment_geoid, segment_geoid_free2mean, segment_dem_ht, segment_near_sat_fract
+#   atl13:
+#     pass_invalid: false   # include segments flagged as invalid
+#     beams: []             # subset beams, e.g. ["gt1l", "gt2r"]; empty = all
+#     spots: []             # subset spots, e.g. [1, 3]; empty = all
+#   processing_filters: ["elevation", "MAD"]
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+
+# sentinel3:
+#   download_dir: "/custom/path/sentinel3"
+#   sigma0_max: 100000.0
+#   download_threads: 1      # parallel CREODIAS download threads
+#   processing_filters: ["elevation", "MAD"]
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0
+
+# sentinel6:
+#   download_dir: "/custom/path/sentinel6"
+#   sigma0_max: 100000.0
+#   download_threads: 1
+#   processing_filters: ["elevation", "MAD"]
+#   elevation_min_m: 0.0
+#   elevation_max_m: 8000.0
+#   mad_threshold: 5.0

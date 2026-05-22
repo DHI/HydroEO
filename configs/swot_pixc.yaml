@@ -1,0 +1,69 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HydroEO — SWOT Pixel Cloud Configuration (Use Case D)
+# ══════════════════════════════════════════════════════════════════════════════
+# Download SWOT L2 PIXC data and grid point clouds to regular rasters.
+# Points are filtered by water class and aggregated via binned statistics.
+# Requires NASA Earthdata credentials.
+#
+# Quick-start:
+#   1. Set project.main_dir and project.startdate / project.enddate.
+#   2. Set swot_pixc.aoi.bbox (or point to a shapefile/geopackage).
+#   3. Add Earthdata credentials (or set EARTHDATA_USERNAME / EARTHDATA_PASSWORD).
+#   4. Run project.initialize() then project.download().
+#
+# See configs/swot_pixc.md for a full configuration reference.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── PROJECT ──────────────────────────────────────────────────────────────────
+project:
+  main_dir: "/path/to/your/project"
+  startdate: [2024, 1, 1]
+  enddate:   [2024, 12, 31]
+
+gis:
+  global_crs: 'EPSG:4326'
+  # local_crs: 'EPSG:32633'   # optional: override UTM zone (auto-detected if omitted)
+
+
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+earthaccess:
+  username: null   # or set EARTHDATA_USERNAME
+  password: null   # or set EARTHDATA_PASSWORD
+
+
+# ─── SWOT PIXEL CLOUD ─────────────────────────────────────────────────────────
+swot_pixc:
+  enabled: true
+
+  aoi:
+    name: "my_pixc_aoi"      # identifier used in output directory names
+    type: "bbox"             # bbox | shapefile | geopackage
+
+    # Use for type: bbox — [lon_min, lat_min, lon_max, lat_max]
+    bbox: [90.3, 20.9, 91.5, 23.9]
+
+    # Use for type: shapefile or geopackage (comment out bbox above)
+    # path: "/path/to/your/aoi.shp"   # or .gpkg
+
+  product: "SWOT_L2_HR_PIXC_D"
+  # Available PIXC products:
+  #   SWOT_L2_HR_PIXC_D       — high-resolution pixel cloud (default)
+  #   SWOT_L2_HR_PIXC_2.0     — high-resolution pixel cloud v2.0
+
+  # Water classification filtering (defaults: open_water and water_near_land)
+  # Available classes: land, land_near_water, water_near_land, open_water,
+  #   dark_water, low_coh_water_near_land, open_low_coh_water
+  classes:
+    - open_water
+    - water_near_land
+
+  # Fields to extract and grid (default: heightEGM)
+  # Available: heightEGM, height, geoid, water_frac, phase_noise_std,
+  #   dheight_dphase, sig0, and others
+  fields:
+    - heightEGM
+
+  # Gridding options
+  grid_resolution: 100        # output pixel size in metres
+  stat_method: "median"       # median | mean | max | min
+  # target_crs: "EPSG:32645"  # optional: override auto-detected UTM zone
