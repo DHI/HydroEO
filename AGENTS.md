@@ -89,13 +89,14 @@ Project(config_file)
 ### Config System
 
 **Flow:**  
-YAML config file → `Project.__init__()` → validation → `self.dirs`, `self.mission_options`, `self.keep_raw_pld`, etc.
+YAML config file → `Project.__init__()` → validation → `self.dirs`, `self.mission_options`, `self.keep_raw_pld`, `self.keep_raw_sword`, etc.
 
 **Key attributes:**
-- `prj.dirs` — dictionary of output paths (main, pld, swot, icesat2, sentinel3, sentinel6, output)
+- `prj.dirs` — dictionary of output paths (main, pld, sword, sword_subset, swot, icesat2, sentinel3, sentinel6, output)
 - `prj.mission_options` — per-satellite settings (download/process flags, date overrides, filters, field lists)
 - `prj.reservoirs` / `prj.rivers` — waterbody `Reservoirs`/`Rivers` instances with GeoDataFrame + config
 - `prj.keep_raw_pld` — boolean flag for PLD raw file cleanup (default False)
+- `prj.keep_raw_sword` — boolean flag for SWORD raw file cleanup (default False)
 
 ### Flows Orchestration
 
@@ -143,6 +144,45 @@ hydroweb:
 - `flows._download_pld(prj)` — calls `download_PLD()` with project context
 - `flows._assign_pld_id(prj)` — spatial join reservoirs to PLD lakes; sets `prior_lake_id` column
 - `flows._flag_missing_priors(prj)` — exports matched/unmatched reservoirs to `aux/PLD/`
+
+---
+
+## SWORD v17b Database
+
+### Download, Subsetting & Storage
+
+- **Source:** Zenodo public repository (no credentials needed; [v17b dataset](https://zenodo.org/records/15299138))
+- **Format:** GeoPackage (GPKG) files per continent/feature type (e.g., `eu_sword_nodes_v17b.gpkg`)
+- **Storage:** `{main_dir}/aux/SWORD/gpkg/` (full database, if downloaded)
+- **Subset Output:** `{main_dir}/aux/SWORD/SWORD_subset.gpkg` (spatial intersection with AOI)
+
+### Configuration
+
+```yaml
+sword_db:
+  raw_sword_path: "/path/to/SWORD_v17b_gpkg.zip"  # Optional; if provided, skip download
+  sword_subset_path: "/path/to/SWORD_subset.gpkg" # Optional; if provided, skip download + subsetting
+  keep_raw_sword: false                           # Delete downloaded zip after extraction (default)
+```
+
+### Key Functions
+
+- `flows._ensure_sword_database(prj)` — orchestrates SWORD database availability
+  - Checks if full SWORD (GPKGs) already in `prj.dirs["sword"]` → skips download
+  - **User-provided zip:** extracts to `aux/SWORD/`; honours `keep_raw_sword`
+  - **User-provided directory:** uses it directly (no extraction or cleanup)
+  - **Auto-download:** Zenodo zip → `aux/SWORD/SWORD_v17b_gpkg.zip` → extract to `aux/SWORD/gpkg/`; honours `keep_raw_sword`
+
+- `flows._prepare_rivers_from_sword(prj)` — prepares SWORD targets for rivers workflow
+  - Gate 1: if `sword_subset_path` exists → reads it, skips database + subsetting
+  - Gate 2: otherwise → calls `_ensure_sword_database()`, performs spatial intersection with AOI, saves to `SWORD_subset.gpkg`
+  - Returns: `prj.rivers.target_features`, `target_id_col`, `target_ids` (for Hydrocron queries)
+
+### Configuration Notes
+
+- `sword_db` section is optional and only validated when `rivers` section is also present in `aoi_path` mode
+- `rivers.continent_key` becomes optional when `sword_subset_path` is provided (subset already contains selected features)
+- When `sword_subset_path` is provided, SWORD database download is skipped entirely (fastest path)
 
 ---
 
@@ -243,6 +283,7 @@ HydroEO/
 All outputs are placed under `{main_dir}` (from config `project.main_dir`). **Subfolders:**
 
 - `aux/PLD/` — PLD subset (GPKG) + QA/QC outputs
+- `aux/SWORD/` — SWORD v17b subset (GPKG) + full database GPKGs (if using rivers with aoi_path)
 - `reservoirs/` — per-reservoir results (timeseries, plots)
 - `rivers/` — per-river results (SWOT Hydrocron timeseries)
 - `swot/`, `icesat2/`, `sentinel3/`, `sentinel6/` — raw satellite downloads

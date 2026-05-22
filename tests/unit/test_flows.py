@@ -72,7 +72,8 @@ def mock_project_rivers(tmp_path):
         "main": str(tmp_path),
         "output": str(tmp_path / "rivers"),
         "swot": str(tmp_path / "swot"),
-        "sword": str(tmp_path / "SWORD_v17b_gpkg" / "gpkg"),
+        "sword": str(tmp_path / "aux" / "SWORD" / "gpkg"),
+        "sword_subset": str(tmp_path / "aux" / "SWORD" / "SWORD_subset.gpkg"),
     }
     prj.rivers = Rivers(gdf=gdf, id_key="river_id", dirs=prj.dirs)
     prj.rivers.target_ids = [101, 102]
@@ -81,6 +82,7 @@ def mock_project_rivers(tmp_path):
     prj.rivers.configured_id = "loire"
     prj.rivers.input_mode = "configured_id"
     prj.local_crs = "EPSG:3857"
+    prj.keep_raw_sword = False
     prj.startdates = {"swot": [2024, 1, 1]}
     prj.enddates = {"swot": [2024, 2, 1]}
     prj.mission_options = {
@@ -147,6 +149,235 @@ def test_initialize_rivers_configured_id_branch(mock_project_rivers):
     with patch.object(flows, "_prepare_rivers_from_sword") as mock_prepare:
         flows.initialize_rivers(mock_project_rivers)
         mock_prepare.assert_not_called()
+
+
+# ============================================================================
+# SWORD Database and Subset Tests
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_prepare_sword_skips_when_subset_exists(mock_project_rivers, tmp_path):
+    """_prepare_rivers_from_sword reads subset when SWORD_subset.gpkg exists."""
+    # Create a valid SWORD subset GPKG
+    subset_gdf = gpd.GeoDataFrame(
+        {
+            "node_id": [1001, 1002],
+            "reach_id": [None, None],
+            "geometry": [Point(0, 0), Point(1, 1)],
+        },
+        crs="EPSG:4326",
+    )
+    subset_path = tmp_path / "aux" / "SWORD" / "SWORD_subset.gpkg"
+    subset_path.parent.mkdir(parents=True, exist_ok=True)
+    subset_gdf.to_file(str(subset_path), driver="GPKG")
+
+    # Configure project with subset_path and aoi_path mode
+    mock_project_rivers.rivers.input_mode = "aoi_path"
+    mock_project_rivers.rivers.aoi_gdf = gpd.GeoDataFrame(
+        {"river_id": ["a"], "geometry": [box(0, 0, 2, 2)]},
+        crs="EPSG:4326",
+    )
+    mock_project_rivers.rivers.continent_key = "eu"
+    mock_project_rivers.rivers.feature_type = "nodes"
+    mock_project_rivers.rivers.buffer_meters = 0
+    mock_project_rivers.rivers.id_key = "river_id"
+
+    with patch.object(flows, "_ensure_sword_database") as mock_ensure:
+        flows._prepare_rivers_from_sword(mock_project_rivers)
+        # Should NOT call _ensure_sword_database
+        mock_ensure.assert_not_called()
+
+    # Verify target_ids were extracted
+    assert mock_project_rivers.rivers.target_ids == [1001, 1002]
+    assert mock_project_rivers.rivers.target_id_col == "node_id"
+
+
+@pytest.mark.unit
+def test_prepare_sword_saves_subset(mock_project_rivers, tmp_path):
+    """_prepare_rivers_from_sword saves subset to SWORD_subset.gpkg."""
+    # Create a minimal SWORD GPKG in aux/SWORD/gpkg/
+    sword_gdf = gpd.GeoDataFrame(
+        {
+            "node_id": [1001, 1002, 1003],
+            "reach_id": [None, None, None],
+            "geometry": [Point(0, 0), Point(1, 1), Point(2, 2)],
+        },
+        crs="EPSG:4326",
+    )
+    sword_dir = tmp_path / "aux" / "SWORD" / "gpkg"
+    sword_dir.mkdir(parents=True, exist_ok=True)
+    sword_gdf.to_file(str(sword_dir / "eu_sword_nodes_v17b.gpkg"), driver="GPKG")
+
+    # Configure project with aoi_path mode
+    aoi_gdf = gpd.GeoDataFrame(
+        {"river_id": ["a"], "geometry": [box(0.5, 0.5, 1.5, 1.5)]},
+        crs="EPSG:4326",
+    )
+    mock_project_rivers.rivers.input_mode = "aoi_path"
+    mock_project_rivers.rivers.aoi_gdf = aoi_gdf
+    mock_project_rivers.rivers.continent_key = "eu"
+    mock_project_rivers.rivers.feature_type = "nodes"
+    mock_project_rivers.rivers.buffer_meters = 0
+    mock_project_rivers.rivers.id_key = "river_id"
+    mock_project_rivers.local_crs = "EPSG:3857"
+
+    with patch.object(flows, "_ensure_sword_database"):
+        flows._prepare_rivers_from_sword(mock_project_rivers)
+
+    # Verify subset was saved
+    subset_path = tmp_path / "aux" / "SWORD" / "SWORD_subset.gpkg"
+    assert subset_path.exists()
+
+    # Verify target_ids were extracted (should be 1002 which falls in AOI bbox)
+    assert len(mock_project_rivers.rivers.target_ids) > 0
+
+
+@pytest.mark.unit
+def test_ensure_sword_skips_when_db_exists(mock_project_rivers, tmp_path):
+    """_ensure_sword_database skips download when GPKGs already exist."""
+    # Create dummy GPKG file in sword dir
+    sword_dir = tmp_path / "aux" / "SWORD" / "gpkg"
+    sword_dir.mkdir(parents=True, exist_ok=True)
+    (sword_dir / "eu_sword_nodes_v17b.gpkg").touch()
+
+    with patch("urllib.request.urlretrieve") as mock_download:
+        flows._ensure_sword_database(mock_project_rivers)
+        # Should NOT download
+        mock_download.assert_not_called()
+
+
+@pytest.mark.unit
+def test_ensure_sword_downloads_when_missing(mock_project_rivers, tmp_path):
+    """_ensure_sword_database downloads SWORD when GPKGs missing."""
+    # Ensure dirs don't exist yet
+    sword_dir = tmp_path / "aux" / "SWORD" / "gpkg"
+    assert not sword_dir.exists()
+
+    # Create a fake SWORD zip structure
+    import zipfile
+
+    fake_zip_path = tmp_path / "fake_sword.zip"
+    with zipfile.ZipFile(str(fake_zip_path), "w") as zf:
+        # Create the expected directory structure inside zip
+        zf.writestr("SWORD_v17b_gpkg/gpkg/eu_sword_nodes_v17b.gpkg", b"fake_gpkg_data")
+
+    with patch("urllib.request.urlretrieve") as mock_download:
+
+        def fake_download(url, target):
+            # Copy fake zip to target location
+            import shutil
+
+            shutil.copy(str(fake_zip_path), target)
+
+        mock_download.side_effect = fake_download
+
+        flows._ensure_sword_database(mock_project_rivers)
+        mock_download.assert_called_once()
+
+
+@pytest.mark.unit
+def test_ensure_sword_uses_provided_zip(mock_project_rivers, tmp_path):
+    """_ensure_sword_database uses user-provided zip if raw_sword_path is set."""
+    # Create a fake user-provided zip
+    import zipfile
+
+    user_zip = tmp_path / "user_sword.zip"
+    with zipfile.ZipFile(str(user_zip), "w") as zf:
+        zf.writestr("SWORD_v17b_gpkg/gpkg/eu_sword_nodes_v17b.gpkg", b"fake")
+
+    mock_project_rivers.dirs["sword_raw"] = str(user_zip)
+
+    with patch("urllib.request.urlretrieve") as mock_download:
+        flows._ensure_sword_database(mock_project_rivers)
+        # Should NOT download from Zenodo
+        mock_download.assert_not_called()
+
+    # Verify extraction happened - zip extracts to aux/SWORD/SWORD_v17b_gpkg/gpkg/
+    sword_subdir = tmp_path / "aux" / "SWORD" / "SWORD_v17b_gpkg" / "gpkg"
+    assert sword_subdir.exists()
+
+
+@pytest.mark.unit
+def test_ensure_sword_uses_provided_directory(mock_project_rivers, tmp_path):
+    """_ensure_sword_database uses user-provided directory if raw_sword_path is a dir."""
+    # Create a user-provided directory with GPKGs
+    user_sword_dir = tmp_path / "user_sword" / "gpkg"
+    user_sword_dir.mkdir(parents=True, exist_ok=True)
+    (user_sword_dir / "eu_sword_nodes_v17b.gpkg").touch()
+
+    mock_project_rivers.dirs["sword_raw"] = str(user_sword_dir.parent)
+
+    with patch("urllib.request.urlretrieve") as mock_download:
+        flows._ensure_sword_database(mock_project_rivers)
+        # Should NOT download
+        mock_download.assert_not_called()
+
+    # Verify sword dir was set to user's location
+    assert mock_project_rivers.dirs["sword"] == str(user_sword_dir)
+
+
+@pytest.mark.unit
+def test_ensure_sword_keep_raw_false_deletes_zip(mock_project_rivers, tmp_path):
+    """_ensure_sword_database deletes downloaded zip when keep_raw_sword=False."""
+    import zipfile
+    import shutil
+
+    # Create a fake SWORD zip
+    user_zip = tmp_path / "fake_sword.zip"
+    with zipfile.ZipFile(str(user_zip), "w") as zf:
+        zf.writestr("SWORD_v17b_gpkg/gpkg/eu_sword_nodes_v17b.gpkg", b"fake")
+
+    # Copy zip to a temp location to simulate download
+    download_zip = tmp_path / "aux" / "SWORD" / "SWORD_v17b_gpkg.zip"
+    download_zip.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(str(user_zip), str(download_zip))
+
+    mock_project_rivers.keep_raw_sword = False
+
+    # Mock urlretrieve to simulate download (it's already there)
+    with patch("urllib.request.urlretrieve") as mock_download:
+
+        def fake_download(url, target):
+            # The file already exists from our setup
+            pass
+
+        mock_download.side_effect = fake_download
+
+        flows._ensure_sword_database(mock_project_rivers)
+
+    # Zip should be deleted
+    assert not download_zip.exists()
+
+
+@pytest.mark.unit
+def test_ensure_sword_keep_raw_true_keeps_zip(mock_project_rivers, tmp_path):
+    """_ensure_sword_database keeps zip when keep_raw_sword=True."""
+    import zipfile
+    import shutil
+
+    # Create a fake SWORD zip
+    user_zip = tmp_path / "fake_sword.zip"
+    with zipfile.ZipFile(str(user_zip), "w") as zf:
+        zf.writestr("SWORD_v17b_gpkg/gpkg/eu_sword_nodes_v17b.gpkg", b"fake")
+
+    # Copy zip to download location
+    download_zip = tmp_path / "aux" / "SWORD" / "SWORD_v17b_gpkg.zip"
+    download_zip.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(str(user_zip), str(download_zip))
+
+    mock_project_rivers.keep_raw_sword = True
+
+    with patch("urllib.request.urlretrieve") as mock_download:
+
+        def fake_download(url, target):
+            pass
+
+        mock_download.side_effect = fake_download
+        flows._ensure_sword_database(mock_project_rivers)
+
+    # Zip should still exist
+    assert download_zip.exists()
 
 
 # ============================================================================
@@ -584,78 +815,4 @@ def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
         mock_sjoin.assert_called_once()
 
 
-# ============================================================================
-# SWORD/Rivers Workflow Tests
-# ============================================================================
-
-
-@pytest.mark.unit
-def test_ensure_sword_database_returns_existing_path(tmp_path):
-    """_ensure_sword_database returns path if SWORD database exists."""
-    mock_prj = SimpleNamespace()
-    sword_dir = tmp_path / "SWORD_v17b_gpkg" / "gpkg"
-    sword_dir.mkdir(parents=True)
-    mock_prj.dirs = {"main": str(tmp_path)}
-
-    result = flows._ensure_sword_database(mock_prj)
-
-    assert result == str(sword_dir)
-    assert os.path.isdir(result)
-
-
-@pytest.mark.unit
-def test_ensure_sword_database_downloads_when_missing(tmp_path, caplog):
-    """_ensure_sword_database downloads SWORD when database doesn't exist."""
-    import logging
-
-    mock_prj = SimpleNamespace()
-    mock_prj.dirs = {"main": str(tmp_path)}
-
-    with (
-        caplog.at_level(logging.WARNING),
-        patch("urllib.request.urlretrieve") as mock_retrieve,
-        patch("zipfile.ZipFile"),
-        patch("os.remove"),
-    ):
-        flows._ensure_sword_database(mock_prj)
-
-        mock_retrieve.assert_called_once()
-        assert "Downloading" in caplog.text or "SWORD_v17b" in caplog.text
-
-
-@pytest.mark.unit
-def test_prepare_rivers_from_sword_buffers_aoi(mock_project_rivers, tmp_path):
-    """_prepare_rivers_from_sword buffers AOI in local CRS."""
-    sword_gpkg = gpd.GeoDataFrame(
-        {
-            "node_id": [101, 102],
-            "geometry": [Point(0.5, 0.5), Point(1.5, 1.5)],
-        },
-        crs="EPSG:4326",
-    )
-
-    mock_project_rivers.rivers.aoi_gdf = gpd.GeoDataFrame(
-        {
-            "river_id": ["Loire"],
-            "geometry": [box(0, 0, 1, 1)],
-        },
-        crs="EPSG:4326",
-    )
-    mock_project_rivers.rivers.continent_key = "eu"
-    mock_project_rivers.rivers.feature_type = "nodes"
-    mock_project_rivers.rivers.buffer_meters = 1000
-
-    sword_dir = tmp_path / "SWORD_v17b_gpkg" / "gpkg"
-    sword_dir.mkdir(parents=True)
-    gpkg_path = sword_dir / "eu_sword_nodes_v17b.gpkg"
-    gpkg_path.touch()  # Create fake file
-
-    with (
-        patch.object(flows, "_ensure_sword_database", return_value=str(sword_dir)),
-        patch("geopandas.read_file", return_value=sword_gpkg),
-        patch("geopandas.sjoin", return_value=sword_gpkg) as mock_sjoin,
-    ):
-        flows._prepare_rivers_from_sword(mock_project_rivers)
-
-        mock_sjoin.assert_called_once()
-        assert mock_project_rivers.rivers.target_id_col == "node_id"
+# (Old SWORD tests removed - replaced with new comprehensive test suite above)

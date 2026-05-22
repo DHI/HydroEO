@@ -265,6 +265,11 @@ main_dir/
 #### Rivers
 ```
 main_dir/
+  aux/SWORD/
+    SWORD_subset.gpkg     # SWORD v17b subset (spatial intersection with AOI)
+    gpkg/                 # full SWORD v17b database (if downloaded, or from raw_sword_path)
+      <continent>_sword_nodes_v17b.gpkg      # SWORD nodes per continent
+      <continent>_sword_reaches_v17b.gpkg    # SWORD reaches per continent
   swot/rivers/
     <aoi_name>/
       nodes_timeseries.csv or reaches_timeseries.csv       # SWOT Hydrocron data
@@ -398,6 +403,20 @@ Configuration options under the `hydroweb` section for Use Case A (Reservoirs):
 - `keep_raw_pld`: optional boolean (default: `false`). When `false`, the raw PLD zip file and temporary extraction folder are deleted after the subset is created. When `true`, both are retained for inspection or later reuse. Only applies to HydroEO-managed downloads; user-provided `raw_pld_path` data is never deleted if it resides outside the project folder (a warning is logged).
 
 The PLD subset is always written to `{project.main_dir}/aux/PLD/PLD_subset.gpkg`, along with QA/QC files `present_in_pld.gpkg` (matched reservoirs) and `missing_in_pld.gpkg` (unmatched reservoirs).
+
+### SWORD Database
+Configuration options under the optional `sword_db` section for Use Case B (Rivers with AOI):
+- `raw_sword_path`: optional path to existing SWORD v17b data (zip file or extracted directory). If provided, the download step is skipped and this path is used instead. Allows bring-your-own SWORD or local caching. If not provided, SWORD v17b is downloaded automatically from Zenodo.
+- `sword_subset_path`: optional path to a pre-made `SWORD_subset.gpkg` file containing the already-subsetted river features. If provided, both the full SWORD database download and spatial subsetting are skipped entirely — the subset is read directly. This is the fastest option if you have a pre-computed subset for your AOI.
+- `keep_raw_sword`: optional boolean (default: `false`). When `false`, the raw SWORD zip file is deleted after extraction. When `true`, both the zip and extracted database are retained for inspection or reuse. Only applies to HydroEO-managed downloads; user-provided `raw_sword_path` data is never deleted if it resides outside the project folder.
+
+When using `rivers.aoi_path` mode:
+- If `sword_subset_path` is provided, `rivers.continent_key` becomes optional (the subset already contains the right features).
+- Otherwise, `rivers.continent_key` is required to select which SWORD continent database (`af`, `as`, `eu`, `na`, `oc`, `sa`) to load and subset.
+
+The SWORD subset (either from subsetting the full database or from `sword_subset_path`) is always written to `{project.main_dir}/aux/SWORD/SWORD_subset.gpkg` for future reuse, along with the full SWORD v17b database in `{project.main_dir}/aux/SWORD/gpkg/`.
+
+Note: `sword_db` section is only used and validated when `rivers` section is also present and in `aoi_path` mode. The explicit `feature_numbers` mode (no AOI) does not require SWORD.
 
 ### SWOT
 - `pld_match_max_distance_m`: max nearest-neighbour distance for PLD matching (Use Case A — reservoirs).

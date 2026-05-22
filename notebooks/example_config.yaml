@@ -47,15 +47,14 @@ hydroweb:     # needed for Use Case A (SWOT lake matching via PLD)
   # raw_pld_path: "/path/to/PLD.zip"  # optional: existing PLD zip or folder; if provided, download is skipped
   keep_raw_pld: false  # if true, keep raw PLD zip and temp folder; if false, delete after subset is created
 
+sword_db:     # needed for Use Case B (SWOT rivers with AOI); optional for explicit feature IDs
+  # raw_sword_path: "/path/to/SWORD_v17b_gpkg.zip"  # optional: existing SWORD zip or folder; if provided, download is skipped
+  # sword_subset_path: "/path/to/SWORD_subset.gpkg"  # optional: pre-made SWORD subset; if provided, skip download and subsetting
+  keep_raw_sword: false  # if true, keep raw SWORD zip after extraction; if false, delete after extraction
+
 creodias:     # needed for Use Case A — Sentinel-3 and Sentinel-6 only
   username: null   # or set CREODIAS_USERNAME
   password: null   # or set CREODIAS_PASSWORD
-
-# ─── SPATIALITE (OPTIONAL) ────────────────────────────────────────────────────
-# If using SWOT for reservoirs on Windows, that requires spatialite,
-# set the path to your spatialite folder. This will prepend it to the system PATH.
-# spatialite_folder: "/path/to/your/spatialite"  # optional; prepended to PATH
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # USE CASE A — Lakes & Reservoirs

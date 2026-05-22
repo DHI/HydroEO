@@ -410,14 +410,11 @@ def plot_river_crossings(
     show : bool
         Whether to display the plot interactively
     """
-    sword_dir = prj.dirs["sword"]
-    gpkg_name = f"{prj.rivers.continent_key}_sword_{prj.rivers.feature_type}_v17b.gpkg"
-    gpkg_path = os.path.join(sword_dir, gpkg_name)
+    subset_path = prj.dirs.get("sword_subset")
+    if not subset_path or not os.path.exists(subset_path):
+        raise FileNotFoundError(f"SWORD subset not found: {subset_path}")
 
-    if not os.path.exists(gpkg_path):
-        raise FileNotFoundError(f"Expected SWORD file not found: {gpkg_path}")
-
-    sword_gdf = gpd.read_file(gpkg_path)
+    sword_gdf = gpd.read_file(subset_path)
     id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
 
     fig, ax = plt.subplots()
