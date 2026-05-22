@@ -74,22 +74,27 @@ def _download_pld(prj: "Project") -> None:
     download_dir = os.path.dirname(pld_path)
     bounds = list(prj.reservoirs.gdf.unary_union.bounds)
     raw_pld_path = prj.dirs.get("pld_raw")
-    
+
     # Determine if raw_pld_path is inside project main_dir
     keep_raw = getattr(prj, "keep_raw_pld", False)
     effective_keep_raw = keep_raw
     if raw_pld_path is not None and os.path.exists(raw_pld_path):
-        if not os.path.abspath(raw_pld_path).startswith(os.path.abspath(prj.dirs["main"])):
+        if not os.path.abspath(raw_pld_path).startswith(
+            os.path.abspath(prj.dirs["main"])
+        ):
             logger.warning(
                 "raw_pld_path '%s' is outside project folder '%s'. "
                 "Skipping deletion of raw PLD files to preserve external data.",
-                raw_pld_path, prj.dirs["main"]
+                raw_pld_path,
+                prj.dirs["main"],
             )
             effective_keep_raw = True
-    
+
     hydroweb.download_PLD(
-        download_dir=download_dir, bounds=bounds, 
-        raw_pld_path=raw_pld_path, keep_raw=effective_keep_raw
+        download_dir=download_dir,
+        bounds=bounds,
+        raw_pld_path=raw_pld_path,
+        keep_raw=effective_keep_raw,
     )
 
 
@@ -127,7 +132,7 @@ def _flag_missing_priors(prj: "Project") -> None:
     pld_dir = os.path.dirname(prj.dirs["pld"])
     present_path = os.path.join(pld_dir, "present_in_pld.gpkg")
     missing_path = os.path.join(pld_dir, "missing_in_pld.gpkg")
-    
+
     present.to_file(present_path, driver="GPKG")
     missing.to_file(missing_path, driver="GPKG")
 

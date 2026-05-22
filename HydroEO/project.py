@@ -77,7 +77,9 @@ class Project:
             os.environ["HYDROWEB_API_KEY"] = hydroweb_api_key
 
         # Set PLD paths and configuration
-        self.dirs["pld"] = os.path.join(self.dirs["main"], "aux", "PLD", "PLD_subset.gpkg")
+        self.dirs["pld"] = os.path.join(
+            self.dirs["main"], "aux", "PLD", "PLD_subset.gpkg"
+        )
         if "raw_pld_path" in hydroweb_cfg:
             self.dirs["pld_raw"] = hydroweb_cfg["raw_pld_path"]
         self.keep_raw_pld = hydroweb_cfg.get("keep_raw_pld", False)

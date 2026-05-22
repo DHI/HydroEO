@@ -29,7 +29,9 @@ For more documentation about how to use the py-hydroweb lib, please refer to htt
 """
 
 
-def download_PLD(download_dir: str, bounds: list, raw_pld_path: str = None, keep_raw: bool = True):
+def download_PLD(
+    download_dir: str, bounds: list, raw_pld_path: str = None, keep_raw: bool = True
+):
     """Download and subset SWOT Prior Lake Database.
 
     Parameters
@@ -137,7 +139,7 @@ def download_PLD(download_dir: str, bounds: list, raw_pld_path: str = None, keep
             return
     else:
         logger.info("Extracted files already exist, skipping extraction")
-    
+
     # Ensure extracted_dir is set (in case raw_pld_path was a directory)
     if not os.path.isdir(extracted_dir):
         extracted_dir = os.path.join(
@@ -150,18 +152,18 @@ def download_PLD(download_dir: str, bounds: list, raw_pld_path: str = None, keep
     # now clean up and merge lake datafiles
     logger.info("Merging products and removing temporary files")
     gdf_list = list()
+
     for file in downloaded_files:
         if file.endswith(".sqlite"):
             filepath = os.path.join(extracted_dir, file)
             logger.info("found %s", filepath)
 
             # Read layer directly as GeoDataFrame and normalize column names
-            gdf = gpd.read_file(filepath, layer="lake")
+            gdf = gpd.read_file(filepath, layer="lake", fid_as_index=True)
             gdf.columns = [c.lower() for c in gdf.columns]
-            # Select basin_id (unique lake identifier) and rename to lake_id
-            gdf = gdf[["basin_id", "res_id", "geometry"]].rename(
-                columns={"basin_id": "lake_id"}
-            )
+            gdf.index.name = "lake_id"
+            gdf = gdf.reset_index()[["lake_id", "res_id", "geometry"]]
+            gdf = gdf[["lake_id", "res_id", "geometry"]]
 
             # Filter to bounds and append
             gdf = gdf.loc[gdf.within(shapely.Polygon.from_bounds(*bounds))]
