@@ -93,9 +93,7 @@ def validate_config(
         spatialite_folder = cfg.get("spatialite_folder")
         if spatialite_folder is not None:
             if not isinstance(spatialite_folder, str):
-                issues.append(
-                    "'spatialite_folder' must be a string path or null."
-                )
+                issues.append("'spatialite_folder' must be a string path or null.")
             elif not os.path.exists(spatialite_folder):
                 issues.append(
                     f"Path in 'spatialite_folder' does not exist: {spatialite_folder}"
@@ -192,11 +190,16 @@ def validate_config(
                         "Missing required key 'rivers.id_key' when 'rivers.aoi_path' is provided."
                     )
 
+                # continent_key is optional if sword_subset_path is provided
+                sword_db_cfg = cfg.get("sword_db", {})
+                has_sword_subset = "sword_subset_path" in sword_db_cfg
                 continent_key = rivers_cfg.get("continent_key")
-                if continent_key not in ["af", "as", "eu", "na", "oc", "sa"]:
-                    issues.append(
-                        "'rivers.continent_key' is required with 'rivers.aoi_path' and must be one of ['af', 'as', 'eu', 'na', 'oc', 'sa']."
-                    )
+
+                if not has_sword_subset:
+                    if continent_key not in ["af", "as", "eu", "na", "oc", "sa"]:
+                        issues.append(
+                            "'rivers.continent_key' is required with 'rivers.aoi_path' (unless sword_subset_path is provided) and must be one of ['af', 'as', 'eu', 'na', 'oc', 'sa']."
+                        )
 
                 feature_type = rivers_cfg.get("feature_type")
                 if feature_type not in ["nodes", "reaches"]:
@@ -232,6 +235,41 @@ def validate_config(
                 if feature_type not in ["nodes", "reaches"]:
                     issues.append(
                         "'rivers.feature_type' is required with 'rivers.feature_numbers' and must be one of ['nodes', 'reaches']."
+                    )
+
+    # Validate optional sword_db section (only if rivers is also present)
+    if has_rivers and "sword_db" in cfg:
+        if not isinstance(cfg["sword_db"], dict):
+            issues.append("Section 'sword_db' must be a mapping of key/value pairs.")
+        else:
+            sword_db_cfg = cfg["sword_db"]
+
+            # Validate raw_sword_path if provided
+            if "raw_sword_path" in sword_db_cfg:
+                raw_sword_path = sword_db_cfg["raw_sword_path"]
+                if not os.path.exists(raw_sword_path):
+                    issues.append(
+                        f"Path in 'sword_db.raw_sword_path' does not exist: {raw_sword_path}"
+                    )
+
+            # Validate sword_subset_path if provided
+            if "sword_subset_path" in sword_db_cfg:
+                sword_subset_path = sword_db_cfg["sword_subset_path"]
+                if not os.path.exists(sword_subset_path):
+                    issues.append(
+                        f"Path in 'sword_db.sword_subset_path' does not exist: {sword_subset_path}"
+                    )
+                elif not sword_subset_path.lower().endswith(".gpkg"):
+                    issues.append(
+                        "'sword_db.sword_subset_path' must reference a '.gpkg' file."
+                    )
+
+            # Validate keep_raw_sword if provided
+            if "keep_raw_sword" in sword_db_cfg:
+                keep_raw_sword = sword_db_cfg["keep_raw_sword"]
+                if not isinstance(keep_raw_sword, bool):
+                    issues.append(
+                        "'sword_db.keep_raw_sword' must be a boolean value (true or false)."
                     )
 
     if has_swot_raster:

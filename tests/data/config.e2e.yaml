@@ -9,7 +9,7 @@ reservoirs:
   id_key: "project"
 
 hydroweb:
-  PLD_path: "/tmp/hydroeo-e2e/PLD_subset.shp"
+  api_key: null
 
 swot:
   download: true

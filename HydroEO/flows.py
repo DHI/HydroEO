@@ -72,9 +72,30 @@ def _download_pld(prj: "Project") -> None:
 
     logger.info("Downloading PLD")
     download_dir = os.path.dirname(pld_path)
-    file_name = os.path.basename(pld_path)
     bounds = list(prj.reservoirs.gdf.unary_union.bounds)
-    hydroweb.download_PLD(download_dir=download_dir, file_name=file_name, bounds=bounds)
+    raw_pld_path = prj.dirs.get("pld_raw")
+
+    # Determine if raw_pld_path is inside project main_dir
+    keep_raw = getattr(prj, "keep_raw_pld", False)
+    effective_keep_raw = keep_raw
+    if raw_pld_path is not None and os.path.exists(raw_pld_path):
+        if not os.path.abspath(raw_pld_path).startswith(
+            os.path.abspath(prj.dirs["main"])
+        ):
+            logger.warning(
+                "raw_pld_path '%s' is outside project folder '%s'. "
+                "Skipping deletion of raw PLD files to preserve external data.",
+                raw_pld_path,
+                prj.dirs["main"],
+            )
+            effective_keep_raw = True
+
+    hydroweb.download_PLD(
+        download_dir=download_dir,
+        bounds=bounds,
+        raw_pld_path=raw_pld_path,
+        keep_raw=effective_keep_raw,
+    )
 
 
 def _assign_pld_id(prj: "Project") -> None:
@@ -102,22 +123,18 @@ def _assign_pld_id(prj: "Project") -> None:
 
 
 def _flag_missing_priors(prj: "Project") -> None:
-    """Export shapefiles of reservoirs present/missing in PLD."""
+    """Export geopackages of reservoirs present/missing in PLD to aux/PLD folder."""
     gdf = prj.reservoirs.gdf
     present = gdf.loc[gdf.prior_lake_id > 0].reset_index(drop=True)
     missing = gdf.loc[gdf.prior_lake_id < 0].reset_index(drop=True)
 
-    shp_field_map = {
-        "index_right": "idx_right",
-        "prior_lake_id": "prior_lake",
-        "prior_res_id": "prior_res",
-        "dist_to_pld": "dist_pld",
-    }
-    present_out = present.rename(columns=shp_field_map)
-    missing_out = missing.rename(columns=shp_field_map)
+    # Output to aux/PLD/ folder
+    pld_dir = os.path.dirname(prj.dirs["pld"])
+    present_path = os.path.join(pld_dir, "present_in_pld.gpkg")
+    missing_path = os.path.join(pld_dir, "missing_in_pld.gpkg")
 
-    present_out.to_file(os.path.join(prj.dirs["output"], "present_in_pld.shp"))
-    missing_out.to_file(os.path.join(prj.dirs["output"], "missing_in_pld.shp"))
+    present.to_file(present_path, driver="GPKG")
+    missing.to_file(missing_path, driver="GPKG")
 
     logger.info(
         "Out of the %s reservoirs, %s are present and %s are missing from the PLD.",
@@ -160,52 +177,95 @@ def initialize_rivers(prj: "Project") -> None:
 
 
 def _prepare_rivers_from_sword(prj: "Project") -> None:
-    """Prepare SWORD target features by spatial intersection with AOI."""
-    sword_dir = _ensure_sword_database(prj)
-    gpkg_name = f"{prj.rivers.continent_key}_sword_{prj.rivers.feature_type}_v17b.gpkg"
-    gpkg_path = os.path.join(sword_dir, gpkg_name)
+    """Prepare SWORD target features by spatial intersection with AOI or from saved subset.
 
-    if not os.path.exists(gpkg_path):
-        raise FileNotFoundError(f"Expected SWORD file not found: {gpkg_path}")
+    If SWORD_subset.gpkg exists, reads from it directly (skips download and spatial operations).
+    Otherwise, ensures SWORD database, performs spatial intersection with AOI, saves subset.
+    """
+    subset_path = prj.dirs.get("sword_subset")
 
-    sword_gdf = gpd.read_file(gpkg_path)
+    # Gate 1: Check if subset already exists
+    if subset_path and os.path.exists(subset_path):
+        logger.info("SWORD subset located at %s", subset_path)
+        subset = gpd.read_file(subset_path)
+    else:
+        # Gate 2: Ensure SWORD database and perform spatial intersection
+        _ensure_sword_database(prj)
 
-    # Buffer AOI if requested
-    aoi_local = prj.rivers.aoi_gdf.to_crs(prj.local_crs).copy()
-    if prj.rivers.buffer_meters and prj.rivers.buffer_meters > 0:
-        aoi_local["geometry"] = aoi_local.geometry.buffer(prj.rivers.buffer_meters)
-
-    # Intersect with SWORD
-    sword_local = sword_gdf.to_crs(prj.local_crs)
-    subset = sword_local.loc[sword_local.intersects(aoi_local.unary_union)].copy()
-
-    if prj.rivers.id_key not in prj.rivers.aoi_gdf.columns:
-        raise KeyError(
-            f"Expected AOI column '{prj.rivers.id_key}' missing from river input file"
+        gpkg_name = (
+            f"{prj.rivers.continent_key}_sword_{prj.rivers.feature_type}_v17b.gpkg"
         )
+        gpkg_path = os.path.join(prj.dirs["sword"], gpkg_name)
 
-    aoi_join = aoi_local[[prj.rivers.id_key, "geometry"]].copy()
-    subset = gpd.sjoin(
-        subset,
-        aoi_join,
-        how="inner",
-        predicate="intersects",
-    ).drop(columns=["index_right"], errors="ignore")
-    subset = subset.drop_duplicates().to_crs(prj.rivers.aoi_gdf.crs)
+        if not os.path.exists(gpkg_path):
+            raise FileNotFoundError(f"Expected SWORD file not found: {gpkg_path}")
 
+        sword_gdf = gpd.read_file(gpkg_path)
+
+        # Buffer AOI if requested
+        aoi_local = prj.rivers.aoi_gdf.to_crs(prj.local_crs).copy()
+        if prj.rivers.buffer_meters and prj.rivers.buffer_meters > 0:
+            aoi_local["geometry"] = aoi_local.geometry.buffer(prj.rivers.buffer_meters)
+
+        # Intersect with SWORD
+        sword_local = sword_gdf.to_crs(prj.local_crs)
+        subset = sword_local.loc[sword_local.intersects(aoi_local.unary_union)].copy()
+
+        if prj.rivers.id_key not in prj.rivers.aoi_gdf.columns:
+            raise KeyError(
+                f"Expected AOI column '{prj.rivers.id_key}' missing from river input file"
+            )
+
+        aoi_join = aoi_local[[prj.rivers.id_key, "geometry"]].copy()
+        subset = gpd.sjoin(
+            subset,
+            aoi_join,
+            how="inner",
+            predicate="intersects",
+        ).drop(columns=["index_right"], errors="ignore")
+        subset = subset.drop_duplicates().to_crs(prj.rivers.aoi_gdf.crs)
+
+        # Save subset to disk
+        if subset_path:
+            general.ifnotmakedirs(os.path.dirname(subset_path))
+            subset.to_file(subset_path, driver="GPKG")
+            logger.info("SWORD subset saved to %s", subset_path)
+
+        # Cleanup: delete gpkg folder if keep_raw_sword is False
+        if not prj.keep_raw_sword:
+            try:
+                import shutil
+
+                sword_dir = prj.dirs.get("sword")
+                if sword_dir and os.path.isdir(sword_dir):
+                    shutil.rmtree(sword_dir)
+                    logger.info("Deleted SWORD gpkg folder (keep_raw_sword=False)")
+            except Exception as e:
+                logger.warning("Failed to delete SWORD gpkg folder: %s", e)
+        else:
+            logger.info("Kept SWORD gpkg folder (keep_raw_sword=True)")
+
+    # Extract target IDs from subset
     source_id_col = "node_id" if prj.rivers.feature_type == "nodes" else "reach_id"
     if source_id_col not in subset.columns:
-        raise KeyError(
-            f"Expected SWORD column '{source_id_col}' missing from {gpkg_name}"
-        )
+        raise KeyError(f"Expected SWORD column '{source_id_col}' missing from subset")
 
     prj.rivers.target_features = subset
     prj.rivers.target_id_col = source_id_col
     prj.rivers.target_ids = [int(value) for value in subset[source_id_col]]
 
 
-def _ensure_sword_database(prj: "Project") -> str:
-    """Ensure SWORD database is downloaded and extracted."""
+def _ensure_sword_database(prj: "Project") -> None:
+    """Ensure SWORD database is available locally.
+
+    Checks if full SWORD database (GPKGs) already exists in prj.dirs["sword"].
+    If not, handles three scenarios:
+    1. User-provided zip: extract to {main_dir}/aux/SWORD/
+    2. User-provided directory: use it directly
+    3. Auto-download from Zenodo: download and extract to {main_dir}/aux/SWORD/
+
+    Respects keep_raw_sword config to optionally delete downloaded zip.
+    """
     from urllib import request as url_request
     import zipfile
 
@@ -213,26 +273,67 @@ def _ensure_sword_database(prj: "Project") -> str:
         "https://zenodo.org/records/15299138/files/SWORD_v17b_gpkg.zip?download=1"
     )
 
-    sword_dir = os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg", "gpkg")
-    prj.dirs["sword"] = sword_dir
+    sword_dir = prj.dirs["sword"]
 
+    # Check if SWORD database already exists
     if os.path.isdir(sword_dir):
-        return sword_dir
+        # Check if directory contains any SWORD GPKGs
+        gpkg_files = [f for f in os.listdir(sword_dir) if f.endswith("_v17b.gpkg")]
+        if gpkg_files:
+            logger.info("SWORD database located at %s", sword_dir)
+            return
 
-    logger.warning(
-        "SWORD_v17b database not found in %s. Downloading and extracting it now.",
-        sword_dir,
-    )
-    general.ifnotmakedirs(os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg"))
+    logger.info("SWORD database not found. Preparing it now.")
 
-    zip_path = os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg.zip")
+    # User-provided raw_sword_path
+    if "sword_raw" in prj.dirs:
+        raw_path = prj.dirs["sword_raw"]
+
+        # Case 1: User provided a zip file
+        if raw_path.lower().endswith(".zip") and os.path.isfile(raw_path):
+            logger.info("Using user-provided SWORD zip: %s", raw_path)
+            general.ifnotmakedirs(os.path.dirname(sword_dir))
+            with zipfile.ZipFile(raw_path, "r") as zip_ref:
+                zip_ref.extractall(os.path.dirname(sword_dir))
+            logger.info("SWORD extracted to %s", sword_dir)
+            return
+
+        # Case 2: User provided a directory
+        elif os.path.isdir(raw_path):
+            logger.info("Using user-provided SWORD directory: %s", raw_path)
+            # Check if GPKGs are in raw_path/gpkg/ or directly in raw_path
+            gpkg_subdir = os.path.join(raw_path, "gpkg")
+            if os.path.isdir(gpkg_subdir):
+                prj.dirs["sword"] = gpkg_subdir
+                logger.info("SWORD database found in %s", gpkg_subdir)
+            else:
+                prj.dirs["sword"] = raw_path
+                logger.info("SWORD database found in %s", raw_path)
+            return
+
+    # Case 3: Auto-download from Zenodo
+    logger.info("Downloading SWORD v17b from Zenodo...")
+    general.ifnotmakedirs(os.path.dirname(sword_dir))
+
+    zip_path = os.path.join(os.path.dirname(sword_dir), "SWORD_v17b_gpkg.zip")
     url_request.urlretrieve(SWORD_V17B_ZIP_URL, zip_path)
+    logger.info("Downloaded SWORD v17b to %s", zip_path)
 
+    logger.info("Extracting SWORD v17b...")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(os.path.join(prj.dirs["main"], "SWORD_v17b_gpkg"))
+        zip_ref.extractall(os.path.dirname(sword_dir))
 
-    # os.remove(zip_path)
-    return sword_dir
+    logger.info("SWORD extracted to %s", sword_dir)
+
+    # Cleanup: delete zip if keep_raw_sword is False
+    if not prj.keep_raw_sword:
+        try:
+            os.remove(zip_path)
+            logger.info("Deleted raw SWORD zip file (keep_raw_sword=False)")
+        except Exception as e:
+            logger.warning("Failed to delete SWORD zip %s: %s", zip_path, e)
+    else:
+        logger.info("Kept raw SWORD zip file at %s (keep_raw_sword=True)", zip_path)
 
 
 # ============================================================================
@@ -261,7 +362,7 @@ def download_reservoirs(prj: "Project") -> None:
 
 def _download_reservoirs_swot(prj: "Project") -> None:
     """Download SWOT Lake SP data for reservoirs."""
-    download_dir = os.path.join(prj.dirs["swot"], "reservoirs")
+    download_dir = prj.dirs["swot"]
     general.ifnotmakedirs(download_dir)
 
     startdate = prj.startdates["swot"]
@@ -318,8 +419,8 @@ def _download_reservoirs_icesat2(prj: "Project") -> None:
             geom = geom.geoms[0]
         coords = list(geom.exterior.coords)
 
-        download_dir = os.path.join(prj.dirs["icesat2"], "reservoirs", rf"{id}")
-        general.ifnotmakedirs(download_dir)
+        parquet_dir = os.path.join(prj.dirs["icesat2_processed"], rf"{id}")
+        general.ifnotmakedirs(parquet_dir)
 
         startdate = prj.startdates["icesat2"]
         enddate = prj.enddates["icesat2"]
@@ -337,7 +438,7 @@ def _download_reservoirs_icesat2(prj: "Project") -> None:
                 aoi=coords,
                 startdate=startdate,
                 enddate=enddate,
-                download_directory=download_dir,
+                download_directory=parquet_dir,
                 atl13_options=prj.mission_options.get("icesat2", {}).get("atl13", {}),
                 atl13_fields=prj.mission_options.get("icesat2", {}).get("atl13_fields")
                 or None,
@@ -367,7 +468,7 @@ def _download_reservoirs_sentinel(prj: "Project", mission: str) -> None:
             ].envelope.exterior.coords
         ]
 
-        download_dir = os.path.join(prj.dirs[dir_key], "reservoirs", rf"{id}")
+        download_dir = os.path.join(prj.dirs[dir_key], rf"{id}")
         general.ifnotmakedirs(download_dir)
 
         startdate = prj.startdates[mission]
@@ -500,7 +601,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
     for wb_id, target_ids in waterbody_groups.items():
         summary["requested"] = summary["requested"] + len(target_ids)
         output_path = os.path.join(
-            prj.dirs["swot"], "rivers", str(wb_id), f"{id_label}_timeseries.csv"
+            prj.dirs["swot"], str(wb_id), f"{id_label}_timeseries.csv"
         )
         general.ifnotmakedirs(os.path.dirname(output_path))
 
@@ -717,7 +818,7 @@ def _extract_icesat2_observations(prj: "Project") -> None:
         id
         for id in prj.reservoirs.download_gdf[prj.reservoirs.id_key]
         if os.path.exists(
-            os.path.join(prj.dirs["icesat2"], "reservoirs", f"{id}", "atl13.parquet")
+            os.path.join(prj.dirs["icesat2_processed"], f"{id}", "atl13.parquet")
         )
     ]
     if not available_ids:
@@ -729,10 +830,10 @@ def _extract_icesat2_observations(prj: "Project") -> None:
         sub_gdf = prj.reservoirs.download_gdf.loc[
             prj.reservoirs.download_gdf[prj.reservoirs.id_key] == id
         ]
-        download_dir = os.path.join(prj.dirs["icesat2"], "reservoirs", f"{id}")
+        download_dir = os.path.join(prj.dirs["icesat2_processed"], f"{id}")
         dst_dir = os.path.join(prj.dirs["output"], f"{id}", "raw_observations")
         general.ifnotmakedirs(dst_dir)
-        dst_path = os.path.join(dst_dir, "icesat2.shp")
+        dst_path = os.path.join(dst_dir, "icesat2.gpkg")
 
         try:
             icesat2.extract_observations(
@@ -762,7 +863,7 @@ def _extract_sentinel_observations(
     available_ids = [
         id
         for id in prj.reservoirs.download_gdf[prj.reservoirs.id_key]
-        if os.path.exists(os.path.join(prj.dirs[mission_key], "reservoirs", f"{id}"))
+        if os.path.exists(os.path.join(prj.dirs[mission_key], f"{id}"))
     ]
     if not available_ids:
         logger.warning(
@@ -775,10 +876,10 @@ def _extract_sentinel_observations(
         sub_gdf = prj.reservoirs.download_gdf.loc[
             prj.reservoirs.download_gdf[prj.reservoirs.id_key] == id
         ]
-        download_dir = os.path.join(prj.dirs[mission_key], "reservoirs", f"{id}")
+        download_dir = os.path.join(prj.dirs[mission_key], f"{id}")
         dst_dir = os.path.join(prj.dirs["output"], f"{id}", "raw_observations")
         general.ifnotmakedirs(dst_dir)
-        dst_path = os.path.join(dst_dir, f"{mission_key}.shp")
+        dst_path = os.path.join(dst_dir, f"{mission_key}.gpkg")
 
         try:
             sentinel.extract_observations(
@@ -805,7 +906,7 @@ def _extract_sentinel_observations(
 
 def _extract_swot_observations(prj: "Project") -> None:
     """Extract SWOT Lake SP observations for all reservoirs."""
-    download_dir = os.path.join(prj.dirs["swot"], "reservoirs")
+    download_dir = prj.dirs["swot"]
     if not os.path.exists(download_dir):
         logger.warning("No SWOT downloads found; skipping timeseries extraction.")
         return
@@ -813,7 +914,7 @@ def _extract_swot_observations(prj: "Project") -> None:
     empty_ids = swot.extract_observations(
         src_dir=download_dir,
         dst_dir=prj.dirs["output"],
-        dst_file_name="swot.shp",
+        dst_file_name="swot.gpkg",
         features=prj.reservoirs.download_gdf,
         id_key=prj.reservoirs.id_key,
         exclude_obs_id_values=prj.mission_options.get("swot", {}).get(
@@ -844,7 +945,7 @@ def _clean_reservoirs_timeseries(prj: "Project") -> None:
         for product in prj.to_process:
             df = _load_product_timeseries(
                 os.path.join(prj.dirs["output"], f"{id}", "raw_observations"),
-                ".shp",
+                ".gpkg",
                 [product],
                 lambda path: gpd.read_file(path).drop(columns=["geometry"]),
             )
@@ -984,7 +1085,7 @@ def generate_reservoirs_summaries(
             output_dir=prj.dirs["output"],
             get_unfiltered_fn=lambda id, products: _load_product_timeseries(
                 os.path.join(prj.dirs["output"], f"{id}", "raw_observations"),
-                ".shp",
+                ".gpkg",
                 products,
                 lambda path: gpd.read_file(path).drop(columns=["geometry"]),
             ),

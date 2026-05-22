@@ -365,7 +365,7 @@ def test_rasterize_granules_auto_detect_crs(
 @pytest.mark.unit
 def test_download_pixc_end_to_end(tmp_path, pixc_bbox_config, synthetic_pixc_netcdf):
     """Test full end-to-end PIXC download pipeline."""
-    raw_dir = tmp_path / "swot_pixc" / "test_aoi" / "raw" / "SWOT_L2_HR_PIXC_D"
+    raw_dir = tmp_path / "raw" / "swot_pixc" / "test_aoi" / "SWOT_L2_HR_PIXC_D"
     raw_dir.mkdir(parents=True)
 
     # Pre-populate with synthetic NC
@@ -383,7 +383,7 @@ def test_download_pixc_end_to_end(tmp_path, pixc_bbox_config, synthetic_pixc_net
         )
 
     # Verify outputs
-    raster_dir = tmp_path / "swot_pixc" / "test_aoi" / "raster"
+    raster_dir = tmp_path / "results" / "test_aoi"
     tif_files = list(raster_dir.glob("*.tif"))
     assert len(tif_files) > 0
 

@@ -77,11 +77,12 @@ def download_raster(
 
     aoi_name = config["aoi"]["name"]
     product = config["product"]
-    base_dir = Path(project_dir) / "swot_raster" / aoi_name
-    raw_dir = base_dir / "raw" / product
-    processed_dir = base_dir / "processed" / product
+    raw_dir = Path(project_dir) / "raw" / "swot_raster" / aoi_name / product
+    processed_dir = Path(project_dir) / "processed" / "swot_raster" / aoi_name / product
+    results_dir = Path(project_dir) / "results" / aoi_name
     raw_dir.mkdir(parents=True, exist_ok=True)
     processed_dir.mkdir(parents=True, exist_ok=True)
+    results_dir.mkdir(parents=True, exist_ok=True)
 
     log_path = raw_dir / "downloaded.log"
     if not log_path.exists():
@@ -105,7 +106,7 @@ def download_raster(
             "Found %d processed TIF files, proceeding with merge",
             len(processed_files),
         )
-        _merge_and_reproject_granules(config, processed_dir, global_crs)
+        _merge_and_reproject_granules(config, processed_dir, global_crs, results_dir)
     else:
         logger.info("No processed TIF files found, skipping merge phase")
 
@@ -372,7 +373,10 @@ def _detect_crs(ds: xr.Dataset, nc_path: Path) -> CRS | None:
 
 
 def _merge_and_reproject_granules(
-    config: dict, processed_dir: Path, global_crs: str = "EPSG:4326"
+    config: dict,
+    processed_dir: Path,
+    global_crs: str = "EPSG:4326",
+    results_dir: Path | None = None,
 ) -> None:
     """Organize processed TIFFs by date and merge/reproject tiles."""
     logger.debug("=== SWOT Raster Merge and Reproject Phase ===")
@@ -390,7 +394,9 @@ def _merge_and_reproject_granules(
         logger.error("Invalid CRS format: %s", crs_to_use)
         return
 
-    merged_dir = processed_dir.parent.parent / "merged"
+    merged_dir = (
+        results_dir if results_dir is not None else processed_dir.parent / "merged"
+    )
     merged_dir.mkdir(parents=True, exist_ok=True)
 
     tif_files = list(processed_dir.glob("*.tif"))

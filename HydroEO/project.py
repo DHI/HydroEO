@@ -76,8 +76,37 @@ class Project:
         if hydroweb_api_key:
             os.environ["HYDROWEB_API_KEY"] = hydroweb_api_key
 
-        if "PLD_path" in hydroweb_cfg:
-            self.dirs["pld"] = hydroweb_cfg["PLD_path"]
+        # Set PLD paths and configuration
+        self.dirs["pld"] = os.path.join(
+            self.dirs["main"], "aux", "PLD", "PLD_subset.gpkg"
+        )
+        if "raw_pld_path" in hydroweb_cfg:
+            self.dirs["pld_raw"] = hydroweb_cfg["raw_pld_path"]
+        self.keep_raw_pld = hydroweb_cfg.get("keep_raw_pld", False)
+
+        # Set SWORD database paths and configuration
+        sword_db_cfg = self.config.get("sword_db", {})
+        self.dirs["sword"] = os.path.join(self.dirs["main"], "aux", "SWORD", "gpkg")
+        self.dirs["sword_subset"] = os.path.join(
+            self.dirs["main"], "aux", "SWORD", "SWORD_subset.gpkg"
+        )
+        if "sword_subset_path" in sword_db_cfg:
+            self.dirs["sword_subset"] = sword_db_cfg["sword_subset_path"]
+        if "raw_sword_path" in sword_db_cfg:
+            self.dirs["sword_raw"] = sword_db_cfg["raw_sword_path"]
+            # Safety: if raw_sword_path is outside main_dir, force keep_raw_sword=True
+            raw_path = os.path.abspath(sword_db_cfg["raw_sword_path"])
+            main_path = os.path.abspath(self.dirs["main"])
+            try:
+                is_outside = not raw_path.startswith(main_path)
+            except (TypeError, ValueError):
+                is_outside = True
+            if is_outside:
+                self.keep_raw_sword = True
+            else:
+                self.keep_raw_sword = sword_db_cfg.get("keep_raw_sword", False)
+        else:
+            self.keep_raw_sword = sword_db_cfg.get("keep_raw_sword", False)
 
         earthaccess_cfg = self.config.get("earthaccess", {})
         self.earthdata_user = (
@@ -294,7 +323,12 @@ class Project:
             if "download_dir" in self.config[name].keys():
                 self.dirs[name] = self.config[name]["download_dir"]
             else:
-                self.dirs[name] = os.path.join(self.dirs["main"], name)
+                self.dirs[name] = os.path.join(self.dirs["main"], "raw", name)
+
+            if name == "icesat2":
+                self.dirs["icesat2_processed"] = os.path.join(
+                    self.dirs["main"], "processed", "icesat2"
+                )
 
             project_cfg = self.config.get("project", {})
             self.startdates[name] = self.config[name].get(

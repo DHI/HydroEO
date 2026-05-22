@@ -787,31 +787,6 @@ def __format_coord_bounds(aoi):
     return shapely.Polygon(geometry.format_coord_list(aoi)).bounds
 
 
-def _to_shapefile_safe_columns(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
-    """Truncate column names to ESRI Shapefile 10-char limit with conflict resolution."""
-    # ESRI Shapefile field names are limited to 10 chars.
-    rename_map = {}
-    used = set()
-
-    for col in gdf.columns:
-        if col == "geometry":
-            continue
-
-        base = str(col)[:10]
-        candidate = base
-        suffix = 1
-        while candidate in used:
-            suffix_str = str(suffix)
-            candidate = f"{base[: 10 - len(suffix_str)]}{suffix_str}"
-            suffix += 1
-
-        used.add(candidate)
-        if candidate != col:
-            rename_map[col] = candidate
-
-    return gdf.rename(columns=rename_map)
-
-
 def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
     """Extract Sentinel observations to shapefile within feature geometries."""
     # read data for each availble option in directory
@@ -871,16 +846,15 @@ def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
     if len(gdf_list) > 0:
         observations = pd.concat(gdf_list).reset_index(drop=True)
         observations = observations.set_crs(features.crs)
-        observations = _to_shapefile_safe_columns(observations)
-        observations.to_file(dst_path)
+        observations.to_file(dst_path, driver="GPKG")
 
 
 def get_latest_obs_date(data_dir, product):
-    """Get latest observation date from Sentinel product shapefile."""
+    """Get latest observation date from Sentinel product GeoPackage."""
     if product.upper() == "S3":
-        shp_path = os.path.join(data_dir, "sentinel3.shp")
+        shp_path = os.path.join(data_dir, "sentinel3.gpkg")
     elif product.upper() == "S6":
-        shp_path = os.path.join(data_dir, "sentinel6.shp")
+        shp_path = os.path.join(data_dir, "sentinel6.gpkg")
 
     if os.path.exists(shp_path):
         gdf = gpd.read_file(shp_path)

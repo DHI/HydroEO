@@ -10,5 +10,9 @@
     "python.testing.pytestEnabled": true,
     "notebook.formatOnSave.enabled": true,
     "makefile.configureOnOpen": true,
-    "ruff.configuration": "pyproject.toml"
+    "ruff.configuration": "pyproject.toml",
+    "chat.tools.terminal.autoApprove": {
+        "uv": true,
+        "make": true
+    }
 }

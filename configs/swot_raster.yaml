@@ -1,0 +1,68 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HydroEO — SWOT Raster Configuration (Use Case C)
+# ══════════════════════════════════════════════════════════════════════════════
+# Download and process SWOT L2 HR/LR raster products for an arbitrary AOI.
+# Tiles are extracted, quality-filtered, clipped, and merged by date/variable.
+# Requires NASA Earthdata credentials.
+#
+# Quick-start:
+#   1. Set project.main_dir and project.startdate / project.enddate.
+#   2. Set swot_raster.aoi.bbox (or point to a shapefile/geopackage).
+#   3. Add Earthdata credentials (or set EARTHDATA_USERNAME / EARTHDATA_PASSWORD).
+#   4. Run project.initialize() then project.download().
+#
+# See configs/swot_raster.md for a full configuration reference.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── PROJECT ──────────────────────────────────────────────────────────────────
+project:
+  main_dir: "/path/to/your/project"
+  startdate: [2024, 1, 1]
+  enddate:   [2024, 12, 31]
+
+gis:
+  global_crs: 'EPSG:4326'
+  # local_crs: 'EPSG:32633'   # optional: override UTM zone (auto-detected if omitted)
+
+
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+earthaccess:
+  username: null   # or set EARTHDATA_USERNAME
+  password: null   # or set EARTHDATA_PASSWORD
+
+
+# ─── SWOT RASTER ──────────────────────────────────────────────────────────────
+swot_raster:
+  enabled: true
+
+  aoi:
+    name: "my_aoi"           # identifier used in output directory names
+    type: "bbox"             # bbox | shapefile | geopackage
+
+    # Use for type: bbox — [lon_min, lat_min, lon_max, lat_max]
+    bbox: [90.3, 20.9, 91.5, 23.9]
+
+    # Use for type: shapefile or geopackage (comment out bbox above)
+    # path: "/path/to/your/aoi.shp"   # or .gpkg
+
+  product: "SWOT_L2_HR_Raster_D"
+  # Available products:
+  #   SWOT_L2_HR_Raster_D       — high-resolution raster (default)
+  #   SWOT_L2_LR_SSH_2.0        — low-resolution sea surface height
+  #   SWOT_L2_HR_RIVERSP_2.0    — high-resolution river surface product
+
+  # granule_filter: "*100m*"   # optional glob filter; omit to download all matching granules
+
+
+# ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
+# All fields below have sensible defaults and can be omitted.
+# Uncomment and merge the keys you want into the swot_raster section above.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# swot_raster:
+#   merge_tiles: true           # merge tiles by date/variable and reproject; false = keep individual tiles
+#   target_crs: "EPSG:32645"   # output CRS for merge phase; defaults to gis.global_crs
+#   variables: [wse, wse_uncert, wse_qual]   # omit to extract all available variables
+#   quality_filters:
+#     max_wse_uncert: 0.3       # mask pixels with wse_uncert >= this value (metres)
+#     max_layover_impact: 0.3   # mask pixels with layover_impact >= this value (metres)

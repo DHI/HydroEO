@@ -71,10 +71,9 @@ def download_pixc(
 
     aoi_name = config["aoi"]["name"]
     product = config.get("product", "SWOT_L2_HR_PIXC_2.0")
-    base_dir = Path(project_dir) / "swot_pixc" / aoi_name
-    raw_dir = base_dir / "raw" / product
-    trimmed_dir = base_dir / "trimmed"
-    raster_dir = base_dir / "raster"
+    raw_dir = Path(project_dir) / "raw" / "swot_pixc" / aoi_name / product
+    trimmed_dir = Path(project_dir) / "processed" / "swot_pixc" / aoi_name
+    raster_dir = Path(project_dir) / "results" / aoi_name
     raw_dir.mkdir(parents=True, exist_ok=True)
     trimmed_dir.mkdir(parents=True, exist_ok=True)
     raster_dir.mkdir(parents=True, exist_ok=True)
