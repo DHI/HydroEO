@@ -99,6 +99,8 @@ Use `--verbose` / `-v` for debug logging on any command.
 
 Credentials can be set in the config file or as environment variables; environment variables take precedence. On Windows, credentials may need to be set via `os.environ` before calling `project.download()`.
 
+Note: A free CDSE account is required with CCM (Copernicus Contributing Missions) data access enabled. Register at https://dataspace.copernicus.eu/.
+
 ## Logging
 
 HydroEO logs to console (INFO) and file (DEBUG). Log files are written to `logs/` (auto-created, gitignored) as `HydroEO_YYYY-MM-DD_HH-MM-SS.log`.
