@@ -83,6 +83,27 @@ Download data using a bounding box and date range without a config file. See the
 - **ICESat-2** — `hydroeo fetch icesat2 --bbox "..." --start 2024-01-01 --end 2024-12-31` (no credentials)
 - **Sentinel-3/6** — `hydroeo fetch sentinel --product S3 --bbox "..." --creodias-username <u> --creodias-password <p>`
 - **COP-DEM** — `hydroeo fetch cop-dem --bbox "..." --cdse-username <u> --cdse-password <p>`
+  - Default: downloads the 30 m elevation raster (`DEM30`).
+  - Use `--dataset` with a comma-separated list to request additional layers:
+    `DEM30` (30 m elevation, default), `DEM90` (90 m elevation),
+    `EDM` (Editing Mask), `FLM` (Filling Mask), `HEM` (Height Error Mask), `WBM` (Water Body Mask).
+  - Each layer produces a separate `{output-filename}_{LAYER}.tif`.
+    ZIPs are downloaded once; all layers are extracted in a single pass.
+  - `DEM30` and `DEM90` cannot be combined (different CDSE datasets).
+  - Examples:
+    ```bash
+    # DEM30 only (default)
+    hydroeo fetch cop-dem --bbox "10 50 11 51" --cdse-username <u> --cdse-password <p>
+
+    # DEM30 + Water Body Mask + Editing Mask
+    hydroeo fetch cop-dem --bbox "..." --dataset "DEM30,WBM,EDM" --cdse-username <u> --cdse-password <p>
+
+    # 90 m DEM + Height Error Mask
+    hydroeo fetch cop-dem --bbox "..." --dataset "DEM90,HEM" --cdse-username <u> --cdse-password <p>
+
+    # All four quality masks (GLO-30 used by default for aux-only requests)
+    hydroeo fetch cop-dem --bbox "..." --dataset "EDM,FLM,HEM,WBM" --cdse-username <u> --cdse-password <p>
+    ```
 
 Use `--verbose` / `-v` for debug logging on any command.
 

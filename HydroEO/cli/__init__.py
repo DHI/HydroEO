@@ -598,25 +598,38 @@ def fetch_cop_dem(
         hide_input=True,
     ),
     dataset: str = typer.Option(
-        "COP-DEM_GLO-30-DGED/2023_1",
+        "DEM30",
         "--dataset",
-        help="COP-DEM dataset name (30 m or 90 m resolution). "
-        "Default: COP-DEM_GLO-30-DGED/2023_1 (30 m). "
-        "Alternative: COP-DEM_GLO-90-DGED/2023_1 (90 m).",
+        help=(
+            "Comma-separated list of product layers to download. "
+            "Valid values: DEM30 (30 m elevation, default), DEM90 (90 m elevation), "
+            "EDM (Editing Mask), FLM (Filling Mask), HEM (Height Error Mask), "
+            "WBM (Water Body Mask). "
+            "DEM30 and DEM90 cannot be combined. "
+            "Example: --dataset DEM30,WBM,EDM"
+        ),
     ),
     output_filename: str = typer.Option(
-        "cop_dem_merged.tif",
+        "cop_dem_merged",
         "--output-filename",
-        help="Name of the final merged DEM GeoTIFF.",
+        help=(
+            "Base name for the output GeoTIFFs (without extension). "
+            "Each layer produces {output_filename}_{LAYER}.tif. "
+            "Default: cop_dem_merged  →  cop_dem_merged_DEM30.tif, cop_dem_merged_WBM.tif, …"
+        ),
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable debug logging."
     ),
 ):
-    """Download, merge, and clip COP-DEM for a bounding box.
+    """Download, merge, and clip COP-DEM layers for a bounding box.
 
     Downloads Copernicus DEM tiles from CDSE, merges them, and clips to the
-    specified bounding box, producing a single GeoTIFF output.
+    specified bounding box.  One GeoTIFF is produced per requested layer.
+
+    Available layers: DEM30, DEM90, EDM, FLM, HEM, WBM.
+    ZIP archives are downloaded once and all layers are extracted in a single
+    pass, so requesting multiple layers incurs no extra download cost.
 
     Requires CDSE credentials (register at https://dataspace.copernicus.eu/
     and request CCM data access).
@@ -635,12 +648,31 @@ def fetch_cop_dem(
         )
         raise typer.Exit(code=1)
 
+    from HydroEO.downloaders.dem import VALID_LAYERS, download_cop_dem
+
+    layer_list = [s.strip().upper() for s in dataset.split(",") if s.strip()]
+
+    # Validate early so the user gets a clear error before any download starts
+    unknown = set(layer_list) - VALID_LAYERS
+    if unknown:
+        typer.echo(
+            f"Error: Unknown layer(s): {sorted(unknown)}. "
+            f"Valid options: {sorted(VALID_LAYERS)}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    if "DEM30" in layer_list and "DEM90" in layer_list:
+        typer.echo(
+            "Error: DEM30 and DEM90 cannot be requested together — "
+            "they target different CDSE datasets (GLO-30 vs GLO-90).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     minx, miny, maxx, maxy = parsed_bbox
     os.makedirs(output, exist_ok=True)
 
-    from HydroEO.downloaders.dem import download_cop_dem
-
-    output_path = download_cop_dem(
+    output_paths = download_cop_dem(
         minx=minx,
         miny=miny,
         maxx=maxx,
@@ -648,10 +680,11 @@ def fetch_cop_dem(
         output_dir=output,
         username=u,
         password=p,
-        dataset=dataset,
-        output_filename=output_filename,
+        layers=layer_list,
+        output_basename=output_filename,
     )
-    typer.echo(f"COP-DEM download complete. Output: {output_path}")
+    for layer, path in output_paths.items():
+        typer.echo(f"COP-DEM [{layer}] complete. Output: {path}")
 
 
 if __name__ == "__main__":

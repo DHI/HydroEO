@@ -153,7 +153,8 @@ hydroeo fetch sentinel \
 hydroeo fetch cop-dem \
   --bbox "-10 40 10 60" --output ./output \
   --cdse-username <user> --cdse-password <pass>
-# Optional: --dataset COP-DEM_GLO-90-DGED/2023_1 (90 m; default is 30 m)
+# Optional: --dataset "DEM90" (90 m; default is DEM30 = 30 m)
+# Add quality layers: --dataset "DEM30,WBM,EDM"   (EDM, FLM, HEM, WBM also available)
 ```
 
 Credentials can also be set as environment variables (`EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD`, `CREODIAS_USERNAME`, `CREODIAS_PASSWORD`, `CDSE_USERNAME`, `CDSE_PASSWORD`).
