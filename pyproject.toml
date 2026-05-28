@@ -23,7 +23,7 @@ dependencies = [
     "tqdm>=4.60.0,<5.0",
     "numpy>=1.26.0,<3.0",
     "pandas>=2.1.0,<3.0",
-    "geopandas>=1.0.0,<2.0",
+    "geopandas>=1.1.2,<2.0",
     "shapely>=2.0.0,<3.0",
     "matplotlib>=3.7.0,<4.0",
     "seaborn>=0.13.0,<1.0",
@@ -107,6 +107,15 @@ markers = [
     "integration: Live integration tests requiring valid API credentials",
     "api_contract: Credential-free tests for API endpoint reachability & schema validation",
     "sliderule: Tests that call the SlideRule API (skip with -m 'not sliderule' when API is down)",
+]
+
+[tool.uv]
+# Security: enforce minimum safe versions for vulnerable transitive dependencies
+# urllib3: CVE-2026-44432 (decompression bomb), CVE-2026-44431 (sensitive headers)
+# pillow: CVE-2026-40192 (FITS GZIP bomb), CVE-2026-42311 (OOB write PSD integer overflow)
+constraint-dependencies = [
+    "urllib3>=2.7.0",
+    "pillow>=12.2.0",
 ]
 
 [tool.ruff]
