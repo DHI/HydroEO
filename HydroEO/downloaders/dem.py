@@ -35,10 +35,26 @@ logger = logging.getLogger(__name__)
 CDSE_USERNAME = os.environ.get("CDSE_USERNAME", "your_username")
 CDSE_PASSWORD = os.environ.get("CDSE_PASSWORD", "your_password")
 
-# Dataset options:
-#   "COP-DEM_GLO-30-DGED/2023_1"   ← 30 m, full-resolution GeoTIFF
-#   "COP-DEM_GLO-90-DGED/2023_1"   ← 90 m, GeoTIFF
-DATASET = "COP-DEM_GLO-30-DGED/2023_1"
+# CDSE dataset identifiers by resolution
+_CDSE_GLO30 = "COP-DEM_GLO-30-DGED/2023_1"
+_CDSE_GLO90 = "COP-DEM_GLO-90-DGED/2023_1"
+
+# Product layers available in each COP-DEM ZIP archive.
+# Each layer maps to the filename suffix used inside the archive:
+#   DEM30/DEM90 → DEM/ subfolder   (elevation raster)
+#   EDM/FLM/HEM/WBM → AUXFILES/ subfolder (quality masks)
+VALID_LAYERS: set[str] = {"DEM30", "DEM90", "EDM", "FLM", "HEM", "WBM"}
+
+LAYER_SUFFIXES: dict[str, str] = {
+    "DEM30": "_DEM.tif",
+    "DEM90": "_DEM.tif",
+    "EDM": "_EDM.tif",  # Editing Mask
+    "FLM": "_FLM.tif",  # Filling Mask
+    "HEM": "_HEM.tif",  # Height Error Mask
+    "WBM": "_WBM.tif",  # Water Body Mask
+}
+
+DEFAULT_LAYERS: list[str] = ["DEM30"]
 
 OUTPUT_DIR = Path("/home/kaza/eodata/hydroeo/stage1-test/cop-dem")  # TODO
 
@@ -145,7 +161,7 @@ def download_tile(product: dict, token: str, output_dir: Path) -> Path:
 
 def download_cop_dem_for_polygon(
     aoi_geojson: dict,
-    dataset: str = DATASET,
+    dataset: str = _CDSE_GLO30,
     username: str = CDSE_USERNAME,
     password: str = CDSE_PASSWORD,
     output_dir: Path = OUTPUT_DIR,
@@ -399,6 +415,60 @@ def process(
         merge_clipped_tifs(clipped, output_path)
 
 
+# ---------------------------------------------------------------------------
+# Layer validation helpers
+# ---------------------------------------------------------------------------
+
+
+def _validate_layers(layers: list[str]) -> None:
+    """
+    Validate that all requested layer names are recognised and that DEM30 and
+    DEM90 are not requested simultaneously (they target different CDSE datasets).
+
+    Parameters
+    ----------
+    layers : list[str]
+        Layer names, already normalised to upper-case.
+
+    Raises
+    ------
+    ValueError
+        On unknown layer names or a DEM30 + DEM90 conflict.
+    """
+    unknown = set(layers) - VALID_LAYERS
+    if unknown:
+        raise ValueError(
+            f"Unknown layer(s): {sorted(unknown)}. "
+            f"Valid options are: {sorted(VALID_LAYERS)}"
+        )
+    if "DEM30" in layers and "DEM90" in layers:
+        raise ValueError(
+            "Cannot request DEM30 and DEM90 together — they target different "
+            "CDSE datasets (GLO-30 vs GLO-90). Request one DEM resolution at a time."
+        )
+
+
+def _resolve_cdse_dataset(layers: list[str]) -> str:
+    """
+    Return the CDSE dataset identifier string for the requested layers.
+
+    If DEM90 is present, the GLO-90 dataset is used (aux layers, if also
+    requested, are extracted from the same GLO-90 ZIP archives).
+    Otherwise, the GLO-30 dataset is used.
+
+    Parameters
+    ----------
+    layers : list[str]
+        Validated, upper-case layer names.
+
+    Returns
+    -------
+    str
+        CDSE OData dataset identifier.
+    """
+    return _CDSE_GLO90 if "DEM90" in layers else _CDSE_GLO30
+
+
 def download_cop_dem(
     minx: float,
     miny: float,
@@ -407,55 +477,80 @@ def download_cop_dem(
     output_dir: str,
     username: str = CDSE_USERNAME,
     password: str = CDSE_PASSWORD,
-    dataset: str = DATASET,
-    output_filename: str = "cop_dem_merged.tif",
-) -> Path:
+    layers: list[str] | None = None,
+    output_basename: str = "cop_dem_merged",
+) -> dict[str, Path]:
     """
-    Download, merge, and clip COP-DEM for a bounding box (bbox).
+    Download, merge, and clip one or more COP-DEM product layers for a bounding
+    box (bbox).
 
-    Full pipeline:
-      1. Create a GeoJSON polygon from the bbox
-      2. Download COP-DEM tiles from CDSE that intersect the bbox
-      3. Unzip tiles and extract _DEM.tif files
-      4. Merge all clipped tiles into a single output GeoTIFF
+    The same set of ZIP tiles is downloaded once from CDSE and all requested
+    layers are extracted in a single pass, then each layer is independently
+    clipped to the AOI and merged into a separate output GeoTIFF.
 
     Parameters
     ----------
     minx : float
-        Minimum longitude (western edge)
+        Minimum longitude (western edge).
     miny : float
-        Minimum latitude (southern edge)
+        Minimum latitude (southern edge).
     maxx : float
-        Maximum longitude (eastern edge)
+        Maximum longitude (eastern edge).
     maxy : float
-        Maximum latitude (northern edge)
+        Maximum latitude (northern edge).
     output_dir : str
-        Directory where the final merged DEM will be written
+        Directory where the merged output GeoTIFFs will be written.
     username : str
-        CDSE username (or set CDSE_USERNAME env var)
+        CDSE username (or set CDSE_USERNAME env var).
     password : str
-        CDSE password (or set CDSE_PASSWORD env var)
-    dataset : str
-        COP-DEM dataset name (default: COP-DEM_GLO-30-DGED/2023_1)
-    output_filename : str
-        Name of the final output GeoTIFF (default: cop_dem_merged.tif)
+        CDSE password (or set CDSE_PASSWORD env var).
+    layers : list[str] or None
+        Product layers to extract.  Each entry must be one of:
+        ``DEM30`` (30 m elevation), ``DEM90`` (90 m elevation),
+        ``EDM`` (Editing Mask), ``FLM`` (Filling Mask),
+        ``HEM`` (Height Error Mask), ``WBM`` (Water Body Mask).
+        ``DEM30`` and ``DEM90`` cannot be combined (they target different
+        CDSE datasets).  When only aux layers are requested (no DEM30/DEM90),
+        the GLO-30 dataset is used by default.
+        Defaults to ``["DEM30"]``.
+    output_basename : str
+        Base name (without extension) for the output files.  Each layer
+        produces ``{output_basename}_{LAYER}.tif``.
+        Defaults to ``"cop_dem_merged"``.
 
     Returns
     -------
-    Path to the final merged and clipped DEM GeoTIFF.
+    dict[str, Path]
+        Mapping of layer name → path to the merged and clipped GeoTIFF.
+        E.g. ``{"DEM30": Path(".../cop_dem_merged_DEM30.tif"), "WBM": ...}``.
 
     Raises
     ------
+    ValueError
+        On invalid layer names or a DEM30 + DEM90 conflict.
     RuntimeError
-        If no tiles are found or if no rasters overlap the AOI.
+        If no tiles are found or if no rasters overlap the AOI for a layer.
     """
+    if layers is None:
+        layers = list(DEFAULT_LAYERS)
+    layers = [lyr.upper() for lyr in layers]
+    _validate_layers(layers)
+
+    cdse_dataset = _resolve_cdse_dataset(layers)
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = Path(output_dir) / output_filename
-    if (output_path).exists():
-        logger.info(f"\nOutput already exists at: {output_path}")
-        return output_path
+    # Strip extension from basename so each layer gets its own suffix
+    stem = Path(output_basename).stem
+    output_paths: dict[str, Path] = {
+        layer: output_dir / f"{stem}_{layer}.tif" for layer in layers
+    }
+
+    # Idempotency: return immediately if every output already exists
+    if all(p.exists() for p in output_paths.values()):
+        logger.info("All requested COP-DEM outputs already exist.")
+        return output_paths
 
     # Create GeoJSON polygon from bbox
     aoi_geojson = {
@@ -471,11 +566,14 @@ def download_cop_dem(
         ],
     }
 
-    # Step 1: Download ZIP tiles
-    logger.info(f"Downloading COP-DEM tiles for bbox: ({minx}, {miny}, {maxx}, {maxy})")
+    # Step 1: Download ZIP tiles (single download for all layers)
+    logger.info(
+        f"Downloading COP-DEM tiles for bbox: ({minx}, {miny}, {maxx}, {maxy}) "
+        f"[dataset: {cdse_dataset}, layers: {layers}]"
+    )
     downloaded_zips = download_cop_dem_for_polygon(
         aoi_geojson=aoi_geojson,
-        dataset=dataset,
+        dataset=cdse_dataset,
         username=username,
         password=password,
         output_dir=output_dir / "zips",
@@ -487,59 +585,82 @@ def download_cop_dem(
             "Check that your bbox is valid and within coverage."
         )
 
-    # Step 2: Unzip tiles and extract _DEM.tif files
+    # Step 2: Unzip tiles — extract each requested layer to its own subdirectory
     tif_dir = output_dir / "tifs"
     tif_dir.mkdir(parents=True, exist_ok=True)
 
-    unzipped_tifs = []
+    layer_tif_dirs: dict[str, Path] = {}
+    for layer in layers:
+        layer_dir = tif_dir / layer
+        layer_dir.mkdir(parents=True, exist_ok=True)
+        layer_tif_dirs[layer] = layer_dir
+
+    layer_tifs: dict[str, list[Path]] = {layer: [] for layer in layers}
+
     for in_file in tqdm(downloaded_zips, desc="Unzipping COP-DEM tiles"):
         with zipfile.ZipFile(in_file, "r") as archive:
             for file in archive.namelist():
-                if file.endswith("_DEM.tif"):
-                    # Extract just the filename (e.g., "N50E010_0101_DEM.tif")
+                for layer in layers:
+                    suffix = LAYER_SUFFIXES[layer]
+                    if not file.endswith(suffix):
+                        continue
+
+                    dest_dir = layer_tif_dirs[layer]
                     filename = Path(file).name
-                    out_path = tif_dir / filename
+                    out_path = dest_dir / filename
 
                     if out_path.exists():
-                        unzipped_tifs.append(out_path)
+                        layer_tifs[layer].append(out_path)
                     else:
-                        # Extract the file to tif_dir with its full path structure
-                        archive.extract(file, tif_dir)
-                        # Move the file from nested path to tif_dir root
-                        extracted_path = tif_dir / file
+                        archive.extract(file, dest_dir)
+                        extracted_path = dest_dir / file
                         if extracted_path.exists() and extracted_path != out_path:
                             shutil.move(str(extracted_path), str(out_path))
 
-                        # Clean up any empty directories left behind
-                        for subdir in Path(tif_dir).glob("*/"):
+                        # Clean up any empty subdirectories left by extraction
+                        for subdir in dest_dir.glob("*/"):
                             if subdir.is_dir() and not list(subdir.iterdir()):
                                 shutil.rmtree(subdir, ignore_errors=True)
 
-                        unzipped_tifs.append(out_path)
+                        layer_tifs[layer].append(out_path)
 
-    if not unzipped_tifs:
-        raise RuntimeError(
-            "No _DEM.tif files found in downloaded ZIP archives. "
-            "The archive format may have changed."
-        )
+    # Validate that at least one TIF was found per layer
+    for layer, tifs in layer_tifs.items():
+        if not tifs:
+            raise RuntimeError(
+                f"No {LAYER_SUFFIXES[layer]} files found for layer '{layer}' "
+                "in the downloaded ZIP archives. "
+                "The archive format may have changed or the layer is unavailable "
+                f"for the selected dataset ({cdse_dataset})."
+            )
 
+    # Remove ZIPs — all layers have been extracted
     for f in downloaded_zips:
         f.unlink()
     shutil.rmtree(output_dir / "zips", ignore_errors=True)
 
-    # Step 3: Process (clip and merge) the DEM tiles
-    output_path = output_dir / output_filename
-    logger.info(f"Processing DEM tiles to {output_path}")
-    process(
-        aoi_geojson=aoi_geojson,
-        tif_paths=[str(p) for p in unzipped_tifs],
-        output_path=output_path,
-        target_crs="EPSG:4326",
-    )
+    # Step 3: Clip and merge each layer independently
+    for layer, tif_paths in layer_tifs.items():
+        out_path = output_paths[layer]
+        if out_path.exists():
+            logger.info(f"Layer '{layer}' output already exists, skipping: {out_path}")
+            continue
+        logger.info(f"Processing layer '{layer}' → {out_path}")
+        process(
+            aoi_geojson=aoi_geojson,
+            tif_paths=[str(p) for p in tif_paths],
+            output_path=out_path,
+            target_crs="EPSG:4326",
+        )
 
-    for f in unzipped_tifs:
-        f.unlink()
+    # Clean up extracted TIFs
+    for layer in layers:
+        for f in layer_tifs[layer]:
+            f.unlink(missing_ok=True)
     shutil.rmtree(tif_dir, ignore_errors=True)
 
-    logger.info(f"COP-DEM download and processing complete: {output_path}")
-    return output_path
+    logger.info(
+        "COP-DEM processing complete. Outputs: "
+        + ", ".join(f"{lyr}: {p}" for lyr, p in output_paths.items())
+    )
+    return output_paths

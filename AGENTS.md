@@ -370,6 +370,53 @@ Config validation occurs in `project.initialize()` (before any I/O):
 
 ---
 
+## COP-DEM Downloader (`HydroEO/downloaders/dem.py`)
+
+Standalone CLI-only utility — **not** integrated into the project pipeline.
+
+### Available Layers
+
+| Layer  | Description                | CDSE source     | Archive subfolder |
+|--------|----------------------------|-----------------|-------------------|
+| DEM30  | 30 m elevation (default)   | GLO-30-DGED     | `DEM/`            |
+| DEM90  | 90 m elevation             | GLO-90-DGED     | `DEM/`            |
+| EDM    | Editing Mask               | same as DEM res | `AUXFILES/`       |
+| FLM    | Filling Mask               | same as DEM res | `AUXFILES/`       |
+| HEM    | Height Error Mask          | same as DEM res | `AUXFILES/`       |
+| WBM    | Water Body Mask            | same as DEM res | `AUXFILES/`       |
+
+### Design
+
+- `--dataset` accepts a comma-separated list of layer names (e.g. `DEM30,WBM,EDM`).
+- ZIPs are downloaded **once**; all requested layers are extracted in a single pass.
+- Each layer produces an independent output: `{output_basename}_{LAYER}.tif`.
+- `DEM30` and `DEM90` cannot be combined (different CDSE datasets; raise `ValueError`).
+- Aux-only requests (no DEM layer) default to the GLO-30 dataset.
+- When `DEM90` is in the layer list, the GLO-90 dataset is used for all layers.
+- Default layer when none specified: `["DEM30"]`.
+
+### Key Constants / API
+
+```python
+VALID_LAYERS: set[str]           # {"DEM30","DEM90","EDM","FLM","HEM","WBM"}
+LAYER_SUFFIXES: dict[str, str]   # e.g. {"WBM": "_WBM.tif"}
+DEFAULT_LAYERS: list[str]        # ["DEM30"]
+_CDSE_GLO30: str                 # "COP-DEM_GLO-30-DGED/2023_1"
+_CDSE_GLO90: str                 # "COP-DEM_GLO-90-DGED/2023_1"
+
+_validate_layers(layers)         # raises ValueError on bad input
+_resolve_cdse_dataset(layers)    # returns CDSE dataset string
+
+download_cop_dem(
+    minx, miny, maxx, maxy,
+    output_dir, username, password,
+    layers=["DEM30"],            # list[str]
+    output_basename="cop_dem_merged",
+) -> dict[str, Path]             # {layer: output_path}
+```
+
+---
+
 ## References
 
 - **Config Schema:** See `configs/` for per-scenario templates and `notebooks/example_config.yaml` for the unified all-in-one reference

@@ -21,10 +21,15 @@ from rasterio.transform import from_bounds
 from shapely.geometry import box
 
 from HydroEO.downloaders.dem import (
-    download_cop_dem,
+    _resolve_cdse_dataset,
+    _validate_layers,
     clip_tif_to_aoi,
+    download_cop_dem,
     merge_clipped_tifs,
     process,
+    VALID_LAYERS,
+    _CDSE_GLO30,
+    _CDSE_GLO90,
 )
 
 
@@ -129,6 +134,66 @@ def synthetic_dem_multiple_zips(tmp_path):
         temp_dem.unlink()  # Clean up temp DEM
 
     return zips
+
+
+def _make_tif(path: Path, bbox: tuple, dtype=np.uint16) -> None:
+    """Write a minimal synthetic GeoTIFF to *path* covering *bbox*."""
+    width, height = 10, 10
+    info = np.iinfo(dtype) if np.dtype(dtype).kind in ("u", "i") else None
+    high = min(1000, info.max) if info is not None else None
+    if high is not None:
+        data = np.random.randint(1, high, (height, width), dtype=dtype)
+    else:
+        data = np.random.rand(height, width).astype(dtype)
+    transform = from_bounds(*bbox, width, height)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=1,
+        dtype=data.dtype,
+        crs=CRS.from_epsg(4326),
+        transform=transform,
+        compress="lzw",
+    ) as dst:
+        dst.write(data, 1)
+
+
+@pytest.fixture
+def synthetic_auxfiles_zip(tmp_path):
+    """
+    Create a ZIP that mirrors the real CDSE COP-DEM archive structure:
+
+        tile_name/
+        ├── DEM/tile_name_DEM.tif
+        └── AUXFILES/
+            ├── tile_name_EDM.tif
+            ├── tile_name_FLM.tif
+            ├── tile_name_HEM.tif
+            └── tile_name_WBM.tif
+    """
+    tile = "Copernicus_DSM_10_N50_00_E010_00"
+    bbox = (10.0, 50.0, 11.0, 51.0)
+    zip_file = tmp_path / "COP_DEM_auxfiles_tile.zip"
+
+    layers = {
+        f"{tile}/DEM/{tile}_DEM.tif": np.uint16,
+        f"{tile}/AUXFILES/{tile}_EDM.tif": np.uint8,
+        f"{tile}/AUXFILES/{tile}_FLM.tif": np.uint8,
+        f"{tile}/AUXFILES/{tile}_HEM.tif": np.float32,
+        f"{tile}/AUXFILES/{tile}_WBM.tif": np.uint8,
+    }
+
+    with zipfile.ZipFile(zip_file, "w") as archive:
+        for internal_path, dtype in layers.items():
+            tif_tmp = tmp_path / Path(internal_path).name
+            _make_tif(tif_tmp, bbox, dtype=dtype)
+            archive.write(tif_tmp, arcname=internal_path)
+            tif_tmp.unlink()
+
+    return zip_file
 
 
 # ============================================================================
@@ -333,37 +398,16 @@ def test_download_cop_dem_mocked(tmp_path):
     output_dir = tmp_path / "dem_output"
     output_dir.mkdir()
 
-    # Create a temporary DEM file to simulate a downloaded and unzipped tile
     test_dem = tmp_path / "test_dem_source.tif"
-    width, height = 10, 10
-    data = np.random.randint(100, 1000, (height, width), dtype=np.uint16)
-    transform = from_bounds(10.0, 50.0, 11.0, 51.0, width, height)
-    crs = CRS.from_epsg(4326)
+    _make_tif(test_dem, (10.0, 50.0, 11.0, 51.0))
 
-    with rasterio.open(
-        test_dem,
-        "w",
-        driver="GTiff",
-        height=height,
-        width=width,
-        count=1,
-        dtype=data.dtype,
-        crs=crs,
-        transform=transform,
-        compress="lzw",
-    ) as dst:
-        dst.write(data, 1)
-
-    # Mock the download and unzipping process
     with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
-        # Create a temporary ZIP file
         mock_zip = tmp_path / "mock_tile.zip"
         with zipfile.ZipFile(mock_zip, "w") as zf:
             zf.write(test_dem, arcname="COP_DEM_GLO_30/N50/E010/N50E010_0101_DEM.tif")
 
         mock_download.return_value = [mock_zip]
 
-        # Call download_cop_dem
         result = download_cop_dem(
             minx=10.0,
             miny=50.0,
@@ -372,17 +416,21 @@ def test_download_cop_dem_mocked(tmp_path):
             output_dir=str(output_dir),
             username="test_user",
             password="test_pass",
+            layers=["DEM30"],
         )
 
-        # Check that result file exists
-        assert result.exists()
-        assert result.name == "cop_dem_merged.tif"
+        # Returns a dict keyed by layer name
+        assert isinstance(result, dict)
+        assert "DEM30" in result
+        assert result["DEM30"].exists()
+        assert result["DEM30"].name == "cop_dem_merged_DEM30.tif"
 
-        # Verify CDSE was called with correct parameters
         mock_download.assert_called_once()
         call_kwargs = mock_download.call_args.kwargs
         assert call_kwargs["username"] == "test_user"
         assert call_kwargs["password"] == "test_pass"
+        # GLO-30 dataset used for DEM30
+        assert call_kwargs["dataset"] == _CDSE_GLO30
 
 
 @pytest.mark.unit
@@ -391,7 +439,6 @@ def test_download_cop_dem_no_tiles(tmp_path):
     output_dir = tmp_path / "dem_output"
     output_dir.mkdir()
 
-    # Mock the download to return no tiles
     with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
         mock_download.return_value = []
 
@@ -404,34 +451,18 @@ def test_download_cop_dem_no_tiles(tmp_path):
                 output_dir=str(output_dir),
                 username="test_user",
                 password="test_pass",
+                layers=["DEM30"],
             )
 
 
 @pytest.mark.unit
-def test_download_cop_dem_custom_dataset(tmp_path):
-    """Test download_cop_dem with custom dataset parameter."""
+def test_download_cop_dem_dem90(tmp_path):
+    """Test download_cop_dem with DEM90 selects the GLO-90 CDSE dataset."""
     output_dir = tmp_path / "dem_output"
     output_dir.mkdir()
 
     test_dem = tmp_path / "test_dem_source.tif"
-    width, height = 10, 10
-    data = np.random.randint(100, 1000, (height, width), dtype=np.uint16)
-    transform = from_bounds(10.0, 50.0, 11.0, 51.0, width, height)
-    crs = CRS.from_epsg(4326)
-
-    with rasterio.open(
-        test_dem,
-        "w",
-        driver="GTiff",
-        height=height,
-        width=width,
-        count=1,
-        dtype=data.dtype,
-        crs=crs,
-        transform=transform,
-        compress="lzw",
-    ) as dst:
-        dst.write(data, 1)
+    _make_tif(test_dem, (10.0, 50.0, 11.0, 51.0))
 
     with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
         mock_zip = tmp_path / "mock_tile.zip"
@@ -440,57 +471,6 @@ def test_download_cop_dem_custom_dataset(tmp_path):
 
         mock_download.return_value = [mock_zip]
 
-        custom_dataset = "COP-DEM_GLO-90-DGED/2023_1"
-        download_cop_dem(
-            minx=10.0,
-            miny=50.0,
-            maxx=11.0,
-            maxy=51.0,
-            output_dir=str(output_dir),
-            username="test_user",
-            password="test_pass",
-            dataset=custom_dataset,
-        )
-
-        # Check that the custom dataset was passed
-        call_kwargs = mock_download.call_args.kwargs
-        assert call_kwargs["dataset"] == custom_dataset
-
-
-@pytest.mark.unit
-def test_download_cop_dem_custom_output_filename(tmp_path):
-    """Test download_cop_dem with custom output filename."""
-    output_dir = tmp_path / "dem_output"
-    output_dir.mkdir()
-
-    test_dem = tmp_path / "test_dem_source.tif"
-    width, height = 10, 10
-    data = np.random.randint(100, 1000, (height, width), dtype=np.uint16)
-    transform = from_bounds(10.0, 50.0, 11.0, 51.0, width, height)
-    crs = CRS.from_epsg(4326)
-
-    with rasterio.open(
-        test_dem,
-        "w",
-        driver="GTiff",
-        height=height,
-        width=width,
-        count=1,
-        dtype=data.dtype,
-        crs=crs,
-        transform=transform,
-        compress="lzw",
-    ) as dst:
-        dst.write(data, 1)
-
-    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
-        mock_zip = tmp_path / "mock_tile.zip"
-        with zipfile.ZipFile(mock_zip, "w") as zf:
-            zf.write(test_dem, arcname="COP_DEM_GLO_30/N50/E010/N50E010_0101_DEM.tif")
-
-        mock_download.return_value = [mock_zip]
-
-        custom_filename = "custom_dem_output.tif"
         result = download_cop_dem(
             minx=10.0,
             miny=50.0,
@@ -499,8 +479,307 @@ def test_download_cop_dem_custom_output_filename(tmp_path):
             output_dir=str(output_dir),
             username="test_user",
             password="test_pass",
-            output_filename=custom_filename,
+            layers=["DEM90"],
         )
 
-        assert result.name == custom_filename
-        assert result.exists()
+        # GLO-90 dataset must be selected when DEM90 is requested
+        call_kwargs = mock_download.call_args.kwargs
+        assert call_kwargs["dataset"] == _CDSE_GLO90
+
+        assert "DEM90" in result
+        assert result["DEM90"].name == "cop_dem_merged_DEM90.tif"
+
+
+@pytest.mark.unit
+def test_download_cop_dem_custom_output_basename(tmp_path):
+    """Test download_cop_dem with a custom output_basename."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    test_dem = tmp_path / "test_dem_source.tif"
+    _make_tif(test_dem, (10.0, 50.0, 11.0, 51.0))
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_zip = tmp_path / "mock_tile.zip"
+        with zipfile.ZipFile(mock_zip, "w") as zf:
+            zf.write(test_dem, arcname="COP_DEM_GLO_30/N50/E010/N50E010_0101_DEM.tif")
+
+        mock_download.return_value = [mock_zip]
+
+        result = download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="test_user",
+            password="test_pass",
+            layers=["DEM30"],
+            output_basename="my_dem",
+        )
+
+        # Basename + layer suffix
+        assert "DEM30" in result
+        assert result["DEM30"].name == "my_dem_DEM30.tif"
+        assert result["DEM30"].exists()
+
+
+@pytest.mark.unit
+def test_download_cop_dem_custom_output_basename_with_extension(tmp_path):
+    """Extension in output_basename should be stripped gracefully."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    test_dem = tmp_path / "test_dem_source.tif"
+    _make_tif(test_dem, (10.0, 50.0, 11.0, 51.0))
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_zip = tmp_path / "mock_tile.zip"
+        with zipfile.ZipFile(mock_zip, "w") as zf:
+            zf.write(test_dem, arcname="COP_DEM_GLO_30/N50/E010/N50E010_0101_DEM.tif")
+
+        mock_download.return_value = [mock_zip]
+
+        result = download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="test_user",
+            password="test_pass",
+            layers=["DEM30"],
+            output_basename="my_dem.tif",  # extension supplied — should be stripped
+        )
+
+        assert result["DEM30"].name == "my_dem_DEM30.tif"
+
+
+# ============================================================================
+# TESTS: Layer validation helpers
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_validate_layers_valid():
+    """No error raised for all individually valid layer names."""
+    for layer in VALID_LAYERS:
+        _validate_layers([layer])  # should not raise
+
+
+@pytest.mark.unit
+def test_validate_layers_unknown():
+    """Unknown layer name raises ValueError."""
+    with pytest.raises(ValueError, match="Unknown layer"):
+        _validate_layers(["BOGUS"])
+
+
+@pytest.mark.unit
+def test_validate_layers_dem30_dem90_conflict():
+    """Requesting DEM30 and DEM90 together raises ValueError."""
+    with pytest.raises(ValueError, match="Cannot request DEM30 and DEM90 together"):
+        _validate_layers(["DEM30", "DEM90"])
+
+
+@pytest.mark.unit
+def test_validate_layers_mixed_valid_invalid():
+    """Mix of valid and invalid layer names still raises on the invalid one."""
+    with pytest.raises(ValueError, match="Unknown layer"):
+        _validate_layers(["DEM30", "NOPE"])
+
+
+@pytest.mark.unit
+def test_resolve_cdse_dataset_dem30():
+    """DEM30 resolves to the GLO-30 CDSE dataset."""
+    assert _resolve_cdse_dataset(["DEM30"]) == _CDSE_GLO30
+
+
+@pytest.mark.unit
+def test_resolve_cdse_dataset_dem90():
+    """DEM90 resolves to the GLO-90 CDSE dataset."""
+    assert _resolve_cdse_dataset(["DEM90"]) == _CDSE_GLO90
+
+
+@pytest.mark.unit
+def test_resolve_cdse_dataset_aux_only():
+    """Aux-layer-only requests default to the GLO-30 CDSE dataset."""
+    for layer in ("EDM", "FLM", "HEM", "WBM"):
+        assert _resolve_cdse_dataset([layer]) == _CDSE_GLO30
+
+
+@pytest.mark.unit
+def test_resolve_cdse_dataset_dem90_with_aux():
+    """DEM90 + aux layers still resolve to GLO-90."""
+    assert _resolve_cdse_dataset(["DEM90", "WBM"]) == _CDSE_GLO90
+
+
+# ============================================================================
+# TESTS: Multi-layer pipeline
+# ============================================================================
+
+
+@pytest.mark.unit
+def test_download_cop_dem_multi_layer(tmp_path, synthetic_auxfiles_zip):
+    """Request DEM30 + WBM; both output files should be created from one ZIP."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_download.return_value = [synthetic_auxfiles_zip]
+
+        result = download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="test_user",
+            password="test_pass",
+            layers=["DEM30", "WBM"],
+        )
+
+        assert set(result.keys()) == {"DEM30", "WBM"}
+        assert result["DEM30"].name == "cop_dem_merged_DEM30.tif"
+        assert result["WBM"].name == "cop_dem_merged_WBM.tif"
+        assert result["DEM30"].exists()
+        assert result["WBM"].exists()
+
+        # ZIPs downloaded only once (single CDSE call)
+        mock_download.assert_called_once()
+
+
+@pytest.mark.unit
+def test_download_cop_dem_all_aux_layers(tmp_path, synthetic_auxfiles_zip):
+    """Request all four aux layers in one call."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_download.return_value = [synthetic_auxfiles_zip]
+
+        result = download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="test_user",
+            password="test_pass",
+            layers=["EDM", "FLM", "HEM", "WBM"],
+        )
+
+        assert set(result.keys()) == {"EDM", "FLM", "HEM", "WBM"}
+        for layer, path in result.items():
+            assert path.exists(), f"Output for {layer} not found"
+            assert path.name == f"cop_dem_merged_{layer}.tif"
+
+        # Aux-only → GLO-30 dataset
+        assert mock_download.call_args.kwargs["dataset"] == _CDSE_GLO30
+
+
+@pytest.mark.unit
+def test_download_cop_dem_aux_only_defaults_to_glo30(tmp_path, synthetic_auxfiles_zip):
+    """Requesting only aux layers (no DEM30/DEM90) uses the GLO-30 dataset."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_download.return_value = [synthetic_auxfiles_zip]
+
+        download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="u",
+            password="p",
+            layers=["WBM"],
+        )
+
+        assert mock_download.call_args.kwargs["dataset"] == _CDSE_GLO30
+
+
+@pytest.mark.unit
+def test_download_cop_dem_dem90_with_aux(tmp_path, synthetic_auxfiles_zip):
+    """DEM90 + WBM uses the GLO-90 dataset for both layers."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_download.return_value = [synthetic_auxfiles_zip]
+
+        result = download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="u",
+            password="p",
+            layers=["DEM90", "WBM"],
+        )
+
+        assert mock_download.call_args.kwargs["dataset"] == _CDSE_GLO90
+        assert set(result.keys()) == {"DEM90", "WBM"}
+
+
+@pytest.mark.unit
+def test_download_cop_dem_default_layers(tmp_path):
+    """Calling download_cop_dem without layers= defaults to DEM30."""
+    output_dir = tmp_path / "dem_output"
+    output_dir.mkdir()
+
+    test_dem = tmp_path / "test_dem_source.tif"
+    _make_tif(test_dem, (10.0, 50.0, 11.0, 51.0))
+
+    with patch("HydroEO.downloaders.dem.download_cop_dem_for_polygon") as mock_download:
+        mock_zip = tmp_path / "mock_tile.zip"
+        with zipfile.ZipFile(mock_zip, "w") as zf:
+            zf.write(test_dem, arcname="COP_DEM_GLO_30/N50/E010/N50E010_0101_DEM.tif")
+        mock_download.return_value = [mock_zip]
+
+        result = download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(output_dir),
+            username="u",
+            password="p",
+        )
+
+        assert list(result.keys()) == ["DEM30"]
+        assert result["DEM30"].exists()
+
+
+@pytest.mark.unit
+def test_download_cop_dem_invalid_layer(tmp_path):
+    """Invalid layer name raises ValueError before any download."""
+    with pytest.raises(ValueError, match="Unknown layer"):
+        download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(tmp_path),
+            username="u",
+            password="p",
+            layers=["INVALID"],
+        )
+
+
+@pytest.mark.unit
+def test_download_cop_dem_dem30_dem90_conflict(tmp_path):
+    """Requesting DEM30 and DEM90 together raises ValueError."""
+    with pytest.raises(ValueError, match="Cannot request DEM30 and DEM90 together"):
+        download_cop_dem(
+            minx=10.0,
+            miny=50.0,
+            maxx=11.0,
+            maxy=51.0,
+            output_dir=str(tmp_path),
+            username="u",
+            password="p",
+            layers=["DEM30", "DEM90"],
+        )
