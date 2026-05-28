@@ -68,7 +68,7 @@ hydroeo = "HydroEO.cli:app"
 [project.optional-dependencies]
 dev = [
   "build>=1.0",
-  "pytest>=7.4",
+  "pytest>=9.0.3",
   "pytest-cov>=4.1",
   "pytest-mock>=3.12",
   "responses>=0.25",
@@ -80,7 +80,7 @@ dev = [
 ]
 
 test = [
-  "pytest>=7.4",
+  "pytest>=9.0.3",
   "pytest-cov>=4.1",
   "pytest-timeout>=2.3",
   "pytest-mock>=3.12",
@@ -113,9 +113,17 @@ markers = [
 # Security: enforce minimum safe versions for vulnerable transitive dependencies
 # urllib3: CVE-2026-44432 (decompression bomb), CVE-2026-44431 (sensitive headers)
 # pillow: CVE-2026-40192 (FITS GZIP bomb), CVE-2026-42311 (OOB write PSD integer overflow)
+# idna: CVE-2024-3651 (ReDoS via crafted domain)
+# nbconvert: GHSA-p4pg-7qwp-4r97 (arbitrary JS execution in output)
+# pymdown-extensions: GHSA-gw55-jm7q-6c8r (XSS via custom fence)
+# Pygments: CVE-2024-10005 (ReDoS in lexers)
 constraint-dependencies = [
     "urllib3>=2.7.0",
     "pillow>=12.2.0",
+    "idna>=3.15",
+    "nbconvert>=7.17.1",
+    "pymdown-extensions>=10.21.3",
+    "Pygments>=2.20.0",
 ]
 
 [tool.ruff]
