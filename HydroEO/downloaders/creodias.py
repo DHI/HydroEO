@@ -5,7 +5,6 @@ import requests
 from tqdm import tqdm
 import datetime
 
-from six import string_types
 import dateutil.parser
 from shapely.geometry import Polygon, shape
 import time
@@ -170,7 +169,7 @@ def _add_time(date):
 
 
 def _tastes_like_wkt_polygon(geometry):
-    if not isinstance(geometry, string_types):
+    if not isinstance(geometry, str):
         return False
 
     normalized = geometry.strip().upper()
@@ -217,7 +216,7 @@ def _parse_geometry(geom):
 
 
 def _parse_argvalue(value):
-    if isinstance(value, string_types):
+    if isinstance(value, str):
         value = value.strip()
         if not any(
             value.startswith(s[0]) and value.endswith(s[1])
