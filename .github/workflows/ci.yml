@@ -2,9 +2,14 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   lint:
@@ -20,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.13"]
 
     steps:
       - uses: actions/checkout@v6
@@ -37,14 +42,7 @@ jobs:
           pip install ".[test]"
 
       - name: Run unit tests (no network required)
-        run: pytest -m unit --cov=HydroEO --cov-report=xml -v
-
-      - name: Upload coverage report
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        uses: codecov/codecov-action@v4
-        with:
-          files: coverage.xml
-          flags: unit
+        run: pytest -m unit -v
 
   # integration-tests:
   #   # Only run when the relevant secrets are available (not on forks)
