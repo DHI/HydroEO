@@ -106,7 +106,7 @@ def mock_project_rivers(tmp_path):
 
 
 @pytest.mark.unit
-def test_initialize_reservoirs_with_pld_download(mock_project_reservoirs, monkeypatch):
+def test_initialize_reservoirs_with_pld_download(mock_project_reservoirs):
     """initialize_reservoirs calls _download_pld when enabled."""
     mock_project_reservoirs.to_download = ["swot"]
     mock_project_reservoirs.to_process = []
@@ -813,6 +813,3 @@ def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
         flows._assign_pld_id(mock_project_reservoirs)
 
         mock_sjoin.assert_called_once()
-
-
-# (Old SWORD tests removed - replaced with new comprehensive test suite above)
