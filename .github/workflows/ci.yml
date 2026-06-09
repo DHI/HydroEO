@@ -42,7 +42,7 @@ jobs:
           pip install ".[test]"
 
       - name: Run unit tests (no network required)
-        run: pytest -m unit v
+        run: pytest -m unit -v
 
   # integration-tests:
   #   # Only run when the relevant secrets are available (not on forks)
