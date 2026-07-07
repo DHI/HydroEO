@@ -1,10 +1,20 @@
 """General Utilities to aid in other modules"""
 
 import os
+import re
 import shutil
 import zipfile
 from typing import Union
 from tqdm import tqdm
+
+
+def normalize_path(path_str: str) -> str:
+    """Make a path from a config file robust to mixed / and \ separators,
+    regardless of what OS it was written on or is being read on."""
+    path_str = path_str.strip().strip('"').strip("'")  # strip stray quotes too
+    unified = re.sub(r'[\\/]+', '/', path_str)          # collapse any run of slashes to a single /
+    return os.path.normpath(unified)                    # let os.path convert to native separators
+
 
 
 def ifnotmakedirs(dir: str):

@@ -52,7 +52,7 @@ class Project:
         self.enddates = dict()
 
         ### Load in the config file and extract parameters
-        with open(self.config, "rt") as f:
+        with open(self.config, "rt", encoding="utf-8") as f:
             self.config = yaml.safe_load(f.read())
 
         if self.config is None:
@@ -63,7 +63,7 @@ class Project:
 
         ### Define the project directory for saving outputs, etc
         if "project" in self.config.keys():
-            self.dirs["main"] = self.config["project"]["main_dir"]
+            self.dirs["main"] = general.normalize_path(self.config["project"]["main_dir"])
             general.ifnotmakedirs(self.dirs["main"])
         else:
             raise Warning("Project directory must be defined within configuration file")
@@ -81,7 +81,7 @@ class Project:
             self.dirs["main"], "aux", "PLD", "PLD_subset.gpkg"
         )
         if "raw_pld_path" in hydroweb_cfg:
-            self.dirs["pld_raw"] = hydroweb_cfg["raw_pld_path"]
+            self.dirs["pld_raw"] = general.normalize_path(hydroweb_cfg["raw_pld_path"])
         self.keep_raw_pld = hydroweb_cfg.get("keep_raw_pld", False)
 
         # Set SWORD database paths and configuration
@@ -91,9 +91,9 @@ class Project:
             self.dirs["main"], "aux", "SWORD", "SWORD_subset.gpkg"
         )
         if "sword_subset_path" in sword_db_cfg:
-            self.dirs["sword_subset"] = sword_db_cfg["sword_subset_path"]
+            self.dirs["sword_subset"] = general.normalize_path(sword_db_cfg["sword_subset_path"])
         if "raw_sword_path" in sword_db_cfg:
-            self.dirs["sword_raw"] = sword_db_cfg["raw_sword_path"]
+            self.dirs["sword_raw"] = general.normalize_path(sword_db_cfg["raw_sword_path"])
             # Safety: if raw_sword_path is outside main_dir, force keep_raw_sword=True
             raw_path = os.path.abspath(sword_db_cfg["raw_sword_path"])
             main_path = os.path.abspath(self.dirs["main"])
@@ -119,7 +119,7 @@ class Project:
             or os.environ.get("EARTHDATA_PASSWORD")
             or os.environ.get("EDL_PASSWORD")
         )
-
+        
         if self.earthdata_user:
             os.environ["EARTHDATA_USERNAME"] = self.earthdata_user
             os.environ["EDL_USERNAME"] = self.earthdata_user
@@ -321,7 +321,8 @@ class Project:
                 self.to_process.append(name)
 
             if "download_dir" in self.config[name].keys():
-                self.dirs[name] = self.config[name]["download_dir"]
+                self.dirs[name] = general.normalize_path(self.config[name]["download_dir"])
+                #self.dirs[name] = Path(self.config[name]["download_dir"])
             else:
                 self.dirs[name] = os.path.join(self.dirs["main"], "raw", name)
 

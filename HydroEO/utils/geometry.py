@@ -84,7 +84,7 @@ def format_coord_list(coords: list):
         # unpack the 1d list into coordinate pairs
         new_list = list()
         while len(coords) > 0:
-            new_list.append((coords.pop[0], coords.pop(0)))
+            new_list.append((coords.pop(0), coords.pop(0)))
         coords = new_list
 
     return coords
