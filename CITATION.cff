@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software, please cite it using the metadata below.
+  HydroEO's core timeseries pipeline additionally implements a
+  methodology described in Schwatke et al. (2015) -- see the
+  "references" section below and HydroEO/utils/filters/basic_filters.py
+  -- please cite that publication as well when using the Kalman filter /
+  outlier rejection pipeline it implements.
+title: "HydroEO"
+version: "0.1.0"
+license: MIT
+repository-code: "https://github.com/DHI/HydroEO"
+authors:
+  - family-names: "Chewning"
+    given-names: "Connor"
+    affiliation: "DHI"
+  - family-names: "Kittel"
+    given-names: "Cecile"
+    affiliation: "DHI"
+  - family-names: "Zalite"
+    given-names: "Karlis"
+    affiliation: "DHI"
+references:
+  - type: article
+    authors:
+      - family-names: "Schwatke"
+        given-names: "Christian"
+      - family-names: "Dettmering"
+        given-names: "Denise"
+      - family-names: "Bosch"
+        given-names: "Wolfgang"
+      - family-names: "Seitz"
+        given-names: "Florian"
+    title: "DAHITI -- an innovative approach for estimating water level time series over inland waters using multi-mission satellite altimetry"
+    journal: "Hydrology and Earth System Sciences"
+    volume: 19
+    start: 4345
+    end: 4364
+    year: 2015
+    doi: "10.5194/hess-19-4345-2015"
+    notes: >-
+      HydroEO's core timeseries pipeline (see
+      HydroEO/utils/filters/basic_filters.py) follows the windowed
+      outlier rejection, multi-mission bias correction, and Kalman
+      filter approach described in this publication.
