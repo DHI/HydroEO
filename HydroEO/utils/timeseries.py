@@ -10,29 +10,47 @@ from HydroEO.utils import general
 logger = logging.getLogger(__name__)
 
 
+def _parse_bin_days(time_bin):
+    """Parse a simple '<N>D' style string into an integer number of days."""
+    s = str(time_bin).strip().upper()
+    if s.endswith("D"):
+        return int(s[:-1]) if s[:-1] else 1
+    raise ValueError("time_bin must be a string like '1D' or '5D'")
+
+
 @dataclass
 class Timeseries:
     df: pd.DataFrame
     date_key: str = "date"
     height_key: str = "height"
-    error_key: str = "error"
+    error_key: str = "ADM"
+    lat_key: str = "lat"
+    lon_key: str = "lon"
+    pass_key: str = "pass"
+    platform_key: str = "platform"
+    orbit_key: str = "orbit"
+    preset_error_key: str = None
 
-    def __post__init__(self):
-        if (
-            self.error_key not in self.df.columns
-            or self.height_key not in self.df.columns
-        ):
-            logger.warning("Height or error columns missing")
-            return
+    def __post_init__(self):
+        if self.height_key not in self.df.columns:
+            logger.warning(
+                "Height column '%s' missing from dataframe", self.height_key
+            )
+            # error_key is intentionally not checked here: it's populated
+            # later in the pipeline (by daily_mad_error), not expected to
+            # exist at construction time. Functions that actually need it
+            # (daily_mad_error, kalman) will raise a clear error at the
+            # point they read it if it's genuinely still missing then.
 
         if self.date_key not in self.df.columns:
             if isinstance(self.df.index, pd.DatetimeIndex):
                 self.df[self.date_key] = self.df.index
             else:
                 logger.warning(
-                    "date key is not in dataframe but index has been set as date column"
+                    "date_key '%s' is not in dataframe and index is not a "
+                    "DatetimeIndex, so it could not be auto-populated",
+                    self.date_key,
                 )
-                return
 
     def clean(self, filters: list, filter_params: dict = None):
         filter_params = filter_params or {}
