@@ -159,3 +159,4 @@ config_pixel_cloud.yaml
 notebooks/SWOT_Download.ipynb
 notebooks/swot_examples/*
 notebooks/swot_pixel_examples/*
+test_notebook.ipynb

@@ -102,6 +102,9 @@ def _assign_pld_id(prj: "Project") -> None:
     """Spatial join reservoirs with PLD to assign prior_lake_id."""
     pld = gpd.read_file(prj.dirs["pld"])
 
+    pld = pld.rename(
+        columns={"lake_id": "prior_lake_id", "res_id": "prior_res_id"}
+        )
     joined_gdf = gpd.sjoin_nearest(
         prj.reservoirs.gdf.to_crs(prj.local_crs),
         pld.to_crs(prj.local_crs),
@@ -112,10 +115,6 @@ def _assign_pld_id(prj: "Project") -> None:
         distance_col="dist_to_pld",
     )
     joined_gdf = joined_gdf.to_crs(prj.reservoirs.gdf.crs)
-
-    joined_gdf = joined_gdf.rename(
-        columns={"lake_id": "prior_lake_id", "res_id": "prior_res_id"}
-    )
 
     joined_gdf.loc[joined_gdf.prior_lake_id.isnull(), "prior_lake_id"] = -9999
 
