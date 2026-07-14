@@ -11,10 +11,12 @@ _reservoir_download.py's structure).
 import logging
 import os
 import datetime
+from io import StringIO
 
 import pandas as pd
+from tqdm import tqdm
 
-from HydroEO.satellites import icesat2, sentinel
+from HydroEO.satellites import icesat2
 from HydroEO.utils import general
 from ._river_common import _group_river_targets_by_waterbody, _iter_geometry_pieces
 from ._sentinel_shared import _sentinel6_use_earthdata, _download_sentinel_for_target

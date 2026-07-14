@@ -14,7 +14,7 @@ import os
 import geopandas as gpd
 import pandas as pd
 
-from HydroEO.satellites import swot, icesat2, sentinel
+from HydroEO.satellites import icesat2, sentinel
 from HydroEO.utils import general
 from ._river_common import (
     _group_river_targets_by_waterbody,

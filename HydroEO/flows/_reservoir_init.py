@@ -12,7 +12,6 @@ import os
 import geopandas as gpd
 
 from HydroEO.downloaders import hydroweb
-from HydroEO.utils import general
 
 from typing import TYPE_CHECKING
 

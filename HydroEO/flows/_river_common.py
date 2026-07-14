@@ -9,6 +9,11 @@ import logging
 
 import geopandas as gpd
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from HydroEO.project import Project
+
 logger = logging.getLogger(__name__)
 
 
