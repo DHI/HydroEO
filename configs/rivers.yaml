@@ -24,6 +24,29 @@ gis:
   global_crs: 'EPSG:4326'
 
 
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+# Tip: set credentials as environment variables to avoid storing secrets in files.
+#
+#   earthaccess : EARTHDATA_USERNAME / EARTHDATA_PASSWORD
+#   hydroweb    : EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+#   creodias    : CREODIAS_USERNAME / CREODIAS_PASSWORD
+
+earthaccess:           # NASA Earthdata — required for SWOT download
+  username: ''       # or set EARTHDATA_USERNAME
+  password: ''      # or set EARTHDATA_PASSWORD
+  token: ''
+
+hydroweb:              # HydroWeb API — required for Prior Lake Database (PLD) matching
+  api_key: ""        # or set EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+  raw_pld_path: ""  # optional: reuse an existing PLD zip or folder
+  keep_raw_pld: true  # true = keep raw PLD zip after subset; false = delete
+
+creodias:              # CREODIAS/CDSE — required for Sentinel-3 and Sentinel-6
+  username: ""       # or set CREODIAS_USERNAME
+  password: ""       # or set CREODIAS_PASSWORD
+
+
+
 # ─── SWORD DATABASE ───────────────────────────────────────────────────────────
 # Optional shortcuts to skip download or subsetting steps.
 sword_db:
