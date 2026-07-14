@@ -69,6 +69,7 @@ def _resolve_pass_groups(df, date_key, pass_key=None, platform_key=None, orbit_k
 
     Returns a pandas Series of group labels (strings), same index as df.
     """
+    n = len(df)
     group = pd.Series(pd.NA, index=df.index, dtype=object)
 
     if pass_key and pass_key in df.columns:

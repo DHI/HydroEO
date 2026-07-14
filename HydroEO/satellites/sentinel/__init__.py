@@ -96,12 +96,16 @@ def subset(
     )
 
 
-def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
+def extract_observations(
+    src_dir, dst_path, features, sigma0_max=1e5, processed_log_path=None, overwrite=False
+):
     return _preprocess.extract_observations(
         src_dir=src_dir,
         dst_path=dst_path,
         features=features,
         sigma0_max=sigma0_max,
+        processed_log_path=processed_log_path,
+        overwrite=overwrite,
     )
 
 

@@ -310,10 +310,9 @@ class Project:
             # User-configurable overrides for the merge()/Kalman/svr_radial
             # pipeline (see flows.DEFAULT_RIVER_MERGING_OPTIONS for every
             # available key and its default). Set directly on
-            # prj.rivers rather than routed through the shared
-            # project-level self.merging_options reservoirs use, so a
-            # project with both reservoirs and rivers configured doesn't
-            # have them silently collide -- see flows._merge_timeseries's
+            # prj.rivers, mirroring how prj.reservoirs.merging_options
+            # works, rather than routed through the shared project-level
+            # self.merging_options -- see flows._merge_timeseries's
             # per-target-type override lookup.
             # NOTE: DEFAULT_RIVER_MERGING_OPTIONS is currently a direct
             # copy of the reservoir defaults and has NOT been
@@ -552,43 +551,74 @@ class Project:
             )
 
     def update(self):
-        # get the current date of the system
+        """Extend existing downloads through today.
+
+        Re-runs download() for every configured mission with that
+        mission's enddate temporarily replaced by today's date
+        (startdate is left as configured). This relies on each
+        download function's own de-duplication rather than
+        reconstructing "resume from latest observation" logic here:
+
+        - SWOT (satellites.swot._download.download), Sentinel-3/6 via
+          CREODIAS (satellites.sentinel.download), and Sentinel-6 via
+          EarthData (satellites.sentinel.download_earthdata) all track
+          already-downloaded granules in a `downloaded.log` file per
+          directory and only fetch what's new -- safe and cheap to
+          re-run the full configured range.
+        - ICESat-2 (satellites.icesat2.download.query) has no such
+          de-duplication: it always re-submits the full
+          [startdate, enddate] request to SlideRule and overwrites
+          atl13.parquet from scratch each call. Still correct (the
+          file always reflects the complete range afterward), but not
+          incremental -- update() costs roughly the same as a fresh
+          download() for ICESat-2 specifically.
+
+        NOTE: this intentionally does not use the per-mission
+        get_latest_obs_date() helpers (satellites/{swot,icesat2,
+        sentinel}) to also advance startdate and skip already-covered
+        history. satellites.swot.preprocess.get_latest_obs_date()
+        currently returns the MAX observation date across all
+        reservoirs rather than the min, which would silently skip the
+        gap for any reservoir with sparser data if used as a shared
+        resume point -- fix that first if startdate-advancing is
+        wanted here.
+
+        This previously called self.reservoirs.download(...) /
+        self.rivers.download(...), methods that do not exist on
+        Reservoirs/Rivers (waterbody.py defines only report()) with a
+        keyword signature (update_existing, enddate_overrides) that
+        flows.download_reservoirs/download_rivers never implemented --
+        every call raised AttributeError.
+        """
+        if not hasattr(self, "reservoirs") and not hasattr(self, "rivers"):
+            logger.warning(
+                "update() has no effect: neither 'reservoirs' nor 'rivers' is "
+                "configured for this project. (swot_raster/swot_pixc are "
+                "one-off extraction pipelines, not incremental archives, and "
+                "are not affected by update().)"
+            )
+            return
+
         current_date = datetime.date.today()
         logger.info("Updating download archives up to %s", current_date)
-        current_date = [current_date.year, current_date.month, current_date.day]
+        current_date_list = [current_date.year, current_date.month, current_date.day]
 
-        if hasattr(self, "reservoirs"):
-            if "swot" in self.to_download:
-                logger.info("Updating SWOT Lake SP product")
-            if "icesat2" in self.to_download:
-                logger.info("Updating Icesat-2 ATL13 product")
-            if "sentinel3" in self.to_download:
-                logger.info("Updating Sentinel-3 Hydro product")
-            if "sentinel6" in self.to_download:
-                logger.info("Updating Sentinel-6 Hydro product")
+        mission_labels = {
+            "swot": "SWOT Lake SP / Hydrocron product",
+            "icesat2": "ICESat-2 ATL13 product",
+            "sentinel3": "Sentinel-3 Hydro product",
+            "sentinel6": "Sentinel-6 Hydro product",
+        }
 
-            self.reservoirs.download(
-                to_download=self.to_download,
-                startdates=self.startdates,
-                enddates=self.enddates,
-                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
-                creodias_credentials_provider=self._require_creodias_credentials,
-                update_existing=True,
-                enddate_overrides={
-                    mission: current_date for mission in self.to_download
-                },
-            )
+        original_enddates = dict(self.enddates)
+        try:
+            for mission in self.to_download:
+                self.enddates[mission] = current_date_list
+                logger.info("Updating %s", mission_labels.get(mission, mission))
 
-        if hasattr(self, "rivers"):
-            self.rivers.download(
-                to_download=self.to_download,
-                startdates=self.startdates,
-                enddates=self.enddates,
-                update_existing=True,
-                enddate_overrides={
-                    mission: current_date for mission in self.to_download
-                },
-            )
+            self.download()
+        finally:
+            self.enddates = original_enddates
 
     def create_timeseries(self):
         warnings.filterwarnings("ignore", module="pyogrio\\..*")
@@ -608,26 +638,23 @@ class Project:
     def _infer_target_type(self, target_type=None):
         """
         Resolve which target type (reservoirs/rivers) a per-target call
-        applies to. If target_type is given explicitly, use it. Otherwise,
-        infer it automatically when the project only has one of the two
-        configured -- the common case -- and require an explicit choice
-        only when both are configured, since there's no way to guess
-        correctly between them.
+        applies to. If target_type is given explicitly, use it (mainly
+        useful for tests or direct flows.* calls on a Project built
+        without going through normal config validation). Otherwise,
+        infer it from whichever of prj.reservoirs/prj.rivers is present.
+
+        validate_config() only allows one of 'reservoirs'/'rivers'/
+        'swot_raster'/'swot_pixc' to be active per config, so a validly
+        constructed Project never has both prj.reservoirs and
+        prj.rivers set -- there is no "both configured" case to
+        disambiguate here.
         """
         if target_type is not None:
             return target_type
-        has_reservoirs = hasattr(self, "reservoirs")
-        has_rivers = hasattr(self, "rivers")
-        if has_reservoirs and not has_rivers:
+        if hasattr(self, "reservoirs"):
             return "reservoirs"
-        if has_rivers and not has_reservoirs:
+        if hasattr(self, "rivers"):
             return "rivers"
-        if has_reservoirs and has_rivers:
-            raise ValueError(
-                "Both reservoirs and rivers are configured for this "
-                "project -- specify target_type='reservoirs' or "
-                "target_type='rivers' explicitly."
-            )
         raise ValueError("Neither reservoirs nor rivers is configured for this project.")
 
     def list_target_observations(self, id, target_type=None):

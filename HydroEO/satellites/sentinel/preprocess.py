@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from HydroEO.utils import general
 from HydroEO.utils.general import center_longitude
 
 
@@ -805,13 +806,41 @@ def __format_coord_bounds(aoi):
     return shapely.Polygon(geometry.format_coord_list(aoi)).bounds
 
 
-def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
-    """Extract Sentinel observations to shapefile within feature geometries."""
+def extract_observations(
+    src_dir, dst_path, features, sigma0_max=1e5, processed_log_path=None, overwrite=False
+):
+    """Extract Sentinel observations to shapefile within feature geometries.
+
+    Parameters
+    ----------
+    processed_log_path : str, optional
+        Path to a newline-delimited log of subset file names already
+        incorporated into dst_path (see HydroEO.utils.general.
+        read_id_log/append_id_log/write_id_log). If given, only files
+        NOT yet in the log are read, and the resulting new observations
+        are appended to (and de-duplicated against) the existing
+        dst_path rather than overwriting it. If None (default),
+        behaves exactly as before: reads every file in src_dir and
+        overwrites dst_path from scratch.
+    overwrite : bool, optional
+        If True, ignores processed_log_path's existing contents,
+        re-reads every file in src_dir, overwrites dst_path from
+        scratch, and replaces processed_log_path wholesale with
+        exactly the files just read.
+    """
+    incremental = processed_log_path is not None and not overwrite
+    already_processed = (
+        general.read_id_log(processed_log_path) if incremental else set()
+    )
+
     # read data for each availble option in directory
     gdf_list = list()
+    files_read = list()
     files = list(os.listdir(src_dir))
 
     for file in files:
+        if incremental and file in already_processed:
+            continue
         try:
             file_split = file.split("_")
             if file_split[0] == "sub":  # assume that we have subsetted the data already
@@ -857,14 +886,29 @@ def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
 
                         # if we have data for the reservoir add it to the reservoir specific dataframe
                         gdf_list.append(data_gdf)
+
+                files_read.append(file)
         except Exception:
             logger.exception("Unable to open sentinel file: %s", file)
+            # Not added to files_read: a file that raised here (e.g. a
+            # partially-written/corrupt subset) is retried on the next
+            # extraction run rather than being marked processed and
+            # silently skipped forever.
 
     # once all tracks are processed combine them and save in the destination dir
     if len(gdf_list) > 0:
         observations = pd.concat(gdf_list).reset_index(drop=True)
         observations = observations.set_crs(features.crs)
-        observations.to_file(dst_path, driver="GPKG")
+        if incremental:
+            general.append_and_dedupe_gpkg(dst_path, observations)
+        else:
+            observations.to_file(dst_path, driver="GPKG")
+
+    if processed_log_path:
+        if overwrite:
+            general.write_id_log(processed_log_path, files_read)
+        elif files_read:
+            general.append_id_log(processed_log_path, files_read)
 
 
 def get_latest_obs_date(data_dir, product):
