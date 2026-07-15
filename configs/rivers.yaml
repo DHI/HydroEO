@@ -100,10 +100,12 @@ rivers:
   #   svr_radial_gamma: 0.00438
 
 
-# ─── SWOT (REQUIRED — see quick-start note above) ────────────────────────────
-# Rivers require SWOT Hydrocron for at least node/reach WSE. This section
-# must be enabled (download: true, process: true) or nothing will download,
-# even with a valid aoi_path/SWORD setup above.
+# ─── SWOT (default primary source — see quick-start note above) ─────────────
+# SWOT Hydrocron is the natural default source for node/reach WSE, but it is
+# not strictly mandatory on its own: at least one mission below (this section,
+# or icesat2/sentinel3/sentinel6 further down) must have download: true, or
+# nothing will download -- download_rivers() warns and returns early if none
+# are enabled, even with a valid aoi_path/SWORD setup above.
 swot:
   download: true
   process: true

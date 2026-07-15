@@ -99,6 +99,19 @@ Applied during `create_timeseries()`. Configured per mission under `processing_f
 | `hampel` | Spike detection using a sliding median window |
 | `rolling_median` | Smoothing pass using a rolling median |
 
+## Merging
+
+Applied during `create_timeseries()`, after cleaning — combines all enabled missions' cleaned observations into one `merged_timeseries.csv` per reservoir using bias correction, SVR, and a Kalman filter. Override any key in `flows.DEFAULT_RESERVOIR_MERGING_OPTIONS` via a `merging_options` dict under `reservoirs:` in your config:
+
+```yaml
+reservoirs:
+  merging_options:
+    svr_radial_err: 1.0
+    svr_radial_gamma: 0.00438
+```
+
+**If you use this pipeline, please also cite Schwatke et al. (2015)** — see the root [README](../README.md)'s Citation section. (DAHITI covers the windowed ADM-based outlier/uncertainty weighting, SVR, and Kalman filter specifically; the bias correction and multi-mission-combination logic are HydroEO's own contributions, not sourced from that paper.)
+
 ## Output structure
 
 ```

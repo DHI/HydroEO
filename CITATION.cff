@@ -4,21 +4,31 @@ message: >-
   HydroEO's core timeseries pipeline additionally implements a
   methodology described in Schwatke et al. (2015) -- see the
   "references" section below and HydroEO/utils/filters/basic_filters.py
-  -- please cite that publication as well when using the Kalman filter /
-  outlier rejection pipeline it implements.
+  -- please cite that publication as well when using the Kalman filter,
+  SVR, or windowed ADM-based outlier/uncertainty weighting it
+  implements.
 title: "HydroEO"
 version: "0.1.0"
 license: MIT
 repository-code: "https://github.com/DHI/HydroEO"
 authors:
-  - family-names: "Chewning"
-    given-names: "Connor"
-    affiliation: "DHI"
   - family-names: "Kittel"
     given-names: "Cecile"
     affiliation: "DHI"
+  - family-names: "Chewning"
+    given-names: "Connor"
+    affiliation: "DHI"
   - family-names: "Zalite"
     given-names: "Karlis"
+    affiliation: "DHI"
+  - family-names: "Monica"
+    given-names: "Coppo Frias"
+    affiliation: "DHI"
+  - family-names: "Sarah"
+    given-names: "Franze"
+    affiliation: "DHI"
+  - family-names: "Paul"
+    given-names: "Senty"
     affiliation: "DHI"
 references:
   - type: article
@@ -41,5 +51,7 @@ references:
     notes: >-
       HydroEO's core timeseries pipeline (see
       HydroEO/utils/filters/basic_filters.py) follows the windowed
-      outlier rejection, multi-mission bias correction, and Kalman
-      filter approach described in this publication.
+      ADM-based outlier/uncertainty weighting, SVR, and Kalman filter
+      approach described in this publication. The multi-mission bias
+      correction and mission-combination logic are this codebase's own
+      contributions, not sourced from this paper.

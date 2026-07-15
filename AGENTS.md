@@ -16,7 +16,9 @@ This document provides codebase knowledge for AI coding agents (Claude, Copilot,
 
 2. **Rivers** (`rivers` branch)
    - SWOT Hydrocron API download (public, no credentials needed)
+   - Multi-satellite data download (SWOT Lake SP, ICESat-2 ATL13, Sentinel-3, Sentinel-6)
    - SWORD v17b database integration for river node/reach matching
+   - Full timeseries extraction, cleaning, filtering, and multi-mission merge aligned to SWORD reaches or nodes
    - Output: per-river Hydrocron timeseries (CSV)
 
 3. **SWOT Raster Tiles** (`swot_raster` branch)
