@@ -10,6 +10,9 @@ Every name below (public and private) is re-exported here so that
 against the old single-file module, including for tests that patch
 private helpers via `patch.object(flows, "_name")`.
 """
+import mikeio  # noqa: F401 -- re-exported so `flows.mikeio` resolves (see _reservoir_pipeline.py)
+
+from HydroEO import plotting  # noqa: F401 -- re-exported so `flows.plotting`/`HydroEO.flows.plotting` resolves
 
 from ._reservoir_init import (
     _assign_pld_id as _assign_pld_id,

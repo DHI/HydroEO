@@ -57,7 +57,7 @@ def _download_pld(prj: "Project") -> None:
 
     logger.info("Downloading PLD")
     download_dir = os.path.dirname(pld_path)
-    bounds = list(prj.reservoirs.gdf.unary_all.bounds)
+    bounds = list(prj.reservoirs.gdf.union_all().bounds)
     raw_pld_path = prj.dirs.get("pld_raw")
 
     # Determine if raw_pld_path is inside project main_dir
