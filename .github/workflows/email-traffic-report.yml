@@ -1,0 +1,78 @@
+name: Email traffic report
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every Monday at 08:30 UTC
+    - cron: "30 8 * * 1"
+
+jobs:
+  traffic-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Fetch traffic data and build report
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          OWNER="DHI"
+          REPO="HydroEO"
+
+          gh api "repos/${OWNER}/${REPO}/traffic/views"            > views.json
+          gh api "repos/${OWNER}/${REPO}/traffic/clones"           > clones.json
+          gh api "repos/${OWNER}/${REPO}/traffic/popular/referrers" > referrers.json
+          gh api "repos/${OWNER}/${REPO}/traffic/popular/paths"    > paths.json
+
+          REPORT_DATE=$(date -u "+%Y-%m-%d %H:%M UTC")
+
+          {
+            echo "GitHub Traffic Report -- ${OWNER}/${REPO}"
+            echo "Generated: ${REPORT_DATE}"
+            echo "Note: Traffic data covers approximately the last 14 days."
+            echo "========================================================"
+            echo ""
+
+            echo "=== Views (last 14 days) ==="
+            TOTAL_VIEWS=$(jq '.count' views.json)
+            UNIQUE_VIEWS=$(jq '.uniques' views.json)
+            echo "Total views:  ${TOTAL_VIEWS}"
+            echo "Unique views: ${UNIQUE_VIEWS}"
+            echo ""
+            echo "Daily breakdown:"
+            jq -r '.views[] | "  \(.timestamp[0:10])  views: \(.count)  uniques: \(.uniques)"' views.json
+            echo ""
+
+            echo "=== Clones (last 14 days) ==="
+            TOTAL_CLONES=$(jq '.count' clones.json)
+            UNIQUE_CLONES=$(jq '.uniques' clones.json)
+            echo "Total clones:  ${TOTAL_CLONES}"
+            echo "Unique clones: ${UNIQUE_CLONES}"
+            echo ""
+            echo "Daily breakdown:"
+            jq -r '.clones[] | "  \(.timestamp[0:10])  clones: \(.count)  uniques: \(.uniques)"' clones.json
+            echo ""
+
+            echo "=== Top Referrers ==="
+            jq -r '.[] | "  \(.referrer)  views: \(.count)  uniques: \(.uniques)"' referrers.json
+            echo ""
+
+            echo "=== Top Paths ==="
+            jq -r '.[] | "  \(.path)\n    views: \(.count)  uniques: \(.uniques)"' paths.json
+            echo ""
+          } > report.txt
+
+          cat report.txt
+
+      - name: Send email
+        uses: dawidd6/action-send-mail@v6
+        with:
+          server_address: ${{ secrets.SMTP_HOST }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "GitHub Traffic Report -- DHI/HydroEO"
+          to: ${{ secrets.TRAFFIC_REPORT_TO }}
+          from: GitHub Actions <${{ secrets.SMTP_USERNAME }}>
+          body: file://report.txt
