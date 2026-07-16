@@ -134,30 +134,6 @@ setup_logging(logging.DEBUG)                            # both console and file 
 setup_logging(logging.INFO, enable_file_logging=False)  # console only
 ```
 
-## Traffic report (automated email)
-
-A scheduled GitHub Actions workflow at `.github/workflows/email-traffic-report.yml` sends a weekly traffic summary email every Monday at 08:30 UTC.
-It can also be triggered at any time via **Actions → Email traffic report → Run workflow**.
-
-### Required repository secrets
-
-| Secret | Description |
-| --- | --- |
-| `TRAFFIC_TOKEN` | A GitHub personal access token (classic or fine-grained) with **read** access to repository traffic for `DHI/HydroEO`. The token owner must have at least write access to the repository. |
-| `SMTP_HOST` | SMTP server hostname (e.g. `smtp.gmail.com`). |
-| `SMTP_PORT` | SMTP server port (e.g. `587` for STARTTLS). |
-| `SMTP_USERNAME` | SMTP login / sender address. |
-| `SMTP_PASSWORD` | SMTP password or app password. |
-| `TRAFFIC_REPORT_TO` | Recipient email address(es), comma-separated. |
-
-Add these secrets under **Settings → Secrets and variables → Actions → New repository secret**.
-
-### Data retention note
-
-The GitHub traffic API returns data for approximately the **last 14 days** only.
-Running the workflow weekly ensures no data window is missed.
-If longer-term history is needed, consider extending the workflow to upload the raw JSON files as build artifacts or commit them to a dedicated branch.
-
 ## Running tests
 
 ```sh

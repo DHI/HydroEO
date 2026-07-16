@@ -1,3 +1,6 @@
+# Sends a weekly GitHub repository traffic report by email.
+# Fetches views, clones, referrers, and popular paths for DHI/HydroEO, then
+# formats the latest GitHub traffic data into a plain-text email for maintainers.
 name: Email traffic report
 
 on:
