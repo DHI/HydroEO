@@ -1,14 +1,12 @@
-"""Per-target run_config persistence, exclusions, and spatial/reach-slope
+"""
+Per-target run_config persistence, exclusions, and spatial/reach-slope
 correction caching -- shared by both reservoirs and rivers.
 
 One YAML file per target ({output}/{id}/run_config.yaml) that is
-simultaneously: (a) a human-readable log of decisions made about this
-target, (b) the actual source of truth _merge_engine._merge_timeseries
-reads to apply those decisions, and (c) something a user can hand-edit
-directly for a fully config-driven workflow.
-
-None of this is itself patched as a sibling of any single caller in the
-test suite, so it's free to live in its own module.
+simultaneously: (a) readable log of decisions made about this
+target, (b) what _merge_engine._merge_timeseries
+reads to apply those decisions, and (c) hand-editable
+for a fully config-driven workflow.
 """
 
 import logging
@@ -42,14 +40,14 @@ def _get_target_ids(prj: "Project", target_type: str):
 
 def _target_centroid(prj: "Project", target_type: str, id):
     """
-    Return (lat, lon) of a target's own geometry centroid -- the
-    reservoir polygon for target_type="reservoirs", or the SWORD
-    node/reach geometry for target_type="rivers" -- computed in a
-    projected (local) CRS for accuracy, then converted back to lat/lon.
+    Return (lat, lon) of a target's own geometry centroid: 
+    - the reservoir polygon for target_type="reservoirs"
+    - the SWORD node/reach geometry for target_type="rivers"
+    computed in a projected (local) CRS for accuracy, then converted back to lat/lon.
     Used as the reference location for apply_distance_penalty/
-    apply_spatial_correction. Returns (None, None) if the target's
-    geometry can't be found, so callers can treat that as "skip" rather
-    than fail.
+    apply_spatial_correction. 
+    
+    Returns (None, None) if the target's geometry can't be found.
     """
     try:
         if target_type == "reservoirs":
@@ -75,7 +73,7 @@ def _target_centroid(prj: "Project", target_type: str, id):
 
 
 def _reservoir_centroid(prj: "Project", id):
-    """Backward-compatible wrapper -- see _target_centroid."""
+    """Backward-compatible wrapper, see _target_centroid."""
     return _target_centroid(prj, "reservoirs", id)
 
 
@@ -84,20 +82,15 @@ def _get_or_fit_spatial_correction_model(
     recalibrate=False, **fit_kwargs,
 ):
     """
-    Load a persisted spatial correction model for this target if one
-    exists, or fit a fresh one and persist it. Works identically for
-    reservoirs and river targets -- see _target_centroid.
+    Load existing spatial correction model if it exists or generates new
+    model. Works identically for reservoirs and river targets, see _target_centroid.
 
-    This is deliberately NOT re-fit automatically every run: doing so
-    would make past corrections shift retroactively every time new
-    dense-source data arrives, since the fitted slope would change.
-    Pass recalibrate=True to explicitly force a re-fit (e.g. as a
-    deliberate, occasional recalibration step) -- not something that
-    should happen as a silent side effect of routine reprocessing.
+    This is only re-fit is requested (recalibrate = True), to avoid 
+    changing past corrections silently.
 
     Returns None if no model exists yet and there isn't enough dense
-    source data to fit one (see fit_spatial_correction_model) -- callers
-    should treat this the same as "no correction available."
+    source data to fit one (see fit_spatial_correction_model) 
+    Equivalent to "no correction available."
     """
     model_path = os.path.join(
         prj.dirs["output"], f"{id}", "spatial_correction_model.json"
@@ -149,21 +142,6 @@ def _get_or_fit_spatial_correction_model(
     return model
 
 
-# ============================================================================
-# Per-target run config: exclusions + per-target merging option overrides
-# ============================================================================
-#
-# One YAML file per target ({output}/{id}/run_config.yaml) that is
-# simultaneously: (a) a human-readable log of decisions made about this
-# target, (b) the actual source of truth _merge_timeseries reads to apply
-# those decisions, and (c) something a user can hand-edit directly for a
-# fully config-driven workflow. Interactive functions below
-# (exclude_from_target, set_merging_option, ...) read-modify-write this
-# same file, so a decision made once in a notebook session is exactly the
-# same artifact you'd edit by hand or check into version control -- there
-# is no separate "notebook state" to keep in sync with "the config".
-
-
 def _run_config_path(prj: "Project", id) -> str:
     return os.path.join(prj.dirs["output"], f"{id}", "run_config.yaml")
 
@@ -201,13 +179,8 @@ def _save_run_config(prj: "Project", id, config: dict) -> None:
 
 def _invalidate_spatial_correction_cache(prj: "Project", id) -> None:
     """
-    Delete any cached spatial correction model for this target, forcing
-    a fresh fit next time use_spatial_correction is used. Called whenever
-    exclusions or spatial-correction-relevant options change -- the
-    model may have been fit using observations that are no longer
-    included, and this is exactly the kind of deliberate, explicit
-    trigger (not routine reprocessing) that recalibration is meant for --
-    see _get_or_fit_spatial_correction_model.
+    Delete cached spatial correction model for this target, forcing
+    a fresh fit next time use_spatial_correction is used. 
     """
     model_path = os.path.join(prj.dirs["output"], f"{id}", "spatial_correction_model.json")
     if os.path.exists(model_path):
@@ -220,12 +193,7 @@ def _invalidate_spatial_correction_cache(prj: "Project", id) -> None:
 
 def _invalidate_reach_slope_correction_cache(prj: "Project", id) -> None:
     """
-    Delete any cached reach slope correction model for this target,
-    forcing a fresh fit next time use_reach_slope_correction is used.
-    Called whenever exclusions change -- an exclusion could target SWOT
-    observations specifically, which is exactly what this model is fit
-    from (see _fit_reach_slope_correction), so a cached model could
-    otherwise silently keep reflecting now-excluded SWOT slope values.
+    Delete any cached reach slope correction model for this target.
     """
     model_path = os.path.join(
         prj.dirs["output"], f"{id}", "reach_slope_correction_model.json"
@@ -241,42 +209,12 @@ def _invalidate_reach_slope_correction_cache(prj: "Project", id) -> None:
 def _fit_reach_slope_correction(prj: "Project", target_id, recalibrate: bool = False):
     """
     Fit (or load a persisted) reach-level slope correction from SWOT's
-    own directly-measured "slope" field (RiverSP reach product), used to
+    own directly-measured "slope" field (RiverSP reach product), to
     reference-correct OTHER missions' (ICESat-2/Sentinel-3/6) crossings
-    to what they'd read at the reach's geometric midpoint.
-
-    ONLY meaningful for reaches (prj.rivers.target_id_col == "reach_id")
-    -- a node is a single ~200m-spaced point, not a ~10km segment with
-    its own along-reach slope in the same sense. Callers must not invoke
-    this for node-mode projects.
-
-    Rationale: SWOT's reach-level WSE is an aggregate over the reach's
-    ~50 constituent, roughly-evenly-spaced nodes, not a value evaluated
-    at one specific point -- for an evenly-sampled linear profile, the
-    mean equals the value at the mean position, so this is treated as
-    approximately midpoint-referenced. This is an evidence-based
-    inference from the RiverSP processing chain, NOT a fact directly
-    confirmed in SWOT's product documentation (which does not explicitly
-    state a reference point) -- validate against real Hydrocron
-    node-vs-reach output for a known reach before trusting this deeply.
-
-    Uses the MEDIAN of all available SWOT slope observations for this
-    reach as a single, persistent correction -- not a per-date-specific
-    one -- consistent with this pipeline's existing preference (see
-    fit_spatial_correction_model) for a stable, once-fit value over a
-    per-observation one, and avoiding the complexity/fragility of
-    matching a specific SWOT overpass date to each individual non-SWOT
-    observation's date.
-
-    Persisted to {output}/{target_id}/reach_slope_correction_model.json
-    -- fit once, loaded thereafter, only refit on explicit
-    recalibrate=True -- so past corrections don't shift retroactively
-    as new SWOT data arrives, same reasoning as the spatial correction
-    model's caching.
+    to the reach's geometric midpoint.
 
     Returns None if no model exists yet and there's no usable SWOT slope
-    data to fit one from -- callers should treat this as "no correction
-    available," not an error.
+    data to fit one from, "no correction available," not an error.
     """
     model_path = os.path.join(
         prj.dirs["output"], f"{target_id}", "reach_slope_correction_model.json"
@@ -331,18 +269,10 @@ def _apply_reach_slope_correction(
 ) -> pd.DataFrame:
     """
     Apply a fitted reach slope correction (see _fit_reach_slope_correction)
-    to non-SWOT rows in ts_df -- adjusts "height" to what each row would
-    read at the reach's geometric midpoint, using its along-reach
-    projected position and the reach's persistent median slope. SWOT's
-    own rows are left untouched (already assumed midpoint-referenced --
-    see _fit_reach_slope_correction's docstring for the reasoning and
-    its caveats).
+    to non-SWOT rows in ts_df.
 
-    NOTE: the sign convention for "correction = slope x distance" here
-    has NOT been empirically verified against real data in this
-    session -- confirm it actually reduces cross-mission scatter for a
-    real reach (not increases it) before trusting this in production;
-    flip the sign if it doesn't.
+    NOTE: the sign convention for "correction = slope x distance" 
+    has NOT been empirically verified against real data.
 
     Rows without usable lat/lon (or if the target's geometry can't be
     found) are left uncorrected rather than dropped.

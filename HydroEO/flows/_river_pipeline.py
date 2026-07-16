@@ -1,11 +1,5 @@
-"""Rivers: extraction + clean + merge orchestration.
-
-create_rivers_timeseries and everything it (transitively) calls --
-_extract_rivers_timeseries, its three per-mission workers, and the
-_clean_rivers_timeseries/_merge_rivers_timeseries wrappers -- are tested
-together via patch.object(flows, "_name") in tests/unit/test_flows.py and
-tests/unit/test_timeseries.py, so they all live in this one module (this
-mirrors _reservoir_pipeline.py's equivalent constraint).
+"""
+Rivers: extraction + clean + merge orchestration.
 """
 
 import logging
@@ -36,12 +30,11 @@ logger = logging.getLogger(__name__)
 def _extract_rivers_timeseries(prj: "Project", overwrite: bool = False) -> None:
     """Extract timeseries observations from raw downloaded files, for rivers.
 
-    SWOT still needs a (lightweight) extraction step here: Hydrocron
-    already returns a per-node/reach timeseries directly, but grouped
-    per WATERBODY (one CSV covering every target in that waterbody) --
-    see _extract_rivers_swot_observations for splitting that into the
-    same per-target file structure ICESat-2/Sentinel-3/6 use, so the
-    shared clean/merge pipeline can treat every mission identically.
+    overwrite:  Skip extraction if the target's output .gpkg already exists 
+                (False, default) or re-extract anyway (True). 
+                This is the same semantics as _extract_reservoirs_timeseries.
+    Lightweight extraction always required for SWOT to match other missions 
+    in post-processing.
 
     Parameters
     ----------
@@ -68,18 +61,16 @@ def _extract_rivers_timeseries(prj: "Project", overwrite: bool = False) -> None:
 
 
 def _extract_rivers_icesat2_observations(prj: "Project", overwrite: bool = False) -> None:
-    """Extract ICESat-2 ATL13 observations for each river target.
+    """Extract ICESat-2 ATL13 observations for each river target (virtual station).
+    Uses buffered river corridor and assigns to nearest target. 
+    Clean and merge treats river target (VS) exactly like a reservoir.
 
-    Unlike reservoirs (one polygon = one target), a river waterbody's
-    raw download covers many targets at once. This extracts once per
-    waterbody -- reusing icesat2.extract_observations exactly as
-    reservoirs use it, with the buffered corridor (see
-    _river_target_corridor) as the spatial filter instead of a single
-    reservoir polygon -- then assigns each surviving point to its
-    nearest target via sjoin_nearest, and splits the result into the
-    same per-target {output}/{target_id}/raw_observations/icesat2.gpkg
-    structure reservoirs already use, so everything downstream
-    (clean/merge) can treat a river target exactly like a reservoir.
+    Parameters
+    ----------
+    overwrite : bool, optional
+        Skip extraction if the target's output .gpkg already exists
+        (False, default) or re-extract anyway (True). This is the same
+        semantics as _extract_reservoirs_timeseries.
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     explicit_buffer = getattr(prj.rivers, "extraction_buffer_meters", None)
@@ -171,20 +162,19 @@ def _extract_rivers_sentinel_observations(
 ) -> None:
     """Extract Sentinel-3 or Sentinel-6 observations for each river target.
 
-    Same per-waterbody-then-split approach as
-    _extract_rivers_icesat2_observations, plus a water-only filter: a
-    buffered river corridor is much looser than a reservoir polygon (it
-    genuinely includes riverbank, fields, vegetation alongside the
-    channel), and unlike ICESat-2, Sentinel-3/6 have no built-in water
-    classification. sigma0_min filters this out as a self-contained
-    post-processing step here (rather than modifying
-    sentinel.extract_observations itself, whose internals haven't been
-    verified) -- water gives a strong, consistent specular radar
-    return; land gives a weaker, noisier one. Needs empirical tuning
-    against real river data, same as every other threshold in this
-    pipeline -- the default here (0.0, i.e. no-op) is a safe starting
-    point, not a verified value; set mission_options[mission_key]
-    ['sigma0_min'] once you have real data to check it against.
+    Option to use sigma0 as a quality filter (sigma0_min) 
+    is available in the mission's YAML config section.
+
+    Parameters
+    ----------
+    mission_key : str
+        "sentinel3" or "sentinel6"
+    product : str
+        "S3" or "S6" (used for output file naming)
+    overwrite : bool, optional
+        Skip extraction if the target's output .gpkg already exists
+        (False, default) or re-extract anyway (True). This is the same
+        semantics as _extract_reservoirs_timeseries.
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     explicit_buffer = getattr(prj.rivers, "extraction_buffer_meters", None)
@@ -293,17 +283,14 @@ def _extract_rivers_swot_observations(prj: "Project", overwrite: bool = False) -
     every other mission uses, so the shared clean/merge pipeline can
     treat SWOT identically to ICESat-2/Sentinel-3/6 for rivers.
 
-    Unlike LakeSP for reservoirs, Hydrocron's own CSV doesn't include
-    per-observation coordinates in the default field lists (see
-    rivers.yaml) -- but nothing downstream actually needs per-observation
-    lat/lon for SWOT (see PRODUCT_TIMESERIES_KEYS: no lat_key/lon_key for
-    "swot"), so this attaches the target's own SWORD geometry as a
-    constant placeholder purely so the file can be saved/read as .gpkg
-    like every other mission's output -- the geometry's actual value is
-    never used downstream, only the height/date/platform/orbit columns.
+    Uses SWORD geometry as placeholder in lieu of "lat/lon".
 
-    Quality filtering (max_q) is already applied at download time (see
-    _download_swot_hydrocron_timeseries), so it isn't repeated here.
+    Parameters
+    ----------
+    overwrite : bool, optional
+        Skip extraction if the target's output .gpkg already exists
+        (False, default) or re-extract anyway (True). This is the same
+        semantics as _extract_reservoirs_timeseries.
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
@@ -381,11 +368,8 @@ def _extract_rivers_swot_observations(prj: "Project", overwrite: bool = False) -
 def create_rivers_timeseries(prj: "Project") -> None:
     """Extract, clean, and merge timeseries for river targets (nodes/reaches).
 
-    Mirrors create_reservoirs_timeseries. Not yet done: an export_to_dfs0
-    equivalent for rivers, since _export_cleaned_to_dfs0 currently
-    iterates prj.reservoirs.download_gdf specifically -- left out here
-    rather than silently generalizing something not explicitly asked
-    for yet.
+    Mirrors create_reservoirs_timeseries. 
+    NOTE: Extraction to dsf0 missing.
 
     Parameters
     ----------
@@ -412,10 +396,4 @@ def _clean_rivers_timeseries(prj: "Project") -> None:
 def _merge_rivers_timeseries(prj: "Project") -> None:
     """Merge multi-mission timeseries into combined datasets, for river targets."""
     _merge_timeseries(prj, "rivers")
-
-
-# ============================================================================
-# RESERVOIRS: Summaries & Visualization
-# ============================================================================
-
 

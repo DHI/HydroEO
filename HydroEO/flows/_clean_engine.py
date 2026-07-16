@@ -1,10 +1,5 @@
-"""Shared cleaning engine used by both reservoirs and rivers.
-
-_clean_timeseries applies per-mission processing filters generically for
-either target_type -- called by _clean_reservoirs_timeseries (in
-_reservoir_pipeline.py) and _clean_rivers_timeseries (in
-_river_pipeline.py). Not itself patched as a sibling of either wrapper in
-the test suite, so it's free to live in its own module.
+"""
+Shared timeseries cleaning engine for both reservoirs and rivers.
 """
 
 import logging
@@ -82,5 +77,3 @@ def _clean_timeseries(prj: "Project", target_type: str) -> None:
                 )
                 general.ifnotmakedirs(export_dir)
                 ts.export_csv(os.path.join(export_dir, f"{product}.csv"))
-
-

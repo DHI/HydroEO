@@ -1,10 +1,5 @@
-"""Sentinel-3/6 download logic shared by both reservoirs and rivers.
-
-_sentinel6_use_earthdata and _download_sentinel_for_target are used by
-both _reservoir_download.py and _river_download.py (the CREODIAS/EarthData
-branching only needs to exist in one place); neither is itself the target
-of a sibling patch in the test suite, so this module has no test-imposed
-co-location constraint of its own.
+"""
+Sentinel-3/6 download logic shared by both reservoirs and rivers.
 """
 
 import logging
@@ -42,21 +37,13 @@ def _download_sentinel_for_target(
     """
     Download + subset Sentinel-3/6 data for one target's AOI (a
     reservoir polygon, or a river waterbody corridor's envelope) --
-    shared by both _download_reservoirs_sentinel and
-    _download_rivers_sentinel so the CREODIAS/EarthData branching logic
-    only needs to exist in one place.
 
     For Sentinel-6, if _sentinel6_use_earthdata(prj) is True, uses
     PO.DAAC/EarthData (see sentinel.query_earthdata/download_earthdata)
-    to get the HR product instead of CREODIAS's LR-only product.
-    EarthData files arrive flat (no SAFE-zip directory), so the unzip
-    step is skipped for that path -- subset() already handles both flat
-    and zipped-folder inputs (see sentinel/preprocess.py's file
-    discovery, extended for this).
+    to get the HR product in .nc format instead of CREODIAS's LR-only product
+    in SAFE-zip format.
 
-    Returns (session_token, session_start_time) -- unchanged from what
-    was passed in when using the EarthData path, since that mechanism
-    (CREODIAS session reuse) doesn't apply to it.
+    Returns (session_token, session_start_time).
     """
     dir_key = mission
     use_earthdata = mission == "sentinel6" and _sentinel6_use_earthdata(prj)

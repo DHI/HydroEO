@@ -1,11 +1,5 @@
-"""Rivers: multi-mission download orchestration.
-
-download_rivers and _download_swot_hydrocron_timeseries are tested
-together via patch.object(flows, "_name") in tests/unit/test_flows.py --
-keep them in this one module. _download_rivers_icesat2/_sentinel and
-_get_latest_hydrocron_obs_date are not themselves patched as siblings of
-anything, so they're free to live here too (this mirrors
-_reservoir_download.py's structure).
+"""
+Rivers: multi-mission download orchestration.
 """
 
 import logging
@@ -32,13 +26,6 @@ logger = logging.getLogger(__name__)
 
 def download_rivers(prj: "Project") -> None:
     """Download altimetry data for all configured missions (rivers mode).
-
-    SWOT uses the Hydrocron timeseries API directly (per node/reach, no
-    clustering needed -- see _download_swot_hydrocron_timeseries).
-    ICESat-2/Sentinel-3/6 download raw observations over a buffered
-    corridor around each waterbody's SWORD targets (see
-    _river_target_corridor); associating individual points with a
-    specific target happens later, during extraction.
 
     Parameters
     ----------
@@ -255,17 +242,7 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
 
 def _download_rivers_icesat2(prj: "Project") -> None:
     """Download ICESat-2 ATL13 data for river waterbody groups.
-
-    Mirrors _download_reservoirs_icesat2, but queries over a buffered
-    corridor around each waterbody's SWORD targets (see
-    _river_target_corridor) rather than a single reservoir polygon. If
-    a waterbody's corridor comes out as disconnected pieces (a
-    MultiPolygon), queries each piece separately (see
-    _iter_geometry_pieces) rather than only the first -- unlike
-    reservoirs, a river waterbody's targets can legitimately be
-    disjoint (e.g. separate reaches far apart), so collapsing to one
-    query would either miss coverage or require an artificially large
-    combined shape.
+    
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     explicit_buffer = getattr(prj.rivers, "extraction_buffer_meters", None)
@@ -323,17 +300,9 @@ def _download_rivers_icesat2(prj: "Project") -> None:
 def _download_rivers_sentinel(prj: "Project", mission: str) -> None:
     """Download Sentinel-3 or Sentinel-6 data for river waterbody groups.
 
-    Mirrors _download_reservoirs_sentinel (both now share
-    _download_sentinel_for_target, including the CREODIAS/EarthData
-    branching for Sentinel-6). NOTE: sentinel.query/query_earthdata take
-    a bounding box (envelope), not the exact corridor polygon -- for a
-    long or winding river corridor this can query/download a
-    meaningfully larger area than the actual buffered corridor. This is
-    an existing limitation inherited from the reservoir path (where it
-    matters far less, since a reservoir's envelope is close to its
-    actual extent), not something new introduced here -- worth
-    revisiting if it turns out to matter in practice for a large or
-    winding waterbody.
+    NOTE: sentinel.query/query_earthdata take a bounding box (envelope), 
+    not the exact corridor polygon -- for a long or winding river corridor
+    this can query/download a meaningfully larger area than the actual buffered corridor.
     """
     product = "S3" if mission == "sentinel3" else "S6"
 
@@ -372,11 +341,7 @@ def _download_rivers_sentinel(prj: "Project", mission: str) -> None:
             )
             continue
 
-        # Envelope each disconnected piece separately rather than the
-        # whole (possibly MultiPolygon) corridor at once -- sentinel's
-        # API only accepts a bounding box, so one envelope covering
-        # widely separated pieces could be far larger than any of them
-        # individually.
+        # Envelope each disconnected piece separately (see note)
         pieces = _iter_geometry_pieces(corridor_gdf.geometry.iloc[0])
 
         download_dir = os.path.join(prj.dirs[mission], f"{wb_id}")
@@ -419,10 +384,4 @@ def _get_latest_hydrocron_obs_date(output_path) -> datetime.date:
 
     latest_obs = timestamps.max().to_pydatetime()
     return datetime.date(latest_obs.year, latest_obs.month, latest_obs.day)
-
-
-# ============================================================================
-# RIVERS: Timeseries Processing (extraction)
-# ============================================================================
-
 

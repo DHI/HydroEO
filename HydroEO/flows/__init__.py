@@ -4,18 +4,12 @@ These functions implement the core download, processing, and visualization
 logic previously embedded in Reservoirs and Rivers classes. They operate on
 Project state and external data, with no direct method dependencies.
 
-This package replaces what used to be a single ~3,100-line flows.py file,
-split by concern (init/download/extract-clean-merge/run-config/summaries)
--- see each submodule's docstring for why its particular grouping was
-chosen. Every name below (public and private) is re-exported here so that
+Splits single flows.py file by concern (init/download/extract-clean-merge/run-config/summaries)
+Every name below (public and private) is re-exported here so that
 `from HydroEO import flows; flows.<name>` keeps working exactly as it did
 against the old single-file module, including for tests that patch
 private helpers via `patch.object(flows, "_name")`.
 """
-
-import mikeio  # noqa: F401 -- re-exported so `flows.mikeio` resolves (see _reservoir_pipeline.py)
-
-from HydroEO import plotting  # noqa: F401 -- re-exported so `flows.plotting`/`HydroEO.flows.plotting` resolves
 
 from ._reservoir_init import (
     _assign_pld_id as _assign_pld_id,

@@ -1,11 +1,5 @@
-"""Shared merge engine used by both reservoirs and rivers.
-
-_merge_timeseries applies the merge()/Kalman/svr_radial pipeline
-generically for either target_type -- called by
-_merge_reservoirs_timeseries (in _reservoir_pipeline.py) and
-_merge_rivers_timeseries (in _river_pipeline.py). Not itself patched as a
-sibling of either wrapper in the test suite, so it's free to live in its
-own module.
+"""
+Shared merge engine used by both reservoirs and rivers.
 """
 
 import logging
@@ -127,13 +121,7 @@ def _merge_timeseries(prj: "Project", target_type: str) -> None:
             )
 
             # Apply exclusions BEFORE exporting all_cleaned_timeseries.csv
-            # (not just before merge processing) -- this file is meant to
-            # reflect what's actually being worked with, and writing it
-            # before exclusions were applied meant it always showed
-            # excluded data regardless of how many times you re-ran,
-            # which looked exactly like a stale file from an old run but
-            # was actually happening on every single run. The full,
-            # pre-exclusion record is still available per-mission in
+            # The full, pre-exclusion record is still available per-mission in
             # cleaned_observations/{product}.csv (written earlier, in
             # _clean_timeseries, before any exclusion is applied) -- so
             # nothing is lost by making this file reflect exclusions.

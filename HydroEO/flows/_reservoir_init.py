@@ -1,9 +1,5 @@
-"""Reservoirs: PLD (Prior Lake Database) initialization.
-
-initialize_reservoirs and the three helpers it calls (_download_pld,
-_assign_pld_id, _flag_missing_priors) are tested together via
-patch.object(flows, "_name") in tests/unit/test_flows.py -- keep them in
-this one module so those patches keep intercepting the right calls.
+"""
+Reservoirs: PLD (Prior Lake Database) initialization.
 """
 
 import logging
@@ -61,7 +57,7 @@ def _download_pld(prj: "Project") -> None:
 
     logger.info("Downloading PLD")
     download_dir = os.path.dirname(pld_path)
-    bounds = list(prj.reservoirs.gdf.unary_union.bounds)
+    bounds = list(prj.reservoirs.gdf.unary_all.bounds)
     raw_pld_path = prj.dirs.get("pld_raw")
 
     # Determine if raw_pld_path is inside project main_dir
@@ -130,10 +126,3 @@ def _flag_missing_priors(prj: "Project") -> None:
         len(present),
         len(missing),
     )
-
-
-# ============================================================================
-# RIVERS: Initialization
-# ============================================================================
-
-

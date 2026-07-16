@@ -1,13 +1,6 @@
-"""Diagnostic plots for reservoirs and rivers, plus shared observation
+"""
+Diagnostic plots for reservoirs and rivers, plus shared observation
 loading helpers.
-
-generate_reservoirs_summaries is tested with _load_product_timeseries
-patched as a sibling; generate_rivers_summaries is tested with
-_has_enough_observations_to_plot/_project_num_months/_river_target_corridor/
-_load_merged_timeseries patched as siblings (tests/unit/test_flows.py) --
-so all of these live in one module. _river_target_corridor is also called
-directly (unpatched) by the download/extraction modules, which import it
-from here.
 """
 
 import logging
@@ -37,45 +30,23 @@ def _river_target_corridor(
     downloading/extracting ICESat-2 and Sentinel-3/6 observations.
 
     This is deliberately a SEPARATE buffer distance from
-    prj.rivers.buffer_meters (used earlier to decide which SWORD
-    targets intersect the user's AOI at all) -- that question ("is this
-    target in scope") and this one ("how far from the centerline could
-    real river water still be, for a raw altimetry point to plausibly
-    belong to this target") are different, and conflating them risks
-    the same "one parameter doing two jobs badly" issue found elsewhere
-    in this pipeline.
+    prj.rivers.buffer_meters used to select observations over water
 
     Parameters
     ----------
     buffer_meters : float or None, optional
         Explicit, uniform buffer distance (meters), applied to every
         target regardless of its actual width. If None (default), uses
-        each target's own SWORD "width" attribute instead: buffer
-        distance = (width / 2) * width_buffer_factor. This is HALF the
-        width, not the full width -- buffering a line expands it
-        symmetrically by the given distance on EACH side, so a buffer
-        of width/2 gives a corridor whose TOTAL span is approximately
-        width * width_buffer_factor, matching the river's actual extent
-        plus a margin, rather than doubling it. Falls back to
-        _river_extraction_buffer_meters() (a flat scalar) if no usable
-        "width" column is found -- e.g. if your SWORD data names it
-        differently than assumed here, this degrades gracefully with a
-        log message rather than failing.
+        each target's own SWORD "width" attribute instead
     width_buffer_factor : float, optional
         Margin applied on top of each target's own width when using the
-        width-based default. Default 1.05 -- 5% wider than the river's
+        SWPORD-based default. Default 1.05 -- 5% wider than the river's
         actual channel width. Only used when buffer_meters is None.
 
     NOTE: "width" is the expected SWORD column name per the standard
-    SWORD data dictionary -- this has NOT been verified against a real
-    downloaded SWORD file in this session (no sample data was
-    available), unlike most other assumptions in this codebase. Check
-    your actual target_features columns if width-based buffering
-    doesn't seem to be kicking in.
+    SWORD data dictionary.
 
-    Returns a single-row GeoDataFrame in prj.global_crs (matching what
-    icesat2.extract_observations/sentinel.extract_observations expect
-    for their `features` argument, same as reservoirs), or None if no
+    Returns a single-row GeoDataFrame in prj.global_crs, or None if no
     matching SWORD geometry is found for target_ids. Note the returned
     geometry may be a MultiPolygon if targets form disconnected pieces
     (e.g. separate reaches far enough apart that their buffers never
@@ -219,11 +190,6 @@ def _load_merged_timeseries(prj, id):
         return None
 
 
-# ============================================================================
-# RIVERS: Summaries & Visualization
-# ============================================================================
-
-
 def _project_num_months(prj: "Project") -> int:
     """
     Approximate number of months spanned by the project's configured
@@ -250,7 +216,7 @@ def _project_num_months(prj: "Project") -> int:
 def _has_enough_observations_to_plot(prj: "Project", target_id, min_months: int) -> bool:
     """
     Whether a target has enough merged observations to be worth
-    plotting -- more than min_months (the project's date range in
+    plotting -- more than min_months/2 (the project's date range in
     months) or more than 2, whichever is larger. A reach/reservoir with
     only 1-2 points produces a plot that adds noise without telling you
     anything.
@@ -258,7 +224,7 @@ def _has_enough_observations_to_plot(prj: "Project", target_id, min_months: int)
     df = _load_merged_timeseries(prj, target_id)
     if df is None:
         return False
-    threshold = max(min_months, 2)
+    threshold = max(min_months/2, 2)
     return len(df) > threshold
 
 
@@ -283,10 +249,7 @@ def generate_rivers_summaries(
     min_months = _project_num_months(prj)
 
     for wb_id, target_ids in waterbody_groups.items():
-        # Only plot targets with enough observations to be worth looking
-        # at -- applies to all three plot types (map, time series, merge
-        # progress) so a target excluded from one isn't confusingly still
-        # shown in another.
+        # Exclude target if fewer than .5 observation per month  
         plottable_ids = [
             t for t in target_ids
             if _has_enough_observations_to_plot(prj, t, min_months)
@@ -299,13 +262,7 @@ def generate_rivers_summaries(
             continue
 
         # Compute the actual extraction corridor (same buffer resolution
-        # used for real extraction, see _river_target_corridor) so the
-        # shaded area shown is exactly what extraction uses, not an
-        # approximation -- lets you visually judge whether width-based
-        # buffering produced a reasonable corridor for this waterbody
-        # (e.g. a lake-flagged reach whose SWORD width reflects a much
-        # wider lake extent) without needing external knowledge of the
-        # real river geometry.
+        # used for real extraction, see _river_target_corridor) for visual assessment
         corridor_gdf = _river_target_corridor(
             prj, plottable_ids,
             buffer_meters=getattr(prj.rivers, "extraction_buffer_meters", None),
@@ -332,10 +289,4 @@ def generate_rivers_summaries(
                 show=show,
                 save=save,
             )
-
-
-# ============================================================================
-# MIKEIO
-# ============================================================================
-
 

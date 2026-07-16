@@ -1,10 +1,5 @@
-"""Reservoirs: multi-mission download orchestration.
-
-download_reservoirs and its three per-mission workers
-(_download_reservoirs_swot, _download_reservoirs_icesat2,
-_download_reservoirs_sentinel) are tested together via
-patch.object(flows, "_name") in tests/unit/test_flows.py -- keep them in
-this one module.
+"""
+Reservoirs: multi-mission download orchestration.
 """
 
 import logging
@@ -58,7 +53,7 @@ def _download_reservoirs_swot(prj: "Project") -> None:
 
     coords = [
         (x, y)
-        for x, y in prj.reservoirs.download_gdf.unary_union.envelope.exterior.coords
+        for x, y in prj.reservoirs.download_gdf.union_all().envelope.exterior.coords
     ]
 
     logger.info(
@@ -135,12 +130,7 @@ def _download_reservoirs_sentinel(prj: "Project", mission: str) -> None:
     session_token = None
     session_start_time = None
 
-    # EarthData (Sentinel-6 HR) needs no CREODIAS credentials at all --
-    # only require them if we're actually going to use CREODIAS. But it
-    # does need its OWN upfront check -- without it, earthaccess.login()
-    # silently falls through to interactive prompting when nothing else
-    # is configured, which hangs in a non-interactive run instead of
-    # failing clearly (see Project._require_earthdata_credentials).
+    # Sentinel-6 can be retrieved via either Copernicus Open Access Hub (only LR) or Earthdata (HR)
     sentinel_creds = None
     use_earthdata_s6 = mission == "sentinel6" and _sentinel6_use_earthdata(prj)
     if use_earthdata_s6:
@@ -174,10 +164,3 @@ def _download_reservoirs_sentinel(prj: "Project", mission: str) -> None:
             prj, mission, product, coords, download_dir,
             startdate, enddate, sentinel_creds, session_token, session_start_time,
         )
-
-
-# ============================================================================
-# RIVERS: Download
-# ============================================================================
-
-
