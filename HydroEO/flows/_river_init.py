@@ -80,7 +80,7 @@ def _prepare_rivers_from_sword(prj: "Project") -> None:
 
         # Intersect with SWORD
         sword_local = sword_gdf.to_crs(prj.local_crs)
-        subset = sword_local.loc[sword_local.intersects(aoi_local.unary_union)].copy()
+        subset = sword_local.loc[sword_local.intersects(aoi_local.union_all())].copy()
 
         if prj.rivers.id_key not in prj.rivers.aoi_gdf.columns:
             raise KeyError(

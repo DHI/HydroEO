@@ -175,43 +175,34 @@ class Project:
         if "reservoirs" in self.config.keys() and self.config["reservoirs"].get(
             "enabled", True
         ):
-            self.reservoirs = Reservoirs(
-                gdf=gpd.read_file(self.config["reservoirs"]["path"]),
-                id_key=self.config["reservoirs"]["id_key"],
-                dirs=self.dirs,
-            )
+            reservoirs_gdf = gpd.read_file(self.config["reservoirs"]["path"])
+            if reservoirs_gdf.crs is None:
+                raise ValueError(
+                    f"Reservoirs shapefile '{self.config['reservoirs']['path']}' has "
+                    "no CRS defined (missing .prj?). Cannot safely reproject to "
+                    f"global_crs ({self.global_crs}). Set the file's CRS explicitly "
+                    "before using it with HydroEO."
+                )
+            reservoirs_gdf = reservoirs_gdf.to_crs(self.global_crs)
 
-            self.reservoirs.gdf = self.reservoirs.gdf.to_crs(self.global_crs)
+            self.reservoirs = Reservoirs(
+                gdf=reservoirs_gdf,
+                 id_key=self.config["reservoirs"]["id_key"],
+                 dirs=self.dirs,
+            )
+ 
             self.reservoirs.mission_options = self.mission_options
             self.reservoirs.processing_options = self.processing_options
             self.reservoirs.export_to_dfs0 = self.config["reservoirs"].get(
-                "export_to_dfs0", False
+               "export_to_dfs0", False
             )
-            # NOTE: this was previously read via getattr(prj.reservoirs,
-            # "overwrite_extraction", False) in flows.py but never
-            # actually wired to config -- meaning it silently always
-            # defaulted to False regardless of what a user might have
-            # tried to set. Fixed here.
+
             self.reservoirs.overwrite_extraction = self.config["reservoirs"].get(
                 "overwrite_extraction", False
             )
 
             # User-configurable overrides for the merge()/Kalman/svr_radial
-            # pipeline (see flows.DEFAULT_RESERVOIR_MERGING_OPTIONS for
-            # every available key and its default). Only the keys the user
-            # actually sets here are used to override the defaults -- any
-            # keys not mentioned keep their default value, so a user only
-            # needs to specify what they want to change.
-            # NOTE: DEFAULT_RESERVOIR_MERGING_OPTIONS' svr_radial_err/gamma
-            # trace back to DAHITI's own published values -- and DAHITI's
-            # calibration is for LAKES specifically. A reservoir with
-            # managed/operational water level changes (fill/drawdown
-            # cycles) can have real dynamics on a much faster timescale
-            # than a natural lake, making the lake-tuned defaults too
-            # strict (rejecting genuine fast changes as if they were
-            # noise). If your reservoirs behave more like this, override
-            # svr_radial_err and svr_radial_gamma here rather than relying
-            # on the lake-tuned defaults.
+            # pipeline
             self.merging_options = self.config["reservoirs"].get(
                 "merging_options", {}
             )
@@ -278,28 +269,16 @@ class Project:
             self.rivers.target_id_col = target_id_col
             self.rivers.target_ids = target_ids
 
-            # Corridor buffer for ICESat-2/Sentinel-3/6 extraction (see
-            # flows._river_target_corridor). Deliberately separate from
-            # buffer_meters above, which only decides which SWORD
-            # targets count as "in the AOI" at all. If left unset
-            # (None, the default), each target's own SWORD "width"
-            # attribute is used instead of one flat value for every
-            # target -- see width_buffer_factor below. Only falls back
-            # to a flat value (prj.rivers.buffer_meters, then 500m) if
-            # no usable "width" column is found.
+            # Corridor buffer for ICESat-2/Sentinel-3/6 extraction 
             self.rivers.extraction_buffer_meters = rivers_cfg.get(
                 "extraction_buffer_meters"
             )
             # Margin applied on top of each target's own SWORD width
-            # when using the width-based default above (ignored if
-            # extraction_buffer_meters is set explicitly). Default 1.05
-            # = 5% wider than the target's actual channel width.
             self.rivers.width_buffer_factor = rivers_cfg.get(
                 "width_buffer_factor", 1.05
             )
             # Max distance (m) for assigning a raw altimetry point to its
-            # nearest SWORD target (see flows._assign_points_to_river_targets).
-            # Falls back to the extraction buffer if not set.
+            # nearest SWORD target 
             self.rivers.max_node_assignment_meters = rivers_cfg.get(
                 "max_node_assignment_meters"
             )
@@ -308,18 +287,7 @@ class Project:
             )
 
             # User-configurable overrides for the merge()/Kalman/svr_radial
-            # pipeline (see flows.DEFAULT_RIVER_MERGING_OPTIONS for every
-            # available key and its default). Set directly on
-            # prj.rivers, mirroring how prj.reservoirs.merging_options
-            # works, rather than routed through the shared project-level
-            # self.merging_options -- see flows._merge_timeseries's
-            # per-target-type override lookup.
-            # NOTE: DEFAULT_RIVER_MERGING_OPTIONS is currently a direct
-            # copy of the reservoir defaults and has NOT been
-            # independently validated against real river data -- unlike
-            # the reservoir defaults, which were tuned this way against
-            # real reservoirs. Treat it as a starting point to check
-            # kept/rejected counts against, not a verified value.
+            # pipeline 
             self.rivers.merging_options = rivers_cfg.get("merging_options", {})
 
         if "swot_raster" in self.config.keys() and self.config["swot_raster"].get(
@@ -369,11 +337,7 @@ class Project:
                 )
 
         ### Warn when lake/reservoir-only satellites are configured for neither
-        # reservoirs nor rivers mode. Previously this only checked for
-        # 'reservoirs' since icesat2/sentinel3/sentinel6 had no river support
-        # at all -- now that they work for rivers too (see
-        # flows._download_rivers_icesat2/_download_rivers_sentinel), the
-        # warning should only fire if NEITHER mode is configured.
+        # reservoirs nor rivers mode. 
         if not hasattr(self, "reservoirs") and not hasattr(self, "rivers"):
             incompatible = [
                 m
@@ -484,15 +448,6 @@ class Project:
         """
         Check upfront that EarthData credentials are available in some
         form earthaccess recognizes, before calling earthaccess.login().
-        Without this check, earthaccess.login() -- called with no
-        explicit strategy, same as this codebase's existing SWOT path --
-        falls through to environment variables, then a .netrc file, then
-        INTERACTIVE PROMPTING if neither is found (confirmed against
-        earthaccess's own documentation). In a non-interactive run (a
-        scheduled job, a CLI invocation) that prompt either hangs waiting
-        for input that will never come, or raises a confusing low-level
-        error deep inside earthaccess -- rather than a clear, immediate
-        one here.
         """
         has_env = bool(
             os.environ.get("EARTHDATA_USERNAME") and os.environ.get("EARTHDATA_PASSWORD")
@@ -511,10 +466,7 @@ class Project:
                 "Set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the "
                 "environment, or EARTHDATA_TOKEN, or create a .netrc file with "
                 "your Earthdata Login credentials (register free at "
-                "https://urs.earthdata.nasa.gov). Without one of these, "
-                "earthaccess.login() falls through to an interactive prompt, "
-                "which will hang in a non-interactive run rather than fail "
-                "clearly."
+                "https://urs.earthdata.nasa.gov)."
             )
 
     def validate_config(self):
@@ -561,34 +513,17 @@ class Project:
 
         - SWOT (satellites.swot._download.download), Sentinel-3/6 via
           CREODIAS (satellites.sentinel.download), and Sentinel-6 via
-          EarthData (satellites.sentinel.download_earthdata) all track
+          EarthData (satellites.sentinel.download_earthdata) track
           already-downloaded granules in a `downloaded.log` file per
-          directory and only fetch what's new -- safe and cheap to
-          re-run the full configured range.
+          directory and only fetch what's new.
         - ICESat-2 (satellites.icesat2.download.query) has no such
-          de-duplication: it always re-submits the full
-          [startdate, enddate] request to SlideRule and overwrites
-          atl13.parquet from scratch each call. Still correct (the
-          file always reflects the complete range afterward), but not
-          incremental -- update() costs roughly the same as a fresh
+          de-duplication: update() costs roughly the same as a fresh
           download() for ICESat-2 specifically.
 
-        NOTE: this intentionally does not use the per-mission
-        get_latest_obs_date() helpers (satellites/{swot,icesat2,
-        sentinel}) to also advance startdate and skip already-covered
-        history. satellites.swot.preprocess.get_latest_obs_date()
-        currently returns the MAX observation date across all
-        reservoirs rather than the min, which would silently skip the
-        gap for any reservoir with sparser data if used as a shared
-        resume point -- fix that first if startdate-advancing is
-        wanted here.
+        NOTE: Uses newest observation across project - could be upgraded
+        to run per reservoir or check missing observations for sparser observed
+        reservoirs.
 
-        This previously called self.reservoirs.download(...) /
-        self.rivers.download(...), methods that do not exist on
-        Reservoirs/Rivers (waterbody.py defines only report()) with a
-        keyword signature (update_existing, enddate_overrides) that
-        flows.download_reservoirs/download_rivers never implemented --
-        every call raised AttributeError.
         """
         if not hasattr(self, "reservoirs") and not hasattr(self, "rivers"):
             logger.warning(
@@ -638,16 +573,7 @@ class Project:
     def _infer_target_type(self, target_type=None):
         """
         Resolve which target type (reservoirs/rivers) a per-target call
-        applies to. If target_type is given explicitly, use it (mainly
-        useful for tests or direct flows.* calls on a Project built
-        without going through normal config validation). Otherwise,
-        infer it from whichever of prj.reservoirs/prj.rivers is present.
-
-        validate_config() only allows one of 'reservoirs'/'rivers'/
-        'swot_raster'/'swot_pixc' to be active per config, so a validly
-        constructed Project never has both prj.reservoirs and
-        prj.rivers set -- there is no "both configured" case to
-        disambiguate here.
+        applies to. 
         """
         if target_type is not None:
             return target_type
@@ -660,10 +586,7 @@ class Project:
     def list_target_observations(self, id, target_type=None):
         """
         Summarize what observations exist for a target (reservoir or
-        river node/reach) at (platform, orbit) granularity -- the "what
-        could I exclude" view. See generate_summaries()'s plots
-        (platform-colored merge progress) for where a problem actually
-        shows up in the data.
+        river node/reach) at (platform, orbit) granularity
         """
         target_type = self._infer_target_type(target_type)
         return flows.list_target_observations(self, target_type, id)

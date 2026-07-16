@@ -165,8 +165,8 @@ def download_PLD(
             gdf = gdf.reset_index()[["lake_id", "res_id", "geometry"]]
             gdf = gdf[["lake_id", "res_id", "geometry"]]
 
-            # Filter to bounds and append
-            gdf = gdf.loc[gdf.within(shapely.Polygon.from_bounds(*bounds))]
+            # Filter to bounds and append.     
+            gdf = gdf.loc[gdf.intersects(shapely.Polygon.from_bounds(*bounds))]
             gdf_list.append(gdf)
 
     # once we have processed all files, concatenate them

@@ -27,7 +27,7 @@ def extract_observations(
         return
 
     # Filter observations to those inside the reservoir geometry.
-    gdf = gdf.loc[gdf.within(features.unary_union)].reset_index(drop=True)
+    gdf = gdf.loc[gdf.within(features.union_all())].reset_index(drop=True)
     if len(gdf) == 0:
         return
 

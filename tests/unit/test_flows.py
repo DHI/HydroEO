@@ -402,6 +402,7 @@ def test_download_reservoirs_dispatches_swot(mock_project_reservoirs):
         mock_sent.assert_not_called()
 
 
+
 @pytest.mark.unit
 def test_download_reservoirs_dispatches_all_missions(mock_project_reservoirs):
     """download_reservoirs dispatches all enabled satellite missions."""
@@ -422,6 +423,56 @@ def test_download_reservoirs_dispatches_all_missions(mock_project_reservoirs):
         mock_swot.assert_called_once()
         mock_ice.assert_called_once()
         assert mock_sent.call_count == 2  # sentinel3 and sentinel6
+
+@pytest.mark.unit
+def test_download_reservoirs_swot_skips_when_none_matched_pld(
+    mock_project_reservoirs, caplog
+):
+    """_download_reservoirs_swot skips the download entirely (no network call)
+    when none of the reservoirs matched a PLD lake -- downloading would be
+    guaranteed-wasted effort since extraction filters strictly by
+    prior_lake_id and would produce zero usable data regardless."""
+    import logging
+    from HydroEO.satellites import swot
+
+    mock_project_reservoirs.reservoirs.download_gdf = (
+        mock_project_reservoirs.reservoirs.download_gdf.assign(
+            prior_lake_id=[-9999, -9999]
+        )
+    )
+
+    with (
+        patch.object(swot, "query") as mock_query,
+        caplog.at_level(logging.WARNING),
+    ):
+        flows._download_reservoirs_swot(mock_project_reservoirs)
+
+        mock_query.assert_not_called()
+        assert "Skipping SWOT download" in caplog.text
+
+
+@pytest.mark.unit
+def test_download_reservoirs_swot_proceeds_when_some_matched_pld(
+    mock_project_reservoirs,
+):
+    """_download_reservoirs_swot still downloads if at least one reservoir
+    matched the PLD, even if others didn't -- the AOI query is shared across
+    all reservoirs, so a partial match still needs the download to run."""
+    from HydroEO.satellites import swot
+
+    mock_project_reservoirs.reservoirs.download_gdf = (
+        mock_project_reservoirs.reservoirs.download_gdf.assign(
+            prior_lake_id=[1001, -9999]
+        )
+    )
+
+    with patch.object(swot, "query") as mock_query, patch.object(swot, "download") as mock_download:
+        mock_query.return_value = []
+        flows._download_reservoirs_swot(mock_project_reservoirs)
+
+        mock_query.assert_called_once()
+        mock_download.assert_called_once()
+
 
 
 @pytest.mark.unit
@@ -935,3 +986,33 @@ def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
         flows._assign_pld_id(mock_project_reservoirs)
 
         mock_sjoin.assert_called_once()
+
+
+@pytest.mark.unit
+def test_assign_pld_id_drops_index_right_column(mock_project_reservoirs, tmp_path):
+    """_assign_pld_id must not leave sjoin_nearest's leftover index_right/
+    index_left columns in prj.reservoirs.gdf -- these persisted previously,
+    which broke any follow-up sjoin_nearest call on prj.reservoirs.gdf later
+    (ValueError: 'index_right' cannot be a column name in the frames being
+    joined) since sjoin_nearest wants to use that name itself."""
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1001, 1002]},
+        geometry=[Point(0.5, 0.5), Point(1.5, 1.5)],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+
+    flows._assign_pld_id(mock_project_reservoirs)
+
+    assert "index_right" not in mock_project_reservoirs.reservoirs.gdf.columns
+    assert "index_left" not in mock_project_reservoirs.reservoirs.gdf.columns
+
+    # confirm a follow-up sjoin_nearest (e.g. manual diagnostics) doesn't
+    # collide with a leftover column from this one
+    gpd.sjoin_nearest(
+        mock_project_reservoirs.reservoirs.gdf.to_crs("EPSG:3857"),
+        pld_gdf.to_crs("EPSG:3857"),
+        distance_col="dist_to_pld",
+    )

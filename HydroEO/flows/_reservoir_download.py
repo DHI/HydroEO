@@ -40,6 +40,17 @@ def download_reservoirs(prj: "Project") -> None:
 
 def _download_reservoirs_swot(prj: "Project") -> None:
     """Download SWOT Lake SP data for reservoirs."""
+    if "prior_lake_id" in prj.reservoirs.download_gdf.columns:
+        matched = (prj.reservoirs.download_gdf["prior_lake_id"] > 0).sum()
+        if matched == 0:
+            logger.warning(
+                "Skipping SWOT download: none of the %d reservoir(s) in this "
+                "project matched a Prior Lake Database (PLD) lake (see "
+                "aux/PLD/missing_in_pld.gpkg).",
+                len(prj.reservoirs.download_gdf),
+            )
+            return
+
     download_dir = prj.dirs["swot"]
     general.ifnotmakedirs(download_dir)
 

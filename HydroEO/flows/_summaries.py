@@ -74,7 +74,7 @@ def _river_target_corridor(
         distances = _river_extraction_buffer_meters(prj)
 
     buffered = local.buffer(distances)
-    corridor = buffered.unary_union
+    corridor = buffered.union_all()
     corridor_gdf = gpd.GeoDataFrame(
         geometry=[corridor], crs=prj.local_crs
     ).to_crs(prj.global_crs)

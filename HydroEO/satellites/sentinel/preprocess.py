@@ -872,7 +872,7 @@ def extract_observations(
 
                     # filter observations to ensure they fall within geometry
                     data_gdf = data_gdf.loc[
-                        data_gdf.within(features.unary_union)
+                        data_gdf.within(features.union_all())
                     ].reset_index(drop=True)
                     if len(data_gdf) > 0:
                         # filter by sigma0

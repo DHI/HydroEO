@@ -100,6 +100,7 @@ def _assign_pld_id(prj: "Project") -> None:
         distance_col="dist_to_pld",
     )
     joined_gdf = joined_gdf.to_crs(prj.reservoirs.gdf.crs)
+    joined_gdf = joined_gdf.drop(columns=["index_right", "index_left"], errors="ignore")
 
     joined_gdf.loc[joined_gdf.prior_lake_id.isnull(), "prior_lake_id"] = -9999
 
@@ -126,3 +127,13 @@ def _flag_missing_priors(prj: "Project") -> None:
         len(present),
         len(missing),
     )
+    if len(missing) > 0:
+        logger.warning(
+            "%d reservoir(s) not matched to any Prior Lake Database (PLD) lake "
+            "within pld_match_max_distance_m: %s (see aux/PLD/missing_in_pld.gpkg). "
+            "SWOT Lake SP cannot report observations for these. "
+            "Consider increasing pld_match_max_distance_m if it's a "
+            "near miss.",
+            len(missing),
+            ", ".join(str(v) for v in missing[prj.reservoirs.id_key]),
+        )
