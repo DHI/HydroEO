@@ -206,9 +206,3 @@ def _ensure_sword_database(prj: "Project") -> None:
     else:
         logger.info("Kept raw SWORD zip file at %s (keep_raw_sword=True)", zip_path)
 
-
-# ============================================================================
-# RESERVOIRS: Download
-# ============================================================================
-
-

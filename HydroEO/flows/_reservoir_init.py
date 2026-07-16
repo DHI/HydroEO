@@ -80,6 +80,7 @@ def _download_pld(prj: "Project") -> None:
         bounds=bounds,
         raw_pld_path=raw_pld_path,
         keep_raw=effective_keep_raw,
+        continent_codes=getattr(prj, "pld_continent_codes", None),
     )
 
 
