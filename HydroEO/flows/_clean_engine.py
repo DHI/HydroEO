@@ -55,10 +55,10 @@ def _clean_timeseries(prj: "Project", target_type: str) -> None:
                 product_options = prj.processing_options.get(
                     product,
                     {
-                        "processing_filters": ["elevation", "MAD"],
-                        "elevation_min_m": 0.0,
-                        "elevation_max_m": 8000.0,
-                        "mad_threshold": 5.0,
+                        "processing_filters": DEFAULT_PROCESSING_FILTERS,
+                        "elevation_min_m": DEFAULT_ELEVATION_MIN_M,
+                        "elevation_max_m": DEFAULT_ELEVATION_MAX_M,
+                        "mad_threshold": DEFAULT_MAD_THRESHOLD,
                     },
                 )
 
@@ -70,11 +70,15 @@ def _clean_timeseries(prj: "Project", target_type: str) -> None:
                 ts.clean(
                     product_options.get("processing_filters", ["elevation", "MAD"]),
                     filter_params={
-                        "elevation_min_m": product_options.get("elevation_min_m", 0.0),
-                        "elevation_max_m": product_options.get(
-                            "elevation_max_m", 8000.0
+                        "elevation_min_m": product_options.get(
+                            "elevation_min_m", DEFAULT_ELEVATION_MIN_M
                         ),
-                        "mad_threshold": product_options.get("mad_threshold", 5.0),
+                        "elevation_max_m": product_options.get(
+                            "elevation_max_m", DEFAULT_ELEVATION_MAX_M
+                        ),
+                        "mad_threshold": product_options.get(
+                            "mad_threshold", DEFAULT_MAD_THRESHOLD
+                        ),
                     },
                 )
 
