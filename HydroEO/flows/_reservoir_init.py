@@ -6,6 +6,7 @@ import logging
 import os
 
 import geopandas as gpd
+import pandas as pd
 
 from HydroEO.downloaders import hydroweb
 
@@ -102,7 +103,10 @@ def _assign_pld_id(prj: "Project") -> None:
     )
     joined_gdf = joined_gdf.to_crs(prj.reservoirs.gdf.crs)
     joined_gdf = joined_gdf.drop(columns=["index_right", "index_left"], errors="ignore")
-
+    # Make sure lake_id is numeric for future comparison, set missing values to -9999
+    joined_gdf["prior_lake_id"] = pd.to_numeric(
+        joined_gdf["prior_lake_id"], errors="coerce"
+    )
     joined_gdf.loc[joined_gdf.prior_lake_id.isnull(), "prior_lake_id"] = -9999
 
     prj.reservoirs.gdf = joined_gdf

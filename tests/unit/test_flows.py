@@ -1016,3 +1016,36 @@ def test_assign_pld_id_drops_index_right_column(mock_project_reservoirs, tmp_pat
         pld_gdf.to_crs("EPSG:3857"),
         distance_col="dist_to_pld",
     )
+
+
+@pytest.mark.unit
+def test_assign_pld_id_coerces_string_lake_id_to_numeric(mock_project_reservoirs, tmp_path):
+    """Regression test: some real PLD files (e.g. the '_light' product)
+    store lake_id as text rather than integer, which round-trips through
+    GPKG as a genuine Python str. Without coercion, prior_lake_id ends up
+    as an object-dtype column mixing strings (matched reservoirs) with the
+    integer -9999 sentinel (unmatched reservoirs) -- and _flag_missing_priors's
+    'prior_lake_id > 0' / '< 0' comparisons raise TypeError: '>' not
+    supported between instances of 'str' and 'int'.
+    """
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # lake_id stored as text, matching the confirmed round-trip behavior of
+    # some real PLD files
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": ["1001", "1002"]},
+        geometry=[Point(0.5, 0.5), Point(1.5, 1.5)],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+
+    flows._assign_pld_id(mock_project_reservoirs)
+
+    prior_lake_id = mock_project_reservoirs.reservoirs.gdf["prior_lake_id"]
+    assert pd.api.types.is_numeric_dtype(prior_lake_id), (
+        f"prior_lake_id should be numeric, got dtype {prior_lake_id.dtype}"
+    )
+    # this is exactly the comparison that raised TypeError before the fix
+    present = mock_project_reservoirs.reservoirs.gdf.loc[prior_lake_id > 0]
+    missing = mock_project_reservoirs.reservoirs.gdf.loc[prior_lake_id < 0]
+    assert len(present) + len(missing) == len(mock_project_reservoirs.reservoirs.gdf)
