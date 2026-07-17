@@ -84,6 +84,11 @@ class Project:
         if "raw_pld_path" in hydroweb_cfg:
             self.dirs["pld_raw"] = general.normalize_path(hydroweb_cfg["raw_pld_path"])
         self.keep_raw_pld = hydroweb_cfg.get("keep_raw_pld", False)
+        # Continent-tile suffixes (e.g. ["AS", "AU"]) to look for when
+        # backfilling res_id from the full-schema PLD tiles, in addition to
+        # the "_light" file (lake_id + geometry only, no res_id) used for
+        # guaranteed global coverage. T
+        self.pld_continent_codes = hydroweb_cfg.get("continent_codes")
 
         # Set SWORD database paths and configuration
         sword_db_cfg = self.config.get("sword_db", {})

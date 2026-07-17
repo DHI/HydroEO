@@ -360,11 +360,6 @@ def _extract_rivers_swot_observations(prj: "Project", overwrite: bool = False) -
             gdf.to_file(os.path.join(dst_dir, "swot.gpkg"), driver="GPKG")
 
 
-# ============================================================================
-# RESERVOIRS: Timeseries Processing
-# ============================================================================
-
-
 def create_rivers_timeseries(prj: "Project") -> None:
     """Extract, clean, and merge timeseries for river targets (nodes/reaches).
 
