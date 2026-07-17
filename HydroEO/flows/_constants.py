@@ -2,6 +2,19 @@
 Shared constants for the merge/clean pipeline (both reservoirs and rivers).
 """
 
+# Default cleaning-filter parameters, used by _clean_engine.py as the
+# fallback whenever a product's processing_options doesn't specify these
+# explicitly. Note: HydroEO.constants.MISSION_DEFAULTS also defines these
+# same values (per-mission, for initial config parsing in project.py) --
+# the two aren't wired together, so a change here won't automatically
+# propagate there or vice versa. Worth consolidating fully if that
+# divergence risk ever matters in practice.
+DEFAULT_PROCESSING_FILTERS = ["elevation", "MAD"]
+DEFAULT_ELEVATION_MIN_M = 0.0
+DEFAULT_ELEVATION_MAX_M = 8000.0
+DEFAULT_MAD_THRESHOLD = 5.0
+
+
 PRODUCT_TIMESERIES_KEYS = {
     "sentinel3": dict(
         lat_key="lat", lon_key="lon", pass_key="file_name",

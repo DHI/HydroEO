@@ -88,6 +88,14 @@ SWOT_DEFAULT_QUALITY_FILTERS = {
 
 SUPPORTED_CLEAN_FILTERS = ["elevation", "MAD", "daily_mean", "hampel", "rolling_median"]
 
+# Project.__sat_init and HydroEO.flows._clean_engine both
+# reference these constants
+DEFAULT_PROCESSING_FILTERS = ["elevation", "MAD"]
+DEFAULT_ELEVATION_MIN_M = 0.0
+DEFAULT_ELEVATION_MAX_M = 8000.0
+DEFAULT_MAD_THRESHOLD = 5.0
+
+
 # ============================================================================
 # Mission Defaults
 # ============================================================================

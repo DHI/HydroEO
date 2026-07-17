@@ -16,7 +16,13 @@ from HydroEO import flows
 from HydroEO.satellites.swot.raster import download_raster
 from HydroEO.satellites.swot.pixc import download_pixc
 from HydroEO.utils import general
-from HydroEO.constants import MISSION_DEFAULTS
+from HydroEO.constants import (
+    MISSION_DEFAULTS,
+    DEFAULT_PROCESSING_FILTERS,
+    DEFAULT_ELEVATION_MIN_M,
+    DEFAULT_ELEVATION_MAX_M,
+    DEFAULT_MAD_THRESHOLD,
+)
 from HydroEO.validation import validate_config
 
 logger = logging.getLogger(__name__)
@@ -412,11 +418,18 @@ class Project:
 
             self.processing_options[name] = {
                 "processing_filters": self.config[name].get(
-                    "processing_filters", ["elevation", "MAD"]
+                    "processing_filters", DEFAULT_PROCESSING_FILTERS
                 ),
-                "elevation_min_m": self.config[name].get("elevation_min_m", 0.0),
-                "elevation_max_m": self.config[name].get("elevation_max_m", 8000.0),
-                "mad_threshold": self.config[name].get("mad_threshold", 5.0),
+                "elevation_min_m": self.config[name].get(
+                    "elevation_min_m", DEFAULT_ELEVATION_MIN_M
+                ),
+                "elevation_max_m": self.config[name].get(
+                    "elevation_max_m", DEFAULT_ELEVATION_MAX_M
+                ),
+                "mad_threshold": self.config[name].get(
+                    "mad_threshold", DEFAULT_MAD_THRESHOLD
+                 ),
+
             }
 
     def _apply_optional_defaults(self):
