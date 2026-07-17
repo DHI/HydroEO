@@ -122,6 +122,20 @@ def _assign_pld_id(prj: "Project") -> None:
             .drop_duplicates(subset=id_key, keep="first")
         )
 
+        if not reservoir_areas.index.is_unique:
+
+            duplicate_counts = (
+                reservoir_areas.index.to_series()
+                .value_counts()
+                .loc[lambda x: x > 1]
+            )
+
+            raise ValueError(
+                "reservoir_areas contains duplicate IDs.\n"
+                f"Number of duplicated IDs: {len(duplicate_counts)}\n"
+                f"Top duplicates:\n{duplicate_counts.head(20)}"
+            )
+
         # Overlap area as a percentage of the RESERVOIR's own area.
         matches["_reservoir_area"] = matches[id_key].map(reservoir_areas)
         matches["_overlap_pct"] = (
