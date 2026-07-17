@@ -88,6 +88,13 @@ SWOT_DEFAULT_QUALITY_FILTERS = {
 
 SUPPORTED_CLEAN_FILTERS = ["elevation", "MAD", "daily_mean", "hampel", "rolling_median"]
 
+# Project.__sat_init and HydroEO.flows._clean_engine both
+# reference these constants
+DEFAULT_PROCESSING_FILTERS = ["elevation", "MAD"]
+DEFAULT_ELEVATION_MIN_M = 0.0
+DEFAULT_ELEVATION_MAX_M = 8000.0
+DEFAULT_MAD_THRESHOLD = 5.0
+
 # ============================================================================
 # Mission Defaults
 # ============================================================================
@@ -96,14 +103,17 @@ MISSION_DEFAULTS = {
     "swot": {
         "download": False,
         "process": False,
-        "pld_match_max_distance_m": 100.0,
+        # Minimum PLD-lake overlap as a percentage (0-100) of the
+        # reservoir's own area. Previously used pld_match_max_distance_m.
+        # NOTE: Note backward compatible.
+        "pld_match_min_overlap_pct": 10.0,
         "exclude_obs_id_values": ["no_data"],
         "hydrocron_fields": SWOT_DEFAULT_HYDROCRON_FIELDS,
         "quality_filters": SWOT_DEFAULT_QUALITY_FILTERS,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
+        "processing_filters": DEFAULT_PROCESSING_FILTERS,
+        "elevation_min_m": DEFAULT_ELEVATION_MIN_M,
+        "elevation_max_m": DEFAULT_ELEVATION_MAX_M,
+        "mad_threshold": DEFAULT_MAD_THRESHOLD,
     },
     "icesat2": {
         "download": False,
@@ -111,10 +121,10 @@ MISSION_DEFAULTS = {
         "atl13_fields": ICESAT2_DEFAULT_FIELDS,
         "atl13": {"pass_invalid": False, "beams": [], "spots": []},
         "track_keys": ICESAT2_SUPPORTED_TRACK_KEYS,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
+        "processing_filters": DEFAULT_PROCESSING_FILTERS,
+        "elevation_min_m": DEFAULT_ELEVATION_MIN_M,
+        "elevation_max_m": DEFAULT_ELEVATION_MAX_M,
+        "mad_threshold": DEFAULT_MAD_THRESHOLD,
     },
     "sentinel3": {
         "download": False,
@@ -122,10 +132,10 @@ MISSION_DEFAULTS = {
         "subset_file_id": "enhanced_measurement.nc",
         "sigma0_max": 1e5,
         "download_threads": 1,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
+        "processing_filters": DEFAULT_PROCESSING_FILTERS,
+        "elevation_min_m": DEFAULT_ELEVATION_MIN_M,
+        "elevation_max_m": DEFAULT_ELEVATION_MAX_M,
+        "mad_threshold": DEFAULT_MAD_THRESHOLD,
     },
     "sentinel6": {
         "download": False,
@@ -133,9 +143,9 @@ MISSION_DEFAULTS = {
         "subset_file_id": "enhanced_measurement.nc",
         "sigma0_max": 1e5,
         "download_threads": 1,
-        "processing_filters": ["elevation", "MAD"],
-        "elevation_min_m": 0.0,
-        "elevation_max_m": 8000.0,
-        "mad_threshold": 5.0,
+        "processing_filters": DEFAULT_PROCESSING_FILTERS,
+        "elevation_min_m": DEFAULT_ELEVATION_MIN_M,
+        "elevation_max_m": DEFAULT_ELEVATION_MAX_M,
+        "mad_threshold": DEFAULT_MAD_THRESHOLD,
     },
 }

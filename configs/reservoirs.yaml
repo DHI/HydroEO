@@ -87,7 +87,7 @@ sentinel6:
 # ──────────────────────────────────────────────────────────────────────────────
 
 # swot:
-#   pld_match_max_distance_m: 100.0            # max distance to match reservoirs to PLD lakes
+#   pld_match_min_overlap_pct: 10.0            # minimum PLD-lake overlap as a percentage of the reservoir's own area
 #   exclude_obs_id_values: ["no_data"]         # SWOT obs_id values to drop during extraction
 #   processing_filters: ["elevation", "MAD"]   # elevation | MAD | daily_mean | hampel | rolling_median
 #   elevation_min_m: 0.0

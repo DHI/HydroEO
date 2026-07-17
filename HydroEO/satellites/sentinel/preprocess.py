@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
+from HydroEO.utils import general
 from HydroEO.utils.general import center_longitude
 
 
@@ -591,19 +592,35 @@ def subset(
         else:
             deferred_warnings.append(message)
 
-    # loop through the downloads folder and subset any products with the right extention
+    # loop through the downloads folder and subset any products with the right extension
+    # (DSE-style: .SEN3/.SEN6 directories) OR a flat, already-.nc file
+    # (EarthData/PO.DAAC-style download)
     pbar = tqdm(
         total=int(len(os.listdir(download_dir)) / 2),
         desc=f"Subsetting data in {os.path.basename(download_dir)}",
         unit="file",
         disable=not show_progress,
     )
-    for folder in os.listdir(download_dir):
-        if folder.endswith(EXTENSION[product]):
-            pbar.update(1)
-            folder_path = os.path.join(download_dir, folder)
+    for item in os.listdir(download_dir):
+        item_path = os.path.join(download_dir, item)
 
-            try:
+        is_creodias_folder = item.endswith(EXTENSION[product])
+        is_flat_earthdata_file = (
+            product == "S6"
+            and os.path.isfile(item_path)
+            and item.endswith(".nc")
+            and "STD" in item.split("_")
+        )
+
+        if not (is_creodias_folder or is_flat_earthdata_file):
+            continue
+
+        pbar.update(1)
+        folder = item
+
+        try:
+            if is_creodias_folder:
+                folder_path = item_path
                 # within the sentinel file, select the correct type of mearurements with the file_id key
                 if product == "S3":
                     file = _find_subset_file(folder_path, product, file_id)
@@ -635,57 +652,81 @@ def subset(
                         )
                     file = candidates[0]
 
-                if not os.path.isfile(file):
-                    _defer_warning(
-                        "Skipping subset for %s: source file does not exist: %s",
-                        folder,
-                        file,
-                    )
-                    continue
-
                 # we will save a new file with the same name as the sentinel folder but only keeping the nc file we choose
-                nc_cropped = os.path.join(
-                    dest_dir,
-                    "sub_"
-                    + os.path.split(folder)[-1].split(EXTENSION[product])[0]
-                    + ".nc",
+                base_name = os.path.split(folder)[-1].split(EXTENSION[product])[0]
+            else:
+                # Flat EarthData/PO.DAAC file -- it IS the file to crop
+                # directly, nothing to search for inside it.
+                file = item_path
+                base_name = os.path.splitext(item)[0]
+
+            if not os.path.isfile(file):
+                _defer_warning(
+                    "Skipping subset for %s: source file does not exist: %s",
+                    folder,
+                    file,
+                )
+                continue
+
+            nc_cropped = os.path.join(dest_dir, "sub_" + base_name + ".nc")
+
+            with netCDF4.Dataset(file) as nc:
+                _validate_subset_source(nc, product, file)
+
+                # SciHub contains 1Hz and 20Hz variables
+                # Get index of values within AOI at both frequencies
+                # The way that variabels are accesed/called within sentinel 3 and 6 are different, so we extract the indices as needed
+                if product == "S3":
+                    freq_20 = "_20_ku"
+                    freq_01 = "_01"
+
+                    lat20 = nc["lat" + freq_20][:]
+                    lon20 = nc["lon" + freq_20][:]
+
+                    lat01 = nc["lat" + freq_01][:]
+                    lon01 = nc["lon" + freq_01][:]
+
+                elif product == "S6":
+                    freq_20 = "data_20"
+                    freq_01 = "data_01"
+
+                    lat = "latitude"
+                    lon = "longitude"
+
+                    lat20 = nc[freq_20]["ku"][lat][:]
+                    lon20 = nc[freq_20]["ku"][lon][:]
+
+                    lat01 = nc[freq_01][lat][:]
+                    lon01 = nc[freq_01][lon][:]
+
+                # Adjust the longitude
+                lon20 = center_longitude(lon20)
+                lon01 = center_longitude(lon01)
+
+                logger.debug(
+                    "Subset candidate %s bounds: AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f], 20Hz lon=%s lat=%s, 1Hz lon=%s lat=%s",
+                    file,
+                    ulx,
+                    lrx,
+                    lry,
+                    uly,
+                    _format_array_range(lon20),
+                    _format_array_range(lat20),
+                    _format_array_range(lon01),
+                    _format_array_range(lat01),
                 )
 
-                with netCDF4.Dataset(file) as nc:
-                    _validate_subset_source(nc, product, file)
+                # Get the indices within the bounds for 20Hz
+                selected = np.where(
+                    (lon20 <= lrx)
+                    & (lon20 >= ulx)
+                    & (lat20 >= lry)
+                    & (lat20 <= uly)
+                )[0]
 
-                    # SciHub contains 1Hz and 20Hz variables
-                    # Get index of values within AOI at both frequencies
-                    # The way that variabels are accesed/called within sentinel 3 and 6 are different, so we extract the indices as needed
-                    if product == "S3":
-                        freq_20 = "_20_ku"
-                        freq_01 = "_01"
-
-                        lat20 = nc["lat" + freq_20][:]
-                        lon20 = nc["lon" + freq_20][:]
-
-                        lat01 = nc["lat" + freq_01][:]
-                        lon01 = nc["lon" + freq_01][:]
-
-                    elif product == "S6":
-                        freq_20 = "data_20"
-                        freq_01 = "data_01"
-
-                        lat = "latitude"
-                        lon = "longitude"
-
-                        lat20 = nc[freq_20]["ku"][lat][:]
-                        lon20 = nc[freq_20]["ku"][lon][:]
-
-                        lat01 = nc[freq_01][lat][:]
-                        lon01 = nc[freq_01][lon][:]
-
-                    # Adjust the longitude
-                    lon20 = center_longitude(lon20)
-                    lon01 = center_longitude(lon01)
-
-                    logger.debug(
-                        "Subset candidate %s bounds: AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f], 20Hz lon=%s lat=%s, 1Hz lon=%s lat=%s",
+                if len(selected) == 0:
+                    _defer_warning(
+                        "Skipping subset for %s: no 20Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
                         file,
                         ulx,
                         lrx,
@@ -693,85 +734,63 @@ def subset(
                         uly,
                         _format_array_range(lon20),
                         _format_array_range(lat20),
+                    )
+                    continue
+
+                # Get the indices within the bounds for 1Hz
+                selected01 = np.where(
+                    (lon01 <= lrx)
+                    & (lon01 >= ulx)
+                    & (lat01 >= lry)
+                    & (lat01 <= uly)
+                )[0]
+
+                if len(selected01) == 0:
+                    _defer_warning(
+                        "Skipping subset for %s: no 1Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
+                        file,
+                        ulx,
+                        lrx,
+                        lry,
+                        uly,
                         _format_array_range(lon01),
                         _format_array_range(lat01),
                     )
+                    continue
 
-                    # Get the indices within the bounds for 20Hz
-                    selected = np.where(
-                        (lon20 <= lrx)
-                        & (lon20 >= ulx)
-                        & (lat20 >= lry)
-                        & (lat20 <= uly)
-                    )[0]
+                min_index20, max_index20 = selected[0], selected[-1]
+                min_index01, max_index01 = selected01[0], selected01[-1]
 
-                    if len(selected) == 0:
-                        _defer_warning(
-                            "Skipping subset for %s: no 20Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
-                            file,
-                            ulx,
-                            lrx,
-                            lry,
-                            uly,
-                            _format_array_range(lon20),
-                            _format_array_range(lat20),
-                        )
-                        continue
+            with (
+                netCDF4.Dataset(file) as src,
+                netCDF4.Dataset(nc_cropped, "w") as dst,
+            ):
+                if product == "S3":
+                    _crop_s3(
+                        src,
+                        dst,
+                        (min_index20, max_index20),
+                        (min_index01, max_index01),
+                    )
 
-                    # Get the indices within the bounds for 1Hz
-                    selected01 = np.where(
-                        (lon01 <= lrx)
-                        & (lon01 >= ulx)
-                        & (lat01 >= lry)
-                        & (lat01 <= uly)
-                    )[0]
+                elif product == "S6":
+                    _crop_s6(
+                        src,
+                        dst,
+                        (min_index20, max_index20),
+                        (min_index01, max_index01),
+                    )
 
-                    if len(selected01) == 0:
-                        _defer_warning(
-                            "Skipping subset for %s: no 1Hz points fall inside AOI. AOI lon=[%.6f, %.6f] lat=[%.6f, %.6f]; file lon=%s lat=%s.",
-                            file,
-                            ulx,
-                            lrx,
-                            lry,
-                            uly,
-                            _format_array_range(lon01),
-                            _format_array_range(lat01),
-                        )
-                        continue
+            with netCDF4.Dataset(nc_cropped, "r") as dst:
+                _validate_subset_output(dst, product, nc_cropped)
 
-                    min_index20, max_index20 = selected[0], selected[-1]
-                    min_index01, max_index01 = selected01[0], selected01[-1]
-
-                with (
-                    netCDF4.Dataset(file) as src,
-                    netCDF4.Dataset(nc_cropped, "w") as dst,
-                ):
-                    if product == "S3":
-                        _crop_s3(
-                            src,
-                            dst,
-                            (min_index20, max_index20),
-                            (min_index01, max_index01),
-                        )
-
-                    elif product == "S6":
-                        _crop_s6(
-                            src,
-                            dst,
-                            (min_index20, max_index20),
-                            (min_index01, max_index01),
-                        )
-
-                with netCDF4.Dataset(nc_cropped, "r") as dst:
-                    _validate_subset_output(dst, product, nc_cropped)
-
-            except Exception:
-                logger.exception(
-                    "Subset failed for folder %s using source file %s. Continuing with next file.",
-                    folder,
-                    locals().get("file", "unresolved"),
-                )
-                continue
+        except Exception:
+            logger.exception(
+                "Subset failed for folder %s using source file %s. Continuing with next file.",
+                folder,
+                locals().get("file", "unresolved"),
+            )
+            continue
 
     pbar.close()
 
@@ -787,13 +806,41 @@ def __format_coord_bounds(aoi):
     return shapely.Polygon(geometry.format_coord_list(aoi)).bounds
 
 
-def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
-    """Extract Sentinel observations to shapefile within feature geometries."""
+def extract_observations(
+    src_dir, dst_path, features, sigma0_max=1e5, processed_log_path=None, overwrite=False
+):
+    """Extract Sentinel observations to shapefile within feature geometries.
+
+    Parameters
+    ----------
+    processed_log_path : str, optional
+        Path to a newline-delimited log of subset file names already
+        incorporated into dst_path (see HydroEO.utils.general.
+        read_id_log/append_id_log/write_id_log). If given, only files
+        NOT yet in the log are read, and the resulting new observations
+        are appended to (and de-duplicated against) the existing
+        dst_path rather than overwriting it. If None (default),
+        behaves exactly as before: reads every file in src_dir and
+        overwrites dst_path from scratch.
+    overwrite : bool, optional
+        If True, ignores processed_log_path's existing contents,
+        re-reads every file in src_dir, overwrites dst_path from
+        scratch, and replaces processed_log_path wholesale with
+        exactly the files just read.
+    """
+    incremental = processed_log_path is not None and not overwrite
+    already_processed = (
+        general.read_id_log(processed_log_path) if incremental else set()
+    )
+
     # read data for each availble option in directory
     gdf_list = list()
+    files_read = list()
     files = list(os.listdir(src_dir))
 
     for file in files:
+        if incremental and file in already_processed:
+            continue
         try:
             file_split = file.split("_")
             if file_split[0] == "sub":  # assume that we have subsetted the data already
@@ -825,7 +872,7 @@ def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
 
                     # filter observations to ensure they fall within geometry
                     data_gdf = data_gdf.loc[
-                        data_gdf.within(features.unary_union)
+                        data_gdf.within(features.union_all())
                     ].reset_index(drop=True)
                     if len(data_gdf) > 0:
                         # filter by sigma0
@@ -839,14 +886,29 @@ def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
 
                         # if we have data for the reservoir add it to the reservoir specific dataframe
                         gdf_list.append(data_gdf)
+
+                files_read.append(file)
         except Exception:
             logger.exception("Unable to open sentinel file: %s", file)
+            # Not added to files_read: a file that raised here (e.g. a
+            # partially-written/corrupt subset) is retried on the next
+            # extraction run rather than being marked processed and
+            # silently skipped forever.
 
     # once all tracks are processed combine them and save in the destination dir
     if len(gdf_list) > 0:
         observations = pd.concat(gdf_list).reset_index(drop=True)
         observations = observations.set_crs(features.crs)
-        observations.to_file(dst_path, driver="GPKG")
+        if incremental:
+            general.append_and_dedupe_gpkg(dst_path, observations)
+        else:
+            observations.to_file(dst_path, driver="GPKG")
+
+    if processed_log_path:
+        if overwrite:
+            general.write_id_log(processed_log_path, files_read)
+        elif files_read:
+            general.append_id_log(processed_log_path, files_read)
 
 
 def get_latest_obs_date(data_dir, product):
@@ -855,6 +917,8 @@ def get_latest_obs_date(data_dir, product):
         shp_path = os.path.join(data_dir, "sentinel3.gpkg")
     elif product.upper() == "S6":
         shp_path = os.path.join(data_dir, "sentinel6.gpkg")
+    else:
+        raise ValueError(f"Unsupported product '{product}'. Expected 'S3' or 'S6'.")
 
     if os.path.exists(shp_path):
         gdf = gpd.read_file(shp_path)

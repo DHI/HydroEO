@@ -41,7 +41,7 @@ Or via CLI: `hydroeo run configs/reservoirs.yaml`
 | Branch | Config | Status | Satellites | Description |
 | --- | --- | --- | --- | --- |
 | `reservoirs` | [configs/reservoirs.yaml](configs/reservoirs.yaml) | ✅ | SWOT Lake SP, ICESat-2 ATL13, Sentinel-3/6 | Lakes and reservoirs from polygon input. Multi-mission timeseries with cleaning filters. → [Full docs](configs/reservoirs.md) |
-| `rivers` | [configs/rivers.yaml](configs/rivers.yaml) | 🧪 partial | SWOT Hydrocron (public API) | River nodes/reaches from SWORD v17b. Download and diagnostic plots. → [Full docs](configs/rivers.md) |
+| `rivers` | [configs/rivers.yaml](configs/rivers.yaml) | 🧪 test in progress | SWOT Hydrocron (public API), ICESat-2 ATL13, Sentinel-3/6 | River nodes/reaches from SWORD v17b. Download and diagnostic plots. Virtual station timeseries with cleaning filters → [Full docs](configs/rivers.md) |
 | `swot_raster` | [configs/swot_raster.yaml](configs/swot_raster.yaml) | ✅ | SWOT L2 HR/LR Raster | Arbitrary AOI. Downloads, clips, and merges raster tiles by date. → [Full docs](configs/swot_raster.md) |
 | `swot_pixc` | [configs/swot_pixc.yaml](configs/swot_pixc.yaml) | ✅ | SWOT L2 PIXC | Arbitrary AOI. Point cloud gridded to rasters via binned statistics. → [Full docs](configs/swot_pixc.md) |
 
@@ -141,3 +141,11 @@ make test
 ```
 
 See [tests/README.md](tests/README.md) for the full test suite, pytest markers, and CI/CD setup.
+
+Citation
+
+If you use HydroEO, please cite it — see CITATION.cff or use GitHub's "Cite this repository" button (in the sidebar of this page).
+
+If you use the core timeseries pipeline (HydroEO/utils/filters/basic_filters.py — specifically the windowed ADM-based outlier/uncertainty weighting, SVR, and Kalman filter merge), please also cite the methodology it implements. (The multi-mission bias correction and mission-combination logic are HydroEO's own contributions, not sourced from this paper.)
+
+Schwatke, C., Dettmering, D., Bosch, W., and Seitz, F.: DAHITI – an innovative approach for estimating water level time series over inland waters using multi-mission satellite altimetry, Hydrology and Earth System Sciences, 19, 4345–4364, 2015. https://doi.org/10.5194/hess-19-4345-2015

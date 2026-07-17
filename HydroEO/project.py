@@ -16,7 +16,13 @@ from HydroEO import flows
 from HydroEO.satellites.swot.raster import download_raster
 from HydroEO.satellites.swot.pixc import download_pixc
 from HydroEO.utils import general
-from HydroEO.constants import MISSION_DEFAULTS
+from HydroEO.constants import (
+    MISSION_DEFAULTS,
+    DEFAULT_PROCESSING_FILTERS,
+    DEFAULT_ELEVATION_MIN_M,
+    DEFAULT_ELEVATION_MAX_M,
+    DEFAULT_MAD_THRESHOLD,
+)
 from HydroEO.validation import validate_config
 
 logger = logging.getLogger(__name__)
@@ -46,6 +52,7 @@ class Project:
         self.to_process = list()
         self.mission_options = dict()
         self.processing_options = dict()
+        self.merging_options = dict()
 
         self.dirs = dict()
         self.startdates = dict()
@@ -83,6 +90,11 @@ class Project:
         if "raw_pld_path" in hydroweb_cfg:
             self.dirs["pld_raw"] = general.normalize_path(hydroweb_cfg["raw_pld_path"])
         self.keep_raw_pld = hydroweb_cfg.get("keep_raw_pld", False)
+        # Continent-tile suffixes (e.g. ["AS", "AU"]) to look for when
+        # backfilling res_id from the full-schema PLD tiles, in addition to
+        # the "_light" file (lake_id + geometry only, no res_id) used for
+        # guaranteed global coverage. T
+        self.pld_continent_codes = hydroweb_cfg.get("continent_codes")
 
         # Set SWORD database paths and configuration
         sword_db_cfg = self.config.get("sword_db", {})
@@ -174,18 +186,38 @@ class Project:
         if "reservoirs" in self.config.keys() and self.config["reservoirs"].get(
             "enabled", True
         ):
-            self.reservoirs = Reservoirs(
-                gdf=gpd.read_file(self.config["reservoirs"]["path"]),
-                id_key=self.config["reservoirs"]["id_key"],
-                dirs=self.dirs,
-            )
+            reservoirs_gdf = gpd.read_file(self.config["reservoirs"]["path"])
+            if reservoirs_gdf.crs is None:
+                raise ValueError(
+                    f"Reservoirs shapefile '{self.config['reservoirs']['path']}' has "
+                    "no CRS defined (missing .prj?). Cannot safely reproject to "
+                    f"global_crs ({self.global_crs}). Set the file's CRS explicitly "
+                    "before using it with HydroEO."
+                )
+            reservoirs_gdf = reservoirs_gdf.to_crs(self.global_crs)
 
-            self.reservoirs.gdf = self.reservoirs.gdf.to_crs(self.global_crs)
+            self.reservoirs = Reservoirs(
+                gdf=reservoirs_gdf,
+                 id_key=self.config["reservoirs"]["id_key"],
+                 dirs=self.dirs,
+            )
+ 
             self.reservoirs.mission_options = self.mission_options
             self.reservoirs.processing_options = self.processing_options
             self.reservoirs.export_to_dfs0 = self.config["reservoirs"].get(
-                "export_to_dfs0", False
+               "export_to_dfs0", False
             )
+
+            self.reservoirs.overwrite_extraction = self.config["reservoirs"].get(
+                "overwrite_extraction", False
+            )
+
+            # User-configurable overrides for the merge()/Kalman/svr_radial
+            # pipeline
+            self.merging_options = self.config["reservoirs"].get(
+                "merging_options", {}
+            )
+            self.reservoirs.merging_options = self.merging_options
 
         if "rivers" in self.config.keys() and self.config["rivers"].get(
             "enabled", True
@@ -248,6 +280,27 @@ class Project:
             self.rivers.target_id_col = target_id_col
             self.rivers.target_ids = target_ids
 
+            # Corridor buffer for ICESat-2/Sentinel-3/6 extraction 
+            self.rivers.extraction_buffer_meters = rivers_cfg.get(
+                "extraction_buffer_meters"
+            )
+            # Margin applied on top of each target's own SWORD width
+            self.rivers.width_buffer_factor = rivers_cfg.get(
+                "width_buffer_factor", 1.05
+            )
+            # Max distance (m) for assigning a raw altimetry point to its
+            # nearest SWORD target 
+            self.rivers.max_node_assignment_meters = rivers_cfg.get(
+                "max_node_assignment_meters"
+            )
+            self.rivers.overwrite_extraction = rivers_cfg.get(
+                "overwrite_extraction", False
+            )
+
+            # User-configurable overrides for the merge()/Kalman/svr_radial
+            # pipeline 
+            self.rivers.merging_options = rivers_cfg.get("merging_options", {})
+
         if "swot_raster" in self.config.keys() and self.config["swot_raster"].get(
             "enabled", True
         ):
@@ -294,8 +347,9 @@ class Project:
                     "Must provide a local crs or a river or reservoir shapefile to determine local crs"
                 )
 
-        ### Warn when lake/reservoir-only satellites are configured for rivers or raster modes
-        if not hasattr(self, "reservoirs"):
+        ### Warn when lake/reservoir-only satellites are configured for neither
+        # reservoirs nor rivers mode. 
+        if not hasattr(self, "reservoirs") and not hasattr(self, "rivers"):
             incompatible = [
                 m
                 for m in ["icesat2", "sentinel3", "sentinel6"]
@@ -303,10 +357,11 @@ class Project:
             ]
             if incompatible:
                 warnings.warn(
-                    f"Satellite(s) {incompatible} are configured but have no effect without a "
-                    "'reservoirs' section. ICESat-2, Sentinel-3, and Sentinel-6 require reservoir "
-                    "waterbody polygons for spatial filtering. Remove these sections or add a "
-                    "'reservoirs' section to silence this warning.",
+                    f"Satellite(s) {incompatible} are configured but have no effect "
+                    "without a 'reservoirs' or 'rivers' section. ICESat-2, Sentinel-3, "
+                    "and Sentinel-6 require reservoir waterbody polygons or river "
+                    "SWORD targets for spatial filtering. Remove these sections or add "
+                    "a 'reservoirs'/'rivers' section to silence this warning.",
                     UserWarning,
                     stacklevel=2,
                 )
@@ -351,19 +406,30 @@ class Project:
                     "track_keys",
                     "subset_file_id",
                     "sigma0_max",
+                    "sigma0_min",
+                    "source",
+                    "latency",
+                    "short_name",
                     "download_threads",
                     "exclude_obs_id_values",
-                    "pld_match_max_distance_m",
+                    "pld_match_min_overlap_pct",
                 ]
             }
 
             self.processing_options[name] = {
                 "processing_filters": self.config[name].get(
-                    "processing_filters", ["elevation", "MAD"]
+                    "processing_filters", DEFAULT_PROCESSING_FILTERS
                 ),
-                "elevation_min_m": self.config[name].get("elevation_min_m", 0.0),
-                "elevation_max_m": self.config[name].get("elevation_max_m", 8000.0),
-                "mad_threshold": self.config[name].get("mad_threshold", 5.0),
+                "elevation_min_m": self.config[name].get(
+                    "elevation_min_m", DEFAULT_ELEVATION_MIN_M
+                ),
+                "elevation_max_m": self.config[name].get(
+                    "elevation_max_m", DEFAULT_ELEVATION_MAX_M
+                ),
+                "mad_threshold": self.config[name].get(
+                    "mad_threshold", DEFAULT_MAD_THRESHOLD
+                 ),
+
             }
 
     def _apply_optional_defaults(self):
@@ -395,6 +461,31 @@ class Project:
                 "or set CREODIAS_USERNAME and CREODIAS_PASSWORD in the environment."
             )
         return (self.creodias_user, self.creodias_pass)
+
+    def _require_earthdata_credentials(self):
+        """
+        Check upfront that EarthData credentials are available in some
+        form earthaccess recognizes, before calling earthaccess.login().
+        """
+        has_env = bool(
+            os.environ.get("EARTHDATA_USERNAME") and os.environ.get("EARTHDATA_PASSWORD")
+        )
+        has_token = bool(os.environ.get("EARTHDATA_TOKEN"))
+        netrc_path = os.environ.get(
+            "NETRC",
+            os.path.join(os.path.expanduser("~"), "_netrc" if os.name == "nt" else ".netrc"),
+        )
+        has_netrc = os.path.exists(netrc_path)
+
+        if not (has_env or has_token or has_netrc):
+            raise ValueError(
+                "Missing EarthData credentials for the Sentinel-6 EarthData "
+                "source (mission_options['sentinel6']['source'] = 'earthdata'). "
+                "Set EARTHDATA_USERNAME and EARTHDATA_PASSWORD in the "
+                "environment, or EARTHDATA_TOKEN, or create a .netrc file with "
+                "your Earthdata Login credentials (register free at "
+                "https://urs.earthdata.nasa.gov)."
+            )
 
     def validate_config(self):
         """Validate loaded config and report all discovered issues at once.
@@ -430,52 +521,64 @@ class Project:
             )
 
     def update(self):
-        # get the current date of the system
+        """Extend existing downloads through today.
+
+        Re-runs download() for every configured mission with that
+        mission's enddate temporarily replaced by today's date
+        (startdate is left as configured). This relies on each
+        download function's own de-duplication rather than
+        reconstructing "resume from latest observation" logic here:
+
+        - SWOT (satellites.swot._download.download), Sentinel-3/6 via
+          CREODIAS (satellites.sentinel.download), and Sentinel-6 via
+          EarthData (satellites.sentinel.download_earthdata) track
+          already-downloaded granules in a `downloaded.log` file per
+          directory and only fetch what's new.
+        - ICESat-2 (satellites.icesat2.download.query) has no such
+          de-duplication: update() costs roughly the same as a fresh
+          download() for ICESat-2 specifically.
+
+        NOTE: Uses newest observation across project - could be upgraded
+        to run per reservoir or check missing observations for sparser observed
+        reservoirs.
+
+        """
+        if not hasattr(self, "reservoirs") and not hasattr(self, "rivers"):
+            logger.warning(
+                "update() has no effect: neither 'reservoirs' nor 'rivers' is "
+                "configured for this project. (swot_raster/swot_pixc are "
+                "one-off extraction pipelines, not incremental archives, and "
+                "are not affected by update().)"
+            )
+            return
+
         current_date = datetime.date.today()
         logger.info("Updating download archives up to %s", current_date)
-        current_date = [current_date.year, current_date.month, current_date.day]
+        current_date_list = [current_date.year, current_date.month, current_date.day]
 
-        if hasattr(self, "reservoirs"):
-            if "swot" in self.to_download:
-                logger.info("Updating SWOT Lake SP product")
-            if "icesat2" in self.to_download:
-                logger.info("Updating Icesat-2 ATL13 product")
-            if "sentinel3" in self.to_download:
-                logger.info("Updating Sentinel-3 Hydro product")
-            if "sentinel6" in self.to_download:
-                logger.info("Updating Sentinel-6 Hydro product")
+        mission_labels = {
+            "swot": "SWOT Lake SP / Hydrocron product",
+            "icesat2": "ICESat-2 ATL13 product",
+            "sentinel3": "Sentinel-3 Hydro product",
+            "sentinel6": "Sentinel-6 Hydro product",
+        }
 
-            self.reservoirs.download(
-                to_download=self.to_download,
-                startdates=self.startdates,
-                enddates=self.enddates,
-                earthdata_credentials=(self.earthdata_user, self.earthdata_pass),
-                creodias_credentials_provider=self._require_creodias_credentials,
-                update_existing=True,
-                enddate_overrides={
-                    mission: current_date for mission in self.to_download
-                },
-            )
+        original_enddates = dict(self.enddates)
+        try:
+            for mission in self.to_download:
+                self.enddates[mission] = current_date_list
+                logger.info("Updating %s", mission_labels.get(mission, mission))
 
-        if hasattr(self, "rivers"):
-            self.rivers.download(
-                to_download=self.to_download,
-                startdates=self.startdates,
-                enddates=self.enddates,
-                update_existing=True,
-                enddate_overrides={
-                    mission: current_date for mission in self.to_download
-                },
-            )
+            self.download()
+        finally:
+            self.enddates = original_enddates
 
     def create_timeseries(self):
         warnings.filterwarnings("ignore", module="pyogrio\\..*")
         if hasattr(self, "reservoirs"):
             flows.create_reservoirs_timeseries(self)
         if hasattr(self, "rivers"):
-            logger.warning(
-                "Rivers preprocessing is not implemented yet; skipping create_timeseries for rivers."
-            )
+            flows.create_rivers_timeseries(self)
 
     def generate_summaries(self, show=False, save=True):
         warnings.filterwarnings("ignore", module="pandas\\..*")
@@ -484,3 +587,77 @@ class Project:
             flows.generate_reservoirs_summaries(self, show=show, save=save)
         if hasattr(self, "rivers"):
             flows.generate_rivers_summaries(self, show=show, save=save)
+
+    def _infer_target_type(self, target_type=None):
+        """
+        Resolve which target type (reservoirs/rivers) a per-target call
+        applies to. 
+        """
+        if target_type is not None:
+            return target_type
+        if hasattr(self, "reservoirs"):
+            return "reservoirs"
+        if hasattr(self, "rivers"):
+            return "rivers"
+        raise ValueError("Neither reservoirs nor rivers is configured for this project.")
+
+    def list_target_observations(self, id, target_type=None):
+        """
+        Summarize what observations exist for a target (reservoir or
+        river node/reach) at (platform, orbit) granularity
+        """
+        target_type = self._infer_target_type(target_type)
+        return flows.list_target_observations(self, target_type, id)
+
+    def exclude_observations(
+        self, id, platform=None, orbit=None, date=None, reason=None, target_type=None,
+    ):
+        """
+        Exclude observations from a target's merge, at whatever
+        granularity is given (a whole platform, a specific orbit/pass
+        value, a specific date, or any combination). Persisted to
+        {output}/{id}/run_config.yaml -- survives across runs, and can be
+        hand-edited or version-controlled directly. Re-run
+        create_timeseries() (or just the merge step) afterward to apply it.
+
+        Examples
+        --------
+        project.exclude_observations(my_id, platform="S3B", reason="bad calibration pass")
+        project.exclude_observations(my_id, platform="S3B", orbit=1517)
+        project.exclude_observations(my_id, date="2024-03-19")
+        """
+        target_type = self._infer_target_type(target_type)
+        return flows.exclude_from_target(
+            self, target_type, id, platform=platform, orbit=orbit, date=date, reason=reason,
+        )
+
+    def list_exclusions(self, id, target_type=None):
+        """Current exclusion rules for a target, from its run_config.yaml."""
+        target_type = self._infer_target_type(target_type)
+        return flows.list_exclusions(self, target_type, id)
+
+    def remove_exclusion(
+        self, id, index=None, platform=None, orbit=None, date=None, target_type=None,
+    ):
+        """
+        Remove one or more exclusion rules, either by position (index,
+        from list_exclusions()) or by matching criteria -- the same
+        platform/orbit/date fields used with exclude_observations().
+
+        Examples
+        --------
+        project.remove_exclusion(my_id, platform="S3B", orbit=1517)
+        project.remove_exclusion(my_id, index=0)
+        """
+        target_type = self._infer_target_type(target_type)
+        return flows.remove_exclusion(
+            self, target_type, id, index=index, platform=platform, orbit=orbit, date=date,
+        )
+
+    def set_merging_option(self, id, target_type=None, **kwargs):
+        """
+        Override one or more merging_options for just this one target.
+        Example: project.set_merging_option(my_id, svr_radial_err=0.5)
+        """
+        target_type = self._infer_target_type(target_type)
+        return flows.set_merging_option(self, target_type, id, **kwargs)

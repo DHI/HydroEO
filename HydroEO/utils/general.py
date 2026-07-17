@@ -86,6 +86,98 @@ def remove_non_exts(dir: str, ext: Union[str, list]):
                 os.remove(item)
 
 
+def read_id_log(log_path: str) -> set:
+    """Read a newline-delimited log of identifiers into a set.
+
+    Matches the `downloaded.log` convention already used by
+    HydroEO.satellites.swot._download.download and
+    HydroEO.satellites.sentinel.download to track which granules have
+    already been fetched. Used the same way here to track which raw
+    files have already been read during extraction (see
+    HydroEO.satellites.swot.preprocess.extract_observations and
+    HydroEO.satellites.sentinel.preprocess.extract_observations).
+
+    Returns an empty set if the log doesn't exist yet.
+    """
+    if not os.path.exists(log_path):
+        return set()
+    with open(log_path, "r") as f:
+        return {line.rstrip() for line in f if line.strip()}
+
+
+def append_id_log(log_path: str, ids) -> None:
+    """Append identifiers to a newline-delimited log, creating it if needed."""
+    ids = list(ids)
+    if not ids:
+        return
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        ifnotmakedirs(log_dir)
+    with open(log_path, "a") as f:
+        for i in ids:
+            f.write(f"{i}\n")
+
+
+def write_id_log(log_path: str, ids) -> None:
+    """Replace a newline-delimited log wholesale with the given identifiers.
+
+    Used after a forced full re-extraction (overwrite=True), so the log
+    reflects exactly the files that were just (re)read, rather than
+    keeping stale entries from before the rebuild or leaving the log
+    partially out of sync with what's actually on disk.
+    """
+    log_dir = os.path.dirname(log_path)
+    if log_dir:
+        ifnotmakedirs(log_dir)
+    with open(log_path, "w") as f:
+        for i in ids:
+            f.write(f"{i}\n")
+
+
+def append_and_dedupe_gpkg(dst_path: str, new_gdf, subset=None):
+    """Merge newly-extracted observations into an existing GeoPackage.
+
+    If `dst_path` doesn't exist yet, `new_gdf` is written as-is. If it
+    does exist, the existing contents are read, concatenated with
+    `new_gdf`, de-duplicated, and written back -- so repeated
+    incremental extraction runs (see satellites.swot.preprocess and
+    satellites.sentinel.preprocess extract_observations) accumulate
+    history instead of losing whatever was previously extracted.
+
+    Parameters
+    ----------
+    subset : list[str], optional
+        Non-geometry columns to de-duplicate on (e.g. ["obs_id"] for a
+        stable per-observation identifier). Defaults to every
+        non-geometry column when no such identifier is available --
+        rows are only considered duplicates if they match everywhere
+        except geometry, which is a safe (if slightly conservative)
+        fallback since genuinely new observations essentially never
+        collide on every other field by chance.
+
+    Returns
+    -------
+    GeoDataFrame
+        The combined, de-duplicated result that was written to disk.
+    """
+    import geopandas as gpd
+    import pandas as pd
+
+    if os.path.exists(dst_path):
+        existing = gpd.read_file(dst_path)
+        combined = pd.concat([existing, new_gdf], ignore_index=True)
+        dedup_cols = subset or [c for c in combined.columns if c != "geometry"]
+        combined = combined.drop_duplicates(subset=dedup_cols, keep="last").reset_index(
+            drop=True
+        )
+        combined = gpd.GeoDataFrame(combined, geometry="geometry", crs=new_gdf.crs)
+    else:
+        combined = new_gdf
+
+    combined.to_file(dst_path, driver="GPKG")
+    return combined
+
+
 def center_longitude(lon_org):
     # This assumes the longitude is provided in degrees east of the greenwhich meridian
 

@@ -11,7 +11,7 @@ import pytest
 from shapely.geometry import box, Point
 
 from HydroEO import flows
-from HydroEO.waterbody import Reservoirs
+from HydroEO.waterbody import Reservoirs, Rivers
 
 
 # ============================================================================
@@ -62,6 +62,80 @@ def mock_project_reservoirs(tmp_path):
     return prj
 
 
+@pytest.fixture
+def mock_project_rivers(tmp_path):
+    """Create a mock Project with Rivers configuration.
+
+    Two targets (node_id 101, 102) belonging to the same waterbody
+    ("loire"), placed ~11km apart (0.1 degrees latitude) so a small
+    extraction/assignment buffer can't accidentally blur observations
+    from one target into the other, which would mask assignment bugs
+    rather than catch them.
+    """
+    gdf = gpd.GeoDataFrame({"geometry": []}, geometry="geometry", crs="EPSG:4326")
+    prj = SimpleNamespace()
+    prj.dirs = {
+        "main": str(tmp_path),
+        "output": str(tmp_path / "results"),
+        "swot": str(tmp_path / "raw" / "swot"),
+        "icesat2_processed": str(tmp_path / "processed" / "icesat2"),
+        "sentinel3": str(tmp_path / "raw" / "sentinel3"),
+        "sentinel6": str(tmp_path / "raw" / "sentinel6"),
+        "sword": str(tmp_path / "aux" / "SWORD" / "gpkg"),
+        "sword_subset": str(tmp_path / "aux" / "SWORD" / "SWORD_subset.gpkg"),
+    }
+    prj.rivers = Rivers(gdf=gdf, id_key="river_id", dirs=prj.dirs)
+    prj.rivers.target_ids = [101, 102]
+    prj.rivers.target_id_col = "node_id"
+    prj.rivers.target_features = gpd.GeoDataFrame(
+        {
+            "node_id": [101, 102],
+            "river_id": ["loire", "loire"],
+            "geometry": [Point(0, 0), Point(0, 0.1)],
+        },
+        crs="EPSG:4326",
+    )
+    prj.rivers.configured_id = "loire"
+    prj.rivers.input_mode = "configured_id"
+    # Fixed buffer (rather than SWORD width-based sizing) so tests don't
+    # depend on a "width" column being present -- see
+    # flows._river_target_corridor's docstring for the width-based path.
+    prj.rivers.extraction_buffer_meters = 500.0
+    prj.rivers.width_buffer_factor = 1.05
+    prj.rivers.max_node_assignment_meters = 1000.0
+    prj.local_crs = "EPSG:3857"
+    prj.global_crs = "EPSG:4326"
+    prj.keep_raw_sword = False
+    prj.startdates = {
+        "swot": [2024, 1, 1],
+        "icesat2": [2024, 1, 1],
+        "sentinel3": [2024, 1, 1],
+        "sentinel6": [2024, 1, 1],
+    }
+    prj.enddates = {
+        "swot": [2024, 2, 1],
+        "icesat2": [2024, 2, 1],
+        "sentinel3": [2024, 2, 1],
+        "sentinel6": [2024, 2, 1],
+    }
+    prj.mission_options = {
+        "swot": {
+            "hydrocron_fields": {
+                "nodes": ["node_id", "node_q", "time_str", "wse"],
+                "reaches": ["reach_id", "reach_q", "time_str", "wse"],
+            },
+            "quality_filters": {
+                "nodes": {"max_q": 2},
+                "reaches": {"max_q": 2},
+            },
+        },
+        "icesat2": {"atl13_fields": None, "track_keys": None},
+        "sentinel3": {"sigma0_max": 1e5, "sigma0_min": 0.0},
+        "sentinel6": {"sigma0_max": 1e5, "sigma0_min": 0.0},
+    }
+    return prj
+
+
 # ============================================================================
 # Timeseries Extraction Tests
 # ============================================================================
@@ -101,6 +175,73 @@ def test_extract_swot_observations_skips_when_missing(mock_project_reservoirs, c
     with caplog.at_level(logging.WARNING):
         flows._extract_swot_observations(mock_project_reservoirs)
         assert "No SWOT downloads found" in caplog.text
+
+
+@pytest.mark.unit
+def test_swot_extract_observations_distinguishes_missing_from_pld(tmp_path, caplog):
+    """swot.preprocess.extract_observations must treat prior_lake_id == -9999
+    (the sentinel _assign_pld_id uses for reservoirs unmatched to the PLD --
+    NOT NaN) as genuinely unavailable, with its own distinct warning -- not
+    silently fall through to the same generic 'no observations matched'
+    warning used for a reservoir that IS in the PLD but has zero real SWOT
+    crossings. Regression test for a real bug: the original code checked
+    `np.isnan(prior_lake_id)`, which is never true since _assign_pld_id
+    always overwrites nulls with -9999, so both cases were indistinguishable
+    from the log alone."""
+    import logging
+    from HydroEO.satellites.swot import preprocess as swot_preprocess
+
+    download_dir = tmp_path / "swot"
+    download_dir.mkdir()
+    gdf = gpd.GeoDataFrame(
+        {
+            "lake_id": [100],
+            "obs_id": ["ok"],
+            "time": ["2024-01-01T00:00:00Z"],
+            "time_str": ["2024-01-01"],
+            "wse": [10.0],
+        },
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+    gdf.to_file(download_dir / "sub_granule.shp")
+
+    # R1 is matched to PLD lake 100 (should extract fine); R2 is unmatched
+    # (prior_lake_id == -9999, the real sentinel value, not NaN); R3 is
+    # matched to a PLD lake but that lake has no real SWOT crossings.
+    features = gpd.GeoDataFrame(
+        {
+            "res_id": ["R1", "R2", "R3"],
+            "prior_lake_id": [100.0, -9999.0, 200.0],
+        },
+        geometry=[Point(0, 0), Point(1, 1), Point(2, 2)],
+        crs="EPSG:4326",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        empty_ids = swot_preprocess.extract_observations(
+            src_dir=str(download_dir),
+            dst_dir=str(tmp_path / "output"),
+            dst_file_name="swot.gpkg",
+            features=features,
+            id_key="res_id",
+        )
+
+    # R1: matched and has real data -> written to disk, not in empty_ids
+    r1_path = tmp_path / "output" / "R1" / "raw_observations" / "swot.gpkg"
+    assert r1_path.exists()
+
+    # R3: matched to the PLD but zero real crossings -> generic empty_ids path
+    assert empty_ids == ["R3"]
+    r3_path = tmp_path / "output" / "R3" / "raw_observations" / "swot.gpkg"
+    assert not r3_path.exists()
+
+    # R2: missing from PLD entirely -> distinct warning, NOT lumped into empty_ids
+    assert "R2" not in empty_ids
+    r2_path = tmp_path / "output" / "R2" / "raw_observations" / "swot.gpkg"
+    assert not r2_path.exists()
+    assert "no geometrically overlapping Prior Lake Database" in caplog.text
+    assert "R2" in caplog.text
 
 
 @pytest.mark.unit
@@ -192,9 +333,9 @@ def test_extract_reservoirs_timeseries_calls_all_enabled_missions(
     (Path(mock_project_reservoirs.dirs["swot"]) / "dummy.shp").touch()
 
     with (
-        patch.object(flows, "_extract_swot_observations") as mock_swot,
-        patch.object(flows, "_extract_icesat2_observations") as mock_icesat2,
-        patch.object(flows, "_extract_sentinel_observations") as mock_sentinel,
+        patch.object(flows._reservoir_pipeline, "_extract_swot_observations") as mock_swot,
+        patch.object(flows._reservoir_pipeline, "_extract_icesat2_observations") as mock_icesat2,
+        patch.object(flows._reservoir_pipeline, "_extract_sentinel_observations") as mock_sentinel,
     ):
         flows._extract_reservoirs_timeseries(mock_project_reservoirs)
 
@@ -217,15 +358,232 @@ def test_extract_reservoirs_timeseries_skips_disabled_missions(
     (Path(mock_project_reservoirs.dirs["swot"]) / "dummy.shp").touch()
 
     with (
-        patch.object(flows, "_extract_swot_observations") as mock_swot,
-        patch.object(flows, "_extract_icesat2_observations") as mock_icesat2,
-        patch.object(flows, "_extract_sentinel_observations") as mock_sentinel,
+        patch.object(flows._reservoir_pipeline, "_extract_swot_observations") as mock_swot,
+        patch.object(flows._reservoir_pipeline, "_extract_icesat2_observations") as mock_icesat2,
+        patch.object(flows._reservoir_pipeline, "_extract_sentinel_observations") as mock_sentinel,
     ):
         flows._extract_reservoirs_timeseries(mock_project_reservoirs)
 
         mock_swot.assert_called_once()
         mock_icesat2.assert_not_called()
         mock_sentinel.assert_not_called()
+
+
+# ============================================================================
+# River Timeseries Extraction Tests
+# ============================================================================
+#
+# Mirrors the reservoirs extraction tests above. Rivers' extraction is more
+# involved -- raw data covers a whole waterbody (multiple targets) at once
+# and has to be split into the same per-target raw_observations structure
+# reservoirs use (see flows._extract_rivers_*_observations) -- so these
+# tests exercise the real waterbody-grouping/corridor-buffering/point-
+# assignment logic rather than mocking it away, only mocking the actual
+# satellite module call each extractor makes.
+
+
+@pytest.mark.unit
+def test_extract_rivers_swot_observations_splits_hydrocron_csv_by_target(
+    mock_project_rivers,
+):
+    """_extract_rivers_swot_observations splits one waterbody's Hydrocron
+    CSV into separate per-target raw_observations/swot.gpkg files."""
+    swot_dir = Path(mock_project_rivers.dirs["swot"]) / "loire"
+    swot_dir.mkdir(parents=True, exist_ok=True)
+
+    df = pd.DataFrame(
+        {
+            "node_id": [101, 101, 102],
+            "node_q": [0, 0, 1],
+            "time_str": [
+                "2024-01-01T00:00:00Z",
+                "2024-01-05T00:00:00Z",
+                "2024-01-01T00:00:00Z",
+            ],
+            "wse": [10.0, 10.5, 20.0],
+        }
+    )
+    df.to_csv(swot_dir / "nodes_timeseries.csv", index=False)
+
+    flows._extract_rivers_swot_observations(mock_project_rivers)
+
+    out_101 = (
+        Path(mock_project_rivers.dirs["output"]) / "101" / "raw_observations" / "swot.gpkg"
+    )
+    out_102 = (
+        Path(mock_project_rivers.dirs["output"]) / "102" / "raw_observations" / "swot.gpkg"
+    )
+    assert out_101.exists()
+    assert out_102.exists()
+
+    gdf_101 = gpd.read_file(out_101)
+    assert len(gdf_101) == 2
+    assert set(gdf_101["height"]) == {10.0, 10.5}
+    assert (gdf_101["platform"] == "swot").all()
+
+    gdf_102 = gpd.read_file(out_102)
+    assert len(gdf_102) == 1
+    assert gdf_102["height"].iloc[0] == 20.0
+
+
+@pytest.mark.unit
+def test_extract_rivers_swot_observations_skips_missing_csv(mock_project_rivers):
+    """_extract_rivers_swot_observations skips a waterbody with no Hydrocron CSV."""
+    flows._extract_rivers_swot_observations(mock_project_rivers)
+
+    out_dir = Path(mock_project_rivers.dirs["output"])
+    assert not (out_dir / "101").exists()
+    assert not (out_dir / "102").exists()
+
+
+@pytest.mark.unit
+def test_extract_rivers_icesat2_observations_assigns_points_to_targets(
+    mock_project_rivers,
+):
+    """_extract_rivers_icesat2_observations assigns ICESat-2 points to their
+    nearest river target and writes separate per-target output files."""
+    from HydroEO.satellites import icesat2
+
+    parquet_dir = Path(mock_project_rivers.dirs["icesat2_processed"]) / "loire"
+    parquet_dir.mkdir(parents=True, exist_ok=True)
+    (parquet_dir / "atl13.parquet").touch()
+
+    def fake_extract_observations(src_dir, dst_path, features, **kwargs):
+        points = gpd.GeoDataFrame(
+            {
+                "height": [101.0, 102.0, 201.0],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01"]),
+            },
+            geometry=[Point(0, 0.0001), Point(0, -0.0001), Point(0, 0.1001)],
+            crs="EPSG:4326",
+        )
+        points.to_file(dst_path, driver="GPKG")
+
+    with patch.object(
+        icesat2, "extract_observations", side_effect=fake_extract_observations
+    ):
+        flows._extract_rivers_icesat2_observations(mock_project_rivers)
+
+    out_101 = (
+        Path(mock_project_rivers.dirs["output"])
+        / "101" / "raw_observations" / "icesat2.gpkg"
+    )
+    out_102 = (
+        Path(mock_project_rivers.dirs["output"])
+        / "102" / "raw_observations" / "icesat2.gpkg"
+    )
+    assert out_101.exists()
+    assert out_102.exists()
+
+    gdf_101 = gpd.read_file(out_101)
+    assert len(gdf_101) == 2
+    assert set(gdf_101["height"]) == {101.0, 102.0}
+
+    gdf_102 = gpd.read_file(out_102)
+    assert len(gdf_102) == 1
+    assert gdf_102["height"].iloc[0] == 201.0
+
+
+@pytest.mark.unit
+def test_extract_rivers_icesat2_observations_skips_missing_parquet(
+    mock_project_rivers,
+):
+    """_extract_rivers_icesat2_observations skips a waterbody with no
+    downloaded atl13.parquet -- no output, no exception."""
+    from HydroEO.satellites import icesat2
+
+    with patch.object(icesat2, "extract_observations") as mock_extract:
+        flows._extract_rivers_icesat2_observations(mock_project_rivers)
+        mock_extract.assert_not_called()
+
+    out_dir = Path(mock_project_rivers.dirs["output"])
+    assert not (out_dir / "101").exists()
+    assert not (out_dir / "102").exists()
+
+
+@pytest.mark.unit
+def test_extract_rivers_sentinel_observations_filters_sigma0_and_assigns(
+    mock_project_rivers,
+):
+    """_extract_rivers_sentinel_observations applies the sigma0_min
+    post-filter before assigning surviving points to their nearest target."""
+    from HydroEO.satellites import sentinel
+
+    download_dir = Path(mock_project_rivers.dirs["sentinel3"]) / "loire"
+    download_dir.mkdir(parents=True, exist_ok=True)
+    mock_project_rivers.mission_options["sentinel3"]["sigma0_min"] = 0.5
+
+    def fake_extract_observations(src_dir, dst_path, features, **kwargs):
+        points = gpd.GeoDataFrame(
+            {
+                "height": [101.0, 102.0, 201.0],
+                "date": pd.to_datetime(["2024-01-01", "2024-01-02", "2024-01-01"]),
+                # the second point (near target 101) should be filtered out
+                "sigma0": [0.9, 0.1, 0.9],
+            },
+            geometry=[Point(0, 0.0001), Point(0, -0.0001), Point(0, 0.1001)],
+            crs="EPSG:4326",
+        )
+        points.to_file(dst_path, driver="GPKG")
+
+    with patch.object(
+        sentinel, "extract_observations", side_effect=fake_extract_observations
+    ):
+        flows._extract_rivers_sentinel_observations(mock_project_rivers, "sentinel3", "S3")
+
+    out_101 = (
+        Path(mock_project_rivers.dirs["output"])
+        / "101" / "raw_observations" / "sentinel3.gpkg"
+    )
+    out_102 = (
+        Path(mock_project_rivers.dirs["output"])
+        / "102" / "raw_observations" / "sentinel3.gpkg"
+    )
+    assert out_101.exists()
+    assert out_102.exists()
+
+    gdf_101 = gpd.read_file(out_101)
+    assert len(gdf_101) == 1
+    assert gdf_101["height"].iloc[0] == 101.0
+
+    gdf_102 = gpd.read_file(out_102)
+    assert len(gdf_102) == 1
+    assert gdf_102["height"].iloc[0] == 201.0
+
+
+@pytest.mark.unit
+def test_extract_rivers_timeseries_calls_all_enabled_missions(mock_project_rivers):
+    """_extract_rivers_timeseries dispatcher calls extractors for all
+    enabled missions."""
+    mock_project_rivers.to_process = ["swot", "icesat2", "sentinel3", "sentinel6"]
+
+    with (
+        patch.object(flows._river_pipeline, "_extract_rivers_icesat2_observations") as mock_icesat2,
+        patch.object(flows._river_pipeline, "_extract_rivers_sentinel_observations") as mock_sentinel,
+        patch.object(flows._river_pipeline, "_extract_rivers_swot_observations") as mock_swot,
+    ):
+        flows._extract_rivers_timeseries(mock_project_rivers)
+
+        mock_icesat2.assert_called_once()
+        assert mock_sentinel.call_count == 2  # sentinel3 and sentinel6
+        mock_swot.assert_called_once()
+
+
+@pytest.mark.unit
+def test_extract_rivers_timeseries_skips_disabled_missions(mock_project_rivers):
+    """_extract_rivers_timeseries skips missions not in to_process."""
+    mock_project_rivers.to_process = ["swot"]
+
+    with (
+        patch.object(flows._river_pipeline, "_extract_rivers_icesat2_observations") as mock_icesat2,
+        patch.object(flows._river_pipeline, "_extract_rivers_sentinel_observations") as mock_sentinel,
+        patch.object(flows._river_pipeline, "_extract_rivers_swot_observations") as mock_swot,
+    ):
+        flows._extract_rivers_timeseries(mock_project_rivers)
+
+        mock_icesat2.assert_not_called()
+        mock_sentinel.assert_not_called()
+        mock_swot.assert_called_once()
 
 
 # ============================================================================
@@ -521,6 +879,79 @@ def test_clean_reservoirs_processes_multiple_products(
 
 
 # ============================================================================
+# River Timeseries Cleaning Tests
+# ============================================================================
+#
+# _clean_rivers_timeseries is a thin wrapper around the same
+# flows._clean_timeseries engine reservoirs use (target_type="rivers"
+# instead of "reservoirs") -- the filter math itself is already covered by
+# the reservoirs cleaning tests above, so these focus on the rivers-specific
+# dispatch: target ids come from prj.rivers.target_ids rather than
+# prj.reservoirs.download_gdf.
+
+
+@pytest.mark.unit
+def test_clean_rivers_applies_elevation_filter(mock_project_rivers, tmp_path):
+    """_clean_rivers_timeseries applies elevation_min/max filter correctly
+    for a river target."""
+    from HydroEO.utils import timeseries
+
+    mock_project_rivers.to_process = ["swot"]
+    mock_project_rivers.processing_options = {
+        "swot": {
+            "processing_filters": ["elevation"],
+            "elevation_min_m": 5.0,
+            "elevation_max_m": 8000.0,
+        }
+    }
+
+    raw_obs_dir = Path(mock_project_rivers.dirs["output"]) / "101" / "raw_observations"
+    raw_obs_dir.mkdir(parents=True, exist_ok=True)
+    raw_gdf = gpd.GeoDataFrame(
+        {
+            "height": [3, 10, 20],
+            "date": pd.date_range("2024-01-01", periods=3),
+            "geometry": [Point(0, 0)] * 3,
+        },
+        crs="EPSG:4326",
+    )
+    raw_gdf.to_file(raw_obs_dir / "swot.gpkg", driver="GPKG")
+
+    with patch.object(timeseries.Timeseries, "clean") as mock_clean:
+        flows._clean_rivers_timeseries(mock_project_rivers)
+
+        mock_clean.assert_called_once()
+        call_args = mock_clean.call_args
+        assert call_args[0][0] == ["elevation"]
+        assert call_args[1]["filter_params"]["elevation_min_m"] == 5.0
+        assert call_args[1]["filter_params"]["elevation_max_m"] == 8000.0
+
+    cleaned_path = (
+        Path(mock_project_rivers.dirs["output"])
+        / "101" / "cleaned_observations" / "swot.csv"
+    )
+    assert cleaned_path.exists()
+
+    # target 102 has no raw_observations at all -- must not be touched
+    assert not (
+        Path(mock_project_rivers.dirs["output"]) / "102" / "cleaned_observations"
+    ).exists()
+
+
+@pytest.mark.unit
+def test_clean_rivers_handles_empty_raw_observations(mock_project_rivers, caplog):
+    """_clean_rivers_timeseries warns and returns early when no target has
+    any raw observations yet."""
+    import logging
+
+    mock_project_rivers.to_process = ["swot"]
+
+    with caplog.at_level(logging.WARNING):
+        flows._clean_rivers_timeseries(mock_project_rivers)
+        assert "No raw observations found for any rivers" in caplog.text
+
+
+# ============================================================================
 # Timeseries Merging Tests
 # ============================================================================
 
@@ -731,6 +1162,66 @@ def test_merge_handles_no_cleaned_observations(mock_project_reservoirs, caplog):
 
 
 # ============================================================================
+# River Timeseries Merging Tests
+# ============================================================================
+#
+# _merge_rivers_timeseries is a thin wrapper around the same
+# flows._merge_timeseries engine reservoirs use (target_type="rivers"
+# instead of "reservoirs") -- the merge algorithm itself is already covered
+# by the reservoirs merging tests (and the Nuozhadu baseline regression
+# tests) above, so these focus on the rivers-specific dispatch: target ids
+# come from prj.rivers.target_ids, and centroid lookup
+# (flows._target_centroid) comes from prj.rivers.target_features rather
+# than a reservoir polygon.
+
+
+@pytest.mark.unit
+def test_merge_rivers_concatenates_cleaned_observations(mock_project_rivers, tmp_path):
+    """_merge_rivers_timeseries merges a river target's cleaned observations."""
+    from HydroEO.utils import timeseries
+
+    mock_project_rivers.to_process = ["swot"]
+
+    cleaned_dir = (
+        Path(mock_project_rivers.dirs["output"]) / "101" / "cleaned_observations"
+    )
+    cleaned_dir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame(
+        {
+            "date": pd.date_range("2024-01-01", periods=3),
+            "height": [10.0, 10.1, 10.2],
+        }
+    )
+    df.to_csv(cleaned_dir / "swot.csv", index=False)
+
+    with (
+        patch.object(timeseries.Timeseries, "merge") as mock_merge,
+        patch.object(timeseries.Timeseries, "export_csv"),
+    ):
+        mock_merge.return_value = mock.MagicMock()
+        flows._merge_rivers_timeseries(mock_project_rivers)
+
+        assert mock_merge.called
+        # _target_centroid should have resolved target 101's centroid from
+        # prj.rivers.target_features rather than failing/using (None, None)
+        call_kwargs = mock_merge.call_args[1]
+        assert call_kwargs["ref_lat"] is not None
+        assert call_kwargs["ref_lon"] is not None
+
+
+@pytest.mark.unit
+def test_merge_rivers_handles_no_cleaned_observations(mock_project_rivers, caplog):
+    """_merge_rivers_timeseries handles the case with no cleaned observations."""
+    import logging
+
+    mock_project_rivers.to_process = ["swot"]
+
+    with caplog.at_level(logging.WARNING):
+        flows._merge_rivers_timeseries(mock_project_rivers)
+        assert "No cleaned observations found for any rivers" in caplog.text
+
+
+# ============================================================================
 # Regression): Baseline Tests Using Real Data
 # ============================================================================
 # These tests validate merge algorithm outputs against Nuozhadu baseline data.
@@ -936,5 +1427,3 @@ def test_merge_baseline_dates_chronological(nuozhadu_baseline_path):
     is_sorted = merged["date"].is_monotonic_increasing
     assert is_sorted, "merged_timeseries.csv should be sorted by date"
 
-
-# (Old SWORD tests removed - replaced with new comprehensive test suite above)

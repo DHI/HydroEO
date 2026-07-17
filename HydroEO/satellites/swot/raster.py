@@ -294,7 +294,7 @@ def _preprocess_granules(
                 if aoi_gdf is not None:
                     try:
                         aoi_reproj = aoi_gdf.to_crs(native_crs)
-                        geom = [mapping(aoi_reproj.unary_union)]
+                        geom = [mapping(aoi_reproj.union_all())]
                         clipped = da.rio.clip(
                             geom, aoi_reproj.crs, drop=True, all_touched=False
                         )

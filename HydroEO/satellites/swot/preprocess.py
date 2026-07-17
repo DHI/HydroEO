@@ -67,6 +67,30 @@ def merge_shps(dir):
     return gdf
 
 
+def _merge_new_shps(dir, exclude=None):
+    """Like merge_shps, but skips file names in `exclude` and also
+    returns the list of file names actually read, so a caller can build
+    an "already extracted" log from it (see extract_observations's
+    processed_log_path). Kept separate from the public merge_shps()
+    rather than changing its signature/return type, since merge_shps is
+    exported as public API (HydroEO.satellites.swot.merge_shps) and
+    external callers expect a single GeoDataFrame back.
+    """
+    exclude = exclude or set()
+    gdf_list = list()
+    read_files = list()
+    for file in os.listdir(dir):
+        if file.endswith(".shp") and file not in exclude:
+            gdf_list.append(gpd.read_file(os.path.join(dir, file)))
+            read_files.append(file)
+
+    if not gdf_list:
+        return None, read_files
+
+    gdf = pd.concat(gdf_list).reset_index(drop=True)
+    return gdf, read_files
+
+
 def extract_observations(
     src_dir,
     dst_dir,
@@ -75,20 +99,59 @@ def extract_observations(
     id_key,
     exclude_obs_id_values=None,
     product_name="SWOT_L2_HR_LakeSP_D",
+    processed_log_path=None,
+    overwrite=False,
 ):
-    # load in combined observations from individual files in download directory
-    data_gdf = merge_shps(src_dir)
+    """Extract per-reservoir SWOT Lake SP observations from downloaded granules.
+
+    Parameters
+    ----------
+    processed_log_path : str, optional
+        Path to a newline-delimited log (see HydroEO.utils.general.
+        read_id_log/append_id_log/write_id_log) of granule shapefile
+        names already incorporated into reservoirs' raw_observations/
+        swot.gpkg files. If given, only shapefiles NOT yet in the log
+        are read, and the resulting new observations are appended to
+        (and de-duplicated against, on "obs_id") each reservoir's
+        existing output rather than overwriting it -- this avoids
+        re-reading every SWOT granule shapefile ever downloaded on
+        every extraction run (raw granule shapefiles accumulate
+        forever in src_dir across all reservoirs -- see
+        HydroEO.satellites.swot.preprocess.subset_by_id -- so a full
+        re-merge scales with total history downloaded to date, not
+        with what's actually new). If None (default), behaves exactly
+        as before: reads every shapefile in src_dir and overwrites each
+        reservoir's output from scratch.
+    overwrite : bool, optional
+        If True, ignores processed_log_path's existing contents (reads
+        every shapefile in src_dir, as if nothing had been processed
+        yet), overwrites each reservoir's output from scratch rather
+        than appending, and replaces processed_log_path wholesale with
+        exactly the files just read. Use when raw data or extraction
+        logic changed in a way that could make previously-extracted
+        rows stale.
+    """
+    incremental = processed_log_path is not None and not overwrite
+    already_processed = (
+        general.read_id_log(processed_log_path) if incremental else set()
+    )
+
+    data_gdf, files_read = _merge_new_shps(src_dir, exclude=already_processed)
     if data_gdf is None:
         return []
     excluded_obs_ids = set(exclude_obs_id_values or ["no_data"])
 
     empty_ids = []
+    missing_from_pld_ids = []
     # now loop through the ids in the features gdf to extract the observations from the main one
     for _, feat in tqdm(
         features.iterrows(), total=len(features), desc="Extracting SWOT Lake SP product"
     ):
         dl_id = str(feat[id_key])
-        if not np.isnan(feat["prior_lake_id"]):
+        # prior_lake_id is -9999 (not NaN) for reservoirs unmatched to the PLD --
+        # see _assign_pld_id, and _flag_missing_priors's own "> 0" convention for
+        # "present in PLD" that this mirrors.
+        if feat["prior_lake_id"] > 0:
             lake_id = str(int(feat["prior_lake_id"]))
 
             # filter observations to keep only the ones associated with this lake/reservoir
@@ -117,9 +180,34 @@ def extract_observations(
                 general.ifnotmakedirs(dst_sub_dir)
                 dst_path = os.path.join(dst_sub_dir, dst_file_name)
 
-                observations.to_file(dst_path)
+                if incremental:
+                    general.append_and_dedupe_gpkg(
+                        dst_path,
+                        observations,
+                        subset=["obs_id"] if "obs_id" in observations.columns else None,
+                    )
+                else:
+                    observations.to_file(dst_path)
             else:
                 empty_ids.append(dl_id)
+        else:
+            missing_from_pld_ids.append(dl_id)
+
+    if missing_from_pld_ids:
+        logger.warning(
+            "SWOT timeseries unavailable for: %s -- no geometrically "
+            "overlapping Prior Lake Database (PLD) lake (see "
+            "aux/PLD/missing_in_pld.gpkg). SWOT Lake SP cannot report "
+            "observations for a reservoir the PLD doesn't have a matching entry "
+            "for, regardless of date range or download success.",
+            ", ".join(missing_from_pld_ids),
+        )
+
+    if processed_log_path:
+        if overwrite:
+            general.write_id_log(processed_log_path, files_read)
+        elif files_read:
+            general.append_id_log(processed_log_path, files_read)
 
     return empty_ids
 

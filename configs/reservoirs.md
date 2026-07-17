@@ -9,7 +9,7 @@ Multi-satellite water surface elevation timeseries for reservoirs and lakes defi
 | `SWOT_L2_HR_LakeSP_D` | SWOT | Earthdata account + HydroWeb API key |
 | `ATL13` | ICESat-2 | None (SlideRule public API) |
 | — | Sentinel-3A/B | CREODIAS account |
-| — | Sentinel-6 | CREODIAS account |
+| — | Sentinel-6 | CREODIAS account (default, Low Rate product); or Earthdata account for the High Rate product — see `source` under [`sentinel3` / `sentinel6`](#sentinel3--sentinel6) |
 
 Credentials can be set in the config file or as environment variables:
 
@@ -38,26 +38,29 @@ Start from [`configs/reservoirs.yaml`](reservoirs.yaml).
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `download` | `true` | Download SWOT Lake SP granules |
-| `process` | `true` | Extract observations for each reservoir |
+| `download` | `false`* | Download SWOT Lake SP granules |
+| `process` | `false`* | Extract observations for each reservoir |
 | `startdate` / `enddate` | project dates | Per-satellite date override |
-| `pld_match_max_distance_m` | `100.0` | Max nearest-neighbour distance to match reservoirs to PLD lakes |
-| `exclude_obs_id_values` | `[]` | SWOT `obs_id` values to drop during extraction |
+| `pld_match_min_overlap_pct` | `10.0` | Minimum PLD-lake overlap as a percentage (0-100) of the reservoir's own area. Matching itself requires genuine geometric overlap with no distance-based fallback; a reservoir with zero overlap to any PLD lake is left unmatched (see `aux/PLD/missing_in_pld.gpkg`). Below this percentage, the best-available match is still used, but a warning names it as low-confidence so you can verify it isn't a small, unrelated lake clipping the reservoir's edge. |
+| `exclude_obs_id_values` | `["no_data"]` | SWOT `obs_id` values to drop during extraction |
 | `processing_filters` | `["elevation", "MAD"]` | Ordered list of cleaning filters (see [Cleaning filters](#cleaning-filters)) |
 | `elevation_min_m` | `0.0` | Lower bound for elevation filter (metres) |
 | `elevation_max_m` | `8000.0` | Upper bound for elevation filter (metres) |
 | `mad_threshold` | `5.0` | Outlier multiplier for MAD filter |
 | `download_dir` | `{main_dir}/raw/swot` | Override download location |
 
+*`false` is the code-level default if omitted entirely — you must explicitly set `download: true`/`process: true` to enable SWOT. The shipped [`configs/reservoirs.yaml`](reservoirs.yaml) template sets both to `true` out of the box.
+
 ### `icesat2`
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `download` / `process` | — | Enable/disable download and processing |
-| `atl13_fields` | `[]` | Extra SlideRule ancillary fields to request |
+| `download` / `process` | `false` | Enable/disable download and processing |
+| `atl13_fields` | `[]` | Extra SlideRule ancillary fields to request (empty by design -- SlideRule's `atl13x` endpoint already returns the core fields listed below without any extra request) |
 | `atl13.pass_invalid` | `false` | Include segments flagged as invalid |
 | `atl13.beams` | `[]` | Subset by beam name (e.g. `["gt1l", "gt2r"]`); empty = all |
 | `atl13.spots` | `[]` | Subset by spot number (e.g. `[1, 3]`); empty = all |
+| `track_keys` | all 6 tracks | Validated against `["gt1l", "gt1r", "gt2l", "gt2r", "gt3l", "gt3r"]` if set, but currently a **no-op** in the SlideRule extraction path -- kept for API compatibility, doesn't yet filter anything. Use `atl13.beams` above for actual beam filtering. |
 | `processing_filters` | `["elevation", "MAD"]` | Same options as SWOT |
 | `download_dir` | `{main_dir}/raw/icesat2` | Override download location |
 
@@ -69,9 +72,11 @@ Common output columns: `height` (EGM2008-corrected), `cycle_number`, `beam`, `rg
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `download` / `process` | — | Enable/disable |
+| `download` / `process` | `false` | Enable/disable |
 | `sigma0_max` | `100000.0` | Maximum accepted sigma0 during extraction |
 | `download_threads` | `1` | Parallel CREODIAS download threads |
+| `subset_file_id` | `"enhanced_measurement.nc"` | Filename identifying the file to extract from each downloaded product zip |
+| `source` (sentinel6 only) | `"creodias"` | CREODIAS only distributes the Sentinel-6 Low Rate product. Set to `"earthdata"` for the High Rate (20Hz Ku-band) product via PO.DAAC/EarthData instead — needs `EARTHDATA_USERNAME`/`PASSWORD` rather than CREODIAS credentials. |
 | `processing_filters` | `["elevation", "MAD"]` | Same filter options as SWOT |
 | `download_dir` | `{main_dir}/raw/sentinel3` or `sentinel6` | Override download location |
 
@@ -84,6 +89,10 @@ The PLD matches input reservoirs to SWOT lake identifiers. Required for SWOT ext
 | `api_key` | — | HydroWeb API key (or env var) |
 | `raw_pld_path` | — | Optional path to existing PLD zip or folder; skips download |
 | `keep_raw_pld` | `false` | Retain raw PLD zip and temp folder after subset creation |
+| `continent_codes` | — | Optional list of continent-tile suffixes (e.g. `["AS", "AU"]`) identifying which full-schema PLD files to use for backfilling `res_id`. Inspect your downloaded PLD folder (`aux/PLD/PLD_temp/...`) to see which ones are actually present. If omitted, all full-schema tiles found are used. |
+
+PLD downloads include a global `_light` file (lake matching only, no `res_id`) alongside full-schema per-continent tiles (which additionally carry `res_id` — a cross-reference to external reservoir databases like GeoDAR, present only for PLD lakes classified as man-made reservoirs). HydroEO uses the `_light` file for coverage (guaranteed complete, avoids silently missing a continent your PLD download didn't include) and backfills `res_id` from whichever tile files are present, matched by `lake_id`. 
+If no `_light` file is present at all, HydroEO falls back to using the tile files directly for coverage too, with a warning that this risks missing continents the download didn't include.
 
 The PLD subset is written to `{main_dir}/aux/PLD/PLD_subset.gpkg` with QA/QC files `present_in_pld.gpkg` (matched) and `missing_in_pld.gpkg` (unmatched).
 
@@ -98,6 +107,19 @@ Applied during `create_timeseries()`. Configured per mission under `processing_f
 | `daily_mean` | Reduces multiple same-day observations to their mean |
 | `hampel` | Spike detection using a sliding median window |
 | `rolling_median` | Smoothing pass using a rolling median |
+
+## Merging
+
+Applied during `create_timeseries()`, after cleaning — combines all enabled missions' cleaned observations into one `merged_timeseries.csv` per reservoir using bias correction, SVR, and a Kalman filter. Override any key in `flows.DEFAULT_RESERVOIR_MERGING_OPTIONS` via a `merging_options` dict under `reservoirs:` in your config:
+
+```yaml
+reservoirs:
+  merging_options:
+    svr_radial_err: 1.0
+    svr_radial_gamma: 0.00438
+```
+
+**If you use this pipeline, please also cite Schwatke et al. (2015)** — see the root [README](../README.md)'s Citation section. (DAHITI covers the windowed ADM-based outlier/uncertainty weighting, SVR, and Kalman filter specifically; the bias correction and multi-mission-combination logic are HydroEO's own contributions, not sourced from that paper.)
 
 ## Output structure
 
@@ -157,6 +179,12 @@ hydroeo fetch cop-dem \
 # Add quality layers: --dataset "DEM30,WBM,EDM"   (EDM, FLM, HEM, WBM also available)
 ```
 
-Credentials can also be set as environment variables (`EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD`, `CREODIAS_USERNAME`, `CREODIAS_PASSWORD`, `CDSE_USERNAME`, `CDSE_PASSWORD`).
+Credentials can also be set as environment variables. Note the standalone `fetch` CLI commands use different variable names than the config-driven `Project` workflow above for Earthdata specifically:
 
-> **Note:** ICESat-2, Sentinel-3, and Sentinel-6 require reservoir polygons for spatial filtering. Using them with `download: true` in a non-reservoirs project emits a `UserWarning`.
+| Command | Environment variables |
+| --- | --- |
+| `fetch swot-lake` / `swot-raster` / `swot-pixc` | `EARTHACCESS_USERNAME`, `EARTHACCESS_PASSWORD` |
+| `fetch sentinel` | `CREODIAS_USERNAME`, `CREODIAS_PASSWORD` |
+| `fetch cop-dem` | `CDSE_USERNAME`, `CDSE_PASSWORD` |
+
+> **Note:** ICESat-2, Sentinel-3, and Sentinel-6 require reservoir or river targets for spatial filtering. Configuring them with `download: true` while neither a `reservoirs` nor a `rivers` section is present emits a `UserWarning` — they no longer require reservoirs specifically, since ICESat-2/Sentinel-3/6 also support rivers directly (see [rivers.md](rivers.md)).

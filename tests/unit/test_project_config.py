@@ -277,7 +277,7 @@ def test_initialize_skips_sword_preparation_for_non_aoi_rivers(tmp_path, monkeyp
         )
 
     monkeypatch.setattr(
-        "HydroEO.flows._prepare_rivers_from_sword",
+        "HydroEO.flows._river_init._prepare_rivers_from_sword",
         _unexpected_prepare,
     )
 
@@ -462,9 +462,16 @@ def test_project_global_date_fallback(tmp_path, monkeypatch, _mock_reservoir_gdf
 
 
 @pytest.mark.unit
-def test_project_warns_incompatible_satellites_for_rivers(tmp_path):
-    """ICESat-2/Sentinel-3/6 with download/process=True should warn when no reservoirs section."""
+def test_project_no_warning_for_icesat2_with_rivers_configured(tmp_path):
+    """ICESat-2 (and Sentinel-3/6) support rivers directly (see
+    flows._download_rivers_icesat2/_download_rivers_sentinel), so no
+    UserWarning should fire when a rivers section is present -- only when
+    NEITHER reservoirs nor rivers is configured (see
+    test_project_warns_incompatible_satellites_when_neither_mode_configured
+    for that case). This replaces a stale test that expected a warning
+    here from before ICESat-2/Sentinel gained river support."""
     from HydroEO.project import Project
+    import warnings
 
     cfg_path = tmp_path / "config.yaml"
     _write_config(
@@ -482,8 +489,46 @@ def test_project_warns_incompatible_satellites_for_rivers(tmp_path):
         },
     )
 
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        Project(name="rivers-no-warn", config=str(cfg_path))
+
+
+@pytest.mark.unit
+def test_project_warns_incompatible_satellites_when_neither_mode_configured(tmp_path):
+    """ICESat-2/Sentinel-3/6 configured for download/process without a
+    reservoirs or rivers section genuinely has no effect (neither can
+    spatially filter observations without one), so this is the one case
+    that should still warn."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {
+                "main_dir": str(tmp_path / "out"),
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 2, 1],
+            },
+            "gis": {"global_crs": "EPSG:4326"},
+            "swot_raster": {
+                "aoi": {"name": "aoi", "type": "bbox", "bbox": [0, 0, 1, 1]},
+                "product": "SWOT_L2_HR_Raster_D",
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 2, 1],
+            },
+            "icesat2": {
+                "download": True,
+                "process": False,
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 2, 1],
+            },
+        },
+    )
+
     with pytest.warns(UserWarning, match="icesat2"):
-        Project(name="rivers-warn", config=str(cfg_path))
+        Project(name="neither-mode-warn", config=str(cfg_path))
 
 
 @pytest.mark.unit

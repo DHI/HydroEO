@@ -537,10 +537,13 @@ def validate_config(
             issues.append(f"'{mission}.mad_threshold' must be a positive number.")
 
         if mission == "swot":
-            max_distance = mission_cfg.get("pld_match_max_distance_m", 100.0)
-            if not isinstance(max_distance, (int, float)) or max_distance < 0:
+            min_overlap_pct = mission_cfg.get("pld_match_min_overlap_pct", 10.0)
+            if not isinstance(min_overlap_pct, (int, float)) or not (
+                0 <= min_overlap_pct <= 100
+            ):
                 issues.append(
-                    "'swot.pld_match_max_distance_m' must be a non-negative number."
+                    "'swot.pld_match_min_overlap_pct' must be a number "
+                    "between 0 and 100."
                 )
 
             excluded_obs = mission_cfg.get("exclude_obs_id_values", ["no_data"])

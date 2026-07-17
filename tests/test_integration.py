@@ -359,7 +359,7 @@ def test_hydrocron_river_download_writes_filtered_csv(tmp_path):
         enddate=datetime.date(2024, 6, 1),
     )
 
-    output_path = swot_dir / "rivers" / "loire" / "nodes_timeseries.csv"
+    output_path = swot_dir / "loire" / "nodes_timeseries.csv"
     assert output_path.exists(), f"Expected output CSV at {output_path}"
 
     df = pd.read_csv(output_path)

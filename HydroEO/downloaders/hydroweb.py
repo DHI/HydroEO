@@ -30,8 +30,12 @@ For more documentation about how to use the py-hydroweb lib, please refer to htt
 
 
 def download_PLD(
-    download_dir: str, bounds: list, raw_pld_path: str = None, keep_raw: bool = True
-):
+    download_dir: str,
+    bounds: list,
+    raw_pld_path: str = None,
+    keep_raw: bool = True,
+    continent_codes: list = None,
+    ):
     """Download and subset SWOT Prior Lake Database.
 
     Parameters
@@ -44,7 +48,13 @@ def download_PLD(
         Path to existing PLD zip file or extracted folder. If provided, skips download.
     keep_raw : bool, default True
         If False, delete raw zip and temp extraction folder after subset is created.
-    """
+    continent_codes : list[str], optional
+        Continent-tile suffixes (e.g. ["AS", "AU"]) identifying which
+        full-schema PLD files (containing res_id, not just lake_id +
+        geometry) to use for backfilling res_id only. 
+        Inspect your downloaded PLD folder to see which ones are actually present. 
+        If omitted, all full-schema tiles found are used.
+     """
     # create download directory if needed
     general.ifnotmakedirs(download_dir)
 
@@ -59,10 +69,12 @@ def download_PLD(
     # Track whether the zip was downloaded by HydroEO (vs user-provided)
     hydroweb_managed_zip = True
 
-    # Check if extracted files already exist
-    extracted_files_exist = os.path.isdir(extracted_dir) and any(
-        f.endswith(".sqlite") for f in os.listdir(extracted_dir)
-    )
+    def _dir_has_pld_files(d):
+        return any(f.endswith((".sqlite", ".gpkg")) for f in os.listdir(d))
+
+     # Check if extracted files already exist
+    extracted_files_exist = os.path.isdir(extracted_dir) and _dir_has_pld_files(
+        extracted_dir)
 
     # Handle user-provided raw_pld_path
     if raw_pld_path is not None and os.path.exists(raw_pld_path):
@@ -74,8 +86,8 @@ def download_PLD(
         elif os.path.isdir(raw_pld_path):
             # User provided a directory
             logger.info("Using provided PLD directory: %s", raw_pld_path)
-            # Check if it contains .sqlite files directly
-            if any(f.endswith(".sqlite") for f in os.listdir(raw_pld_path)):
+            # Check if it contains PLD files (.sqlite or .gpkg) directly
+            if _dir_has_pld_files(raw_pld_path):
                 extracted_dir = raw_pld_path
                 extracted_files_exist = True
             else:
@@ -83,15 +95,14 @@ def download_PLD(
                 nested_path = os.path.join(
                     raw_pld_path, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
                 )
-                if os.path.isdir(nested_path) and any(
-                    f.endswith(".sqlite") for f in os.listdir(nested_path)
-                ):
+                if os.path.isdir(nested_path) and _dir_has_pld_files(nested_path):
                     extracted_dir = nested_path
                     extracted_files_exist = True
                     unzipped_dir = raw_pld_path  # track parent for deletion logic
                 else:
                     logger.warning(
-                        "Provided directory does not contain .sqlite files: %s",
+                        "Provided directory does not contain .sqlite or "
+                        ".gpkg PLD files: %s",
                         raw_pld_path,
                     )
                     return
@@ -149,28 +160,130 @@ def download_PLD(
     # Get list of downloaded files
     downloaded_files = os.listdir(extracted_dir)
 
-    # now clean up and merge lake datafiles
+    def _read_pld_file(filepath, is_sqlite):
+        if is_sqlite:
+            # SWOT PLD .sqlite tiles store lake_id as the feature ID
+            g = gpd.read_file(filepath, layer="lake", fid_as_index=True)
+            g.columns = [c.lower() for c in g.columns]
+            g.index.name = "lake_id"
+            g = g.reset_index()
+        else:
+            # .gpkg PLD files already carry lake_id as a normal column.
+            g = gpd.read_file(filepath)
+            g.columns = [c.lower() for c in g.columns]
+        return g
+
     logger.info("Merging products and removing temporary files")
-    gdf_list = list()
+    light_files = [
+        f
+        for f in downloaded_files
+        if "_light" in f.lower() and f.lower().endswith((".gpkg", ".sqlite"))
+    ]
+    all_tile_files = [
+        f
+        for f in downloaded_files
+        if f not in light_files and (f.endswith(".sqlite") or f.endswith(".gpkg"))
+    ]
+    bbox_poly = shapely.Polygon.from_bounds(*bounds)
 
-    for file in downloaded_files:
-        if file.endswith(".sqlite"):
-            filepath = os.path.join(extracted_dir, file)
-            logger.info("found %s", filepath)
+    if light_files:
+        if len(light_files) > 1:
+            logger.warning(
+                "Multiple '_light' PLD files found (%s) -- using all of "
+                "them, but normally there should be exactly one.",
+                ", ".join(light_files),
+            )
+        coverage_list = [
+            _read_pld_file(os.path.join(extracted_dir, f), f.lower().endswith(".sqlite"))
+            for f in light_files
+        ]
+        coverage_gdf = pd.concat(coverage_list, ignore_index=True)
+        if "res_id" not in coverage_gdf.columns:
+            coverage_gdf["res_id"] = None
+        coverage_gdf = coverage_gdf[["lake_id", "res_id", "geometry"]]
 
-            # Read layer directly as GeoDataFrame and normalize column names
-            gdf = gpd.read_file(filepath, layer="lake", fid_as_index=True)
-            gdf.columns = [c.lower() for c in gdf.columns]
-            gdf.index.name = "lake_id"
-            gdf = gdf.reset_index()[["lake_id", "res_id", "geometry"]]
-            gdf = gdf[["lake_id", "res_id", "geometry"]]
+        # Find lake using intersection with PLD
+        coverage_gdf = coverage_gdf.loc[
+            coverage_gdf.intersects(bbox_poly)
+        ].reset_index(drop=True)
 
-            # Filter to bounds and append
-            gdf = gdf.loc[gdf.within(shapely.Polygon.from_bounds(*bounds))]
-            gdf_list.append(gdf)
+        backfill_tile_files = all_tile_files
+        if continent_codes:
+            backfill_tile_files = [
+                f
+                for f in all_tile_files
+                if any(code.lower() in f.lower() for code in continent_codes)
+            ]
+            unmatched_codes = [
+                code
+                for code in continent_codes
+                if not any(code.lower() in f.lower() for f in all_tile_files)
+            ]
+            if unmatched_codes:
+                logger.warning(
+                    "hydroweb.continent_codes %s requested for PLD res_id "
+                    "backfill, but no matching tile file was found among "
+                    "the downloaded PLD data (%s). Re-download the PLD "
+                    "if you expect a tile for these regions.",
+                    unmatched_codes,
+                    ", ".join(downloaded_files),
+                )
 
-    # once we have processed all files, concatenate them
-    gdf = pd.concat(gdf_list).reset_index(drop=True)
+        if backfill_tile_files and len(coverage_gdf) > 0:
+            res_id_map = {}
+            for file in backfill_tile_files:
+                filepath = os.path.join(extracted_dir, file)
+                logger.info("found %s (for res_id backfill)", filepath)
+                tile_gdf = _read_pld_file(filepath, file.endswith(".sqlite"))
+                if "res_id" in tile_gdf.columns:
+                    res_id_map.update(dict(zip(tile_gdf["lake_id"], tile_gdf["res_id"])))
+            if res_id_map:
+                coverage_gdf["res_id"] = coverage_gdf["lake_id"].map(
+                    res_id_map
+                ).combine_first(coverage_gdf["res_id"])
+
+        still_missing = int(coverage_gdf["res_id"].isna().sum())
+        if still_missing > 0:
+            logger.warning(
+                "%d of %d PLD lake(s) within this project's bounds could "
+                "not have res_id backfilled from the available "
+                "tile file(s) (%s). Set hydroweb.continent_codes in "
+                "your config to the correct region code(s) "
+                "and/or re-download the PLD to include the missing tile for backfilling res_id.",
+                still_missing,
+                len(coverage_gdf),
+                ", ".join(all_tile_files) if all_tile_files else "none present",
+            )
+    else:
+        logger.warning(
+            "No global '_light' PLD file found among the downloaded PLD "
+            "data (%s) -- falling back to per-continent/region "
+            "tile files. If this PLD download "
+            "Check missing_res_id and redownload PLD if data is unexpectedly missing. " \
+            "If you expect a global '_light' file, re-download the PLD to include it.",
+            ", ".join(downloaded_files),
+        )
+        coverage_list = [
+            _read_pld_file(os.path.join(extracted_dir, f), f.endswith(".sqlite"))
+            for f in all_tile_files
+        ]
+        if coverage_list:
+            coverage_gdf = pd.concat(coverage_list, ignore_index=True)
+        else:
+            coverage_gdf = gpd.GeoDataFrame(
+                {"lake_id": [], "res_id": [], "geometry": []}, crs="EPSG:4326"
+            )
+        if "res_id" not in coverage_gdf.columns:
+            coverage_gdf["res_id"] = None
+        coverage_gdf = coverage_gdf[["lake_id", "res_id", "geometry"]]
+        coverage_gdf = coverage_gdf.loc[
+            coverage_gdf.intersects(bbox_poly)
+        ].reset_index(drop=True)
+
+    gdf = coverage_gdf
+
+    gdf["res_id"] = gdf["res_id"].astype("float64")
+
 
     # save the concatenated dataframe as GPKG
     export_path = os.path.join(download_dir, "PLD_subset.gpkg")

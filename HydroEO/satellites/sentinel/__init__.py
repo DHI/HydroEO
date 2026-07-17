@@ -47,6 +47,37 @@ def download(
     )
 
 
+S6_HR_SHORT_NAMES = _download.S6_HR_SHORT_NAMES
+
+
+def query_earthdata(
+    aoi: list,
+    startdate: datetime.date,
+    enddate: datetime.date,
+    latency: str = "NTC",
+    short_name: str = None,
+) -> list:
+    """
+    Query PO.DAAC/EarthData for the Sentinel-6 HR product (not available
+    via CREODIAS). Reuses earthaccess, same as SWOT.
+    """
+    return _download.query_earthdata(
+        aoi=aoi,
+        startdate=startdate,
+        enddate=enddate,
+        format_coord_list=geometry.format_coord_list,
+        latency=latency,
+        short_name=short_name,
+    )
+
+
+def download_earthdata(results: list, download_directory: str):
+    return _download.download_earthdata(
+        results=results,
+        download_directory=download_directory,
+    )
+
+
 def subset(
     aoi: list,
     download_dir: str,
@@ -65,12 +96,16 @@ def subset(
     )
 
 
-def extract_observations(src_dir, dst_path, features, sigma0_max=1e5):
+def extract_observations(
+    src_dir, dst_path, features, sigma0_max=1e5, processed_log_path=None, overwrite=False
+):
     return _preprocess.extract_observations(
         src_dir=src_dir,
         dst_path=dst_path,
         features=features,
         sigma0_max=sigma0_max,
+        processed_log_path=processed_log_path,
+        overwrite=overwrite,
     )
 
 
@@ -81,6 +116,9 @@ def get_latest_obs_date(data_dir, product):
 __all__ = [
     "query",
     "download",
+    "query_earthdata",
+    "download_earthdata",
+    "S6_HR_SHORT_NAMES",
     "subset",
     "extract_observations",
     "get_latest_obs_date",

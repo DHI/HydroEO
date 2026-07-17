@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 
 import geopandas as gpd
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def extract_observations(
@@ -24,12 +27,27 @@ def extract_observations(
         return
 
     # Filter observations to those inside the reservoir geometry.
-    gdf = gdf.loc[gdf.within(features.unary_union)].reset_index(drop=True)
+    gdf = gdf.loc[gdf.within(features.union_all())].reset_index(drop=True)
     if len(gdf) == 0:
         return
 
     gdf["platform"] = "icesat2"
     gdf["product"] = "ATL13"
+
+    # A single beam repeats across cycles (~91 days), so beam alone is not a
+    # unique pass identifier -- combine it with cycle_number, which together
+    # uniquely identify one physical crossing. This becomes the pass_key
+    # used by Timeseries for along-track grouping (windowed ADM, svr_linear).
+    if "cycle_number" in gdf.columns and "beam" in gdf.columns:
+        gdf["pass"] = (
+            gdf["cycle_number"].astype(str) + "_" + gdf["beam"].astype(str)
+        )
+    else:
+        logger.warning(
+            "cycle_number/beam columns not found in ATL13 extraction; "
+            "'pass' identifier not created for ICESat-2 (falls back to "
+            "date-based grouping downstream)."
+        )
 
     # Ensure CRS matches features; convert if necessary.
     if gdf.crs is None:

@@ -16,12 +16,35 @@
 
 # ─── PROJECT ──────────────────────────────────────────────────────────────────
 project:
-  main_dir: "/path/to/your/project"
-  startdate: [2024, 1, 1]
-  enddate:   [2024, 12, 31]
+  main_dir:  ""
+  startdate: [2025, 1, 1]
+  enddate:   [2025, 12, 31]
 
 gis:
   global_crs: 'EPSG:4326'
+
+
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+# Tip: set credentials as environment variables to avoid storing secrets in files.
+#
+#   earthaccess : EARTHDATA_USERNAME / EARTHDATA_PASSWORD
+#   hydroweb    : EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+#   creodias    : CREODIAS_USERNAME / CREODIAS_PASSWORD
+
+earthaccess:           # NASA Earthdata — required for SWOT download
+  username: ''       # or set EARTHDATA_USERNAME
+  password: ''      # or set EARTHDATA_PASSWORD
+  token: ''
+
+hydroweb:              # HydroWeb API — required for Prior Lake Database (PLD) matching
+  api_key: ""        # or set EODAG__HYDROWEB_NEXT__AUTH__CREDENTIALS__APIKEY
+  raw_pld_path: ""  # optional: reuse an existing PLD zip or folder
+  keep_raw_pld: true  # true = keep raw PLD zip after subset; false = delete
+
+creodias:              # CREODIAS/CDSE — required for Sentinel-3 and Sentinel-6
+  username: ""       # or set CREODIAS_USERNAME
+  password: ""       # or set CREODIAS_PASSWORD
+
 
 
 # ─── SWORD DATABASE ───────────────────────────────────────────────────────────
@@ -29,7 +52,7 @@ gis:
 sword_db:
   # raw_sword_path: "/path/to/SWORD_v17b_gpkg.zip"  # reuse existing zip or folder; skip download
   # sword_subset_path: "/path/to/SWORD_subset.gpkg"  # pre-made subset; skip download + subsetting
-  keep_raw_sword: false  # true = keep raw SWORD zip after extraction; false = delete
+  keep_raw_sword: true  # true = keep raw SWORD zip after extraction; false = delete
 
 
 # ─── RIVERS ───────────────────────────────────────────────────────────────────
@@ -37,10 +60,10 @@ rivers:
   enabled: true
 
   # Option A — AOI file (recommended): subsets SWORD river database to your area.
-  aoi_path: "/path/to/your/river_aoi.gpkg"   # .shp or .gpkg
-  continent_key: 'eu'        # SWORD continent code: af | as | eu | na | oc | sa
+  aoi_path: ""   # .shp or .gpkg
+  continent_key: 'af'        # SWORD continent code: af | as | eu | na | oc | sa
   feature_type: 'reaches'    # nodes | reaches
-  id_key: 'river_id'         # AOI column used to name per-river output folders
+  id_key: 'id'         # AOI column used to name per-river output folders
   # buffer_meters: 1000.0    # optional AOI buffer (metres) before SWORD subsetting
 
   # Option B — explicit IDs (comment out aoi_path + continent_key + id_key above).
@@ -48,6 +71,63 @@ rivers:
   # feature_numbers: [24292000031, 24292000041]
   # feature_type: 'reaches'
   # id: 'my_river'           # used as the output folder name
+
+  # ── ICESat-2/Sentinel-3/6 extraction (only relevant if those missions are
+  # enabled below) ─────────────────────────────────────────────────────────
+  # extraction_buffer_meters: 750.0   # corridor width around SWORD targets for
+  #                                   # raw altimetry extraction -- SEPARATE
+  #                                   # from buffer_meters above (that one only
+  #                                   # decides which targets are "in scope";
+  #                                   # this one decides how far from the
+  #                                   # centerline a raw point could plausibly
+  #                                   # be real river water). Falls back to
+  #                                   # buffer_meters, then 500m, if omitted.
+  # max_node_assignment_meters: 300.0 # max distance (m) for assigning a raw
+  #                                   # point to its nearest node/reach. Falls
+  #                                   # back to extraction_buffer_meters if
+  #                                   # omitted.
+  # overwrite_extraction: false       # true forces re-extraction even if a
+  #                                   # target's output .gpkg already exists
+
+  # merging_options:
+  #   # See flows.DEFAULT_RIVER_MERGING_OPTIONS for every available key.
+  #   # NOTE: these are currently a direct copy of the reservoir-tuned
+  #   # defaults and have NOT been independently validated against real
+  #   # river data -- check kept/rejected observation counts on your own
+  #   # rivers before trusting them, the same way the reservoir defaults
+  #   # were validated this session.
+  #   svr_radial_err: 1.0
+  #   svr_radial_gamma: 0.00438
+
+
+# ─── SWOT (default primary source — see quick-start note above) ─────────────
+# SWOT Hydrocron is the natural default source for node/reach WSE, but it is
+# not strictly mandatory on its own: at least one mission below (this section,
+# or icesat2/sentinel3/sentinel6 further down) must have download: true, or
+# nothing will download -- download_rivers() warns and returns early if none
+# are enabled, even with a valid aoi_path/SWORD setup above.
+swot:
+  download: true
+  process: true
+
+
+# ─── ICESat-2 / Sentinel-3 / Sentinel-6 (OPTIONAL) ────────────────────────────
+# Additional missions, clustered onto the same SWORD targets as SWOT (see
+# extraction_buffer_meters/max_node_assignment_meters above). Uncomment and
+# enable any of these to add them; SWOT alone is sufficient on its own.
+# ──────────────────────────────────────────────────────────────────────────────
+icesat2:
+  download: false
+  process: false
+
+sentinel3:
+  download: false
+  process: false
+
+sentinel6:
+  download: true
+  process: true
+  source: "earthdata"
 
 
 # ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
@@ -67,3 +147,12 @@ rivers:
 #   quality_filters:
 #     nodes:   {max_q: 2}
 #     reaches: {max_q: 2}
+# sentinel3:
+#   sigma0_min: 0.0   # water-only filter for river extraction -- a buffered
+#                     # river corridor is much looser than a reservoir
+#                     # polygon (genuinely includes riverbank/vegetation),
+#                     # and unlike ICESat-2, Sentinel has no built-in water
+#                     # classification. 0.0 is a safe no-op default -- tune
+#                     # against real data before trusting a nonzero value.
+# sentinel6:
+#   sigma0_min: 0.0

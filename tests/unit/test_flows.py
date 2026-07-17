@@ -112,9 +112,9 @@ def test_initialize_reservoirs_with_pld_download(mock_project_reservoirs):
     mock_project_reservoirs.to_process = []
 
     with (
-        patch.object(flows, "_download_pld") as mock_download,
-        patch.object(flows, "_assign_pld_id") as mock_assign,
-        patch.object(flows, "_flag_missing_priors") as mock_flag,
+        patch.object(flows._reservoir_init, "_download_pld") as mock_download,
+        patch.object(flows._reservoir_init, "_assign_pld_id") as mock_assign,
+        patch.object(flows._reservoir_init, "_flag_missing_priors") as mock_flag,
     ):
         flows.initialize_reservoirs(mock_project_reservoirs)
 
@@ -136,7 +136,7 @@ def test_initialize_rivers_aoi_branch(mock_project_rivers):
     mock_project_rivers.rivers.feature_type = "nodes"
     mock_project_rivers.rivers.buffer_meters = 500
 
-    with patch.object(flows, "_prepare_rivers_from_sword") as mock_prepare:
+    with patch.object(flows._river_init, "_prepare_rivers_from_sword") as mock_prepare:
         flows.initialize_rivers(mock_project_rivers)
         mock_prepare.assert_called_once_with(mock_project_rivers)
 
@@ -146,7 +146,7 @@ def test_initialize_rivers_configured_id_branch(mock_project_rivers):
     """initialize_rivers skips SWORD for configured_id mode."""
     mock_project_rivers.rivers.input_mode = "configured_id"
 
-    with patch.object(flows, "_prepare_rivers_from_sword") as mock_prepare:
+    with patch.object(flows._river_init, "_prepare_rivers_from_sword") as mock_prepare:
         flows.initialize_rivers(mock_project_rivers)
         mock_prepare.assert_not_called()
 
@@ -183,7 +183,7 @@ def test_prepare_sword_skips_when_subset_exists(mock_project_rivers, tmp_path):
     mock_project_rivers.rivers.buffer_meters = 0
     mock_project_rivers.rivers.id_key = "river_id"
 
-    with patch.object(flows, "_ensure_sword_database") as mock_ensure:
+    with patch.object(flows._river_init, "_ensure_sword_database") as mock_ensure:
         flows._prepare_rivers_from_sword(mock_project_rivers)
         # Should NOT call _ensure_sword_database
         mock_ensure.assert_not_called()
@@ -222,7 +222,7 @@ def test_prepare_sword_saves_subset(mock_project_rivers, tmp_path):
     mock_project_rivers.rivers.id_key = "river_id"
     mock_project_rivers.local_crs = "EPSG:3857"
 
-    with patch.object(flows, "_ensure_sword_database"):
+    with patch.object(flows._river_init, "_ensure_sword_database"):
         flows._prepare_rivers_from_sword(mock_project_rivers)
 
     # Verify subset was saved
@@ -391,15 +391,65 @@ def test_download_reservoirs_dispatches_swot(mock_project_reservoirs):
     mock_project_reservoirs.to_download = ["swot"]
 
     with (
-        patch.object(flows, "_download_reservoirs_swot") as mock_swot,
-        patch.object(flows, "_download_reservoirs_icesat2") as mock_ice,
-        patch.object(flows, "_download_reservoirs_sentinel") as mock_sent,
+        patch.object(flows._reservoir_download, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows._reservoir_download, "_download_reservoirs_icesat2") as mock_ice,
+        patch.object(flows._reservoir_download, "_download_reservoirs_sentinel") as mock_sent,
     ):
         flows.download_reservoirs(mock_project_reservoirs)
 
         mock_swot.assert_called_once_with(mock_project_reservoirs)
         mock_ice.assert_not_called()
         mock_sent.assert_not_called()
+
+
+@pytest.mark.unit
+def test_download_reservoirs_swot_skips_when_none_matched_pld(
+    mock_project_reservoirs, caplog
+):
+    """_download_reservoirs_swot skips the download entirely (no network call)
+    when none of the reservoirs matched a PLD lake -- downloading would be
+    guaranteed-wasted effort since extraction filters strictly by
+    prior_lake_id and would produce zero usable data regardless."""
+    import logging
+    from HydroEO.satellites import swot
+
+    mock_project_reservoirs.reservoirs.download_gdf = (
+        mock_project_reservoirs.reservoirs.download_gdf.assign(
+            prior_lake_id=[-9999, -9999]
+        )
+    )
+
+    with (
+        patch.object(swot, "query") as mock_query,
+        caplog.at_level(logging.WARNING),
+    ):
+        flows._download_reservoirs_swot(mock_project_reservoirs)
+
+        mock_query.assert_not_called()
+        assert "Skipping SWOT download" in caplog.text
+
+
+@pytest.mark.unit
+def test_download_reservoirs_swot_proceeds_when_some_matched_pld(
+    mock_project_reservoirs,
+):
+    """_download_reservoirs_swot still downloads if at least one reservoir
+    matched the PLD, even if others didn't -- the AOI query is shared across
+    all reservoirs, so a partial match still needs the download to run."""
+    from HydroEO.satellites import swot
+
+    mock_project_reservoirs.reservoirs.download_gdf = (
+        mock_project_reservoirs.reservoirs.download_gdf.assign(
+            prior_lake_id=[1001, -9999]
+        )
+    )
+
+    with patch.object(swot, "query") as mock_query, patch.object(swot, "download") as mock_download:
+        mock_query.return_value = []
+        flows._download_reservoirs_swot(mock_project_reservoirs)
+
+        mock_query.assert_called_once()
+        mock_download.assert_called_once()
 
 
 @pytest.mark.unit
@@ -413,9 +463,9 @@ def test_download_reservoirs_dispatches_all_missions(mock_project_reservoirs):
     ]
 
     with (
-        patch.object(flows, "_download_reservoirs_swot") as mock_swot,
-        patch.object(flows, "_download_reservoirs_icesat2") as mock_ice,
-        patch.object(flows, "_download_reservoirs_sentinel") as mock_sent,
+        patch.object(flows._reservoir_download, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows._reservoir_download, "_download_reservoirs_icesat2") as mock_ice,
+        patch.object(flows._reservoir_download, "_download_reservoirs_sentinel") as mock_sent,
     ):
         flows.download_reservoirs(mock_project_reservoirs)
 
@@ -430,8 +480,8 @@ def test_download_reservoirs_skips_disabled_missions(mock_project_reservoirs):
     mock_project_reservoirs.to_download = ["swot"]
 
     with (
-        patch.object(flows, "_download_reservoirs_swot") as mock_swot,
-        patch.object(flows, "_download_reservoirs_icesat2") as mock_ice,
+        patch.object(flows._reservoir_download, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows._reservoir_download, "_download_reservoirs_icesat2") as mock_ice,
     ):
         flows.download_reservoirs(mock_project_reservoirs)
 
@@ -444,7 +494,7 @@ def test_download_rivers_calls_hydrocron(mock_project_rivers):
     """download_rivers calls _download_swot_hydrocron_timeseries."""
     mock_project_rivers.to_download = ["swot"]
 
-    with patch.object(flows, "_download_swot_hydrocron_timeseries") as mock_hydrocron:
+    with patch.object(flows._river_download, "_download_swot_hydrocron_timeseries") as mock_hydrocron:
         flows.download_rivers(mock_project_rivers)
 
         mock_hydrocron.assert_called_once()
@@ -456,12 +506,18 @@ def test_download_rivers_calls_hydrocron(mock_project_rivers):
 
 @pytest.mark.unit
 def test_download_rivers_skips_when_swot_not_in_to_download(mock_project_rivers):
-    """download_rivers returns early if swot not in to_download."""
+    """download_rivers does not call _download_swot_hydrocron_timeseries
+    when 'swot' is not in to_download, even though other configured
+    missions (here, icesat2) still proceed normally."""
     mock_project_rivers.to_download = ["icesat2"]
 
-    with patch.object(flows, "_download_swot_hydrocron_timeseries") as mock_hydrocron:
+    with (
+        patch.object(flows._river_download, "_download_swot_hydrocron_timeseries") as mock_hydrocron,
+        patch.object(flows._river_download, "_download_rivers_icesat2") as mock_icesat2,
+    ):
         flows.download_rivers(mock_project_rivers)
         mock_hydrocron.assert_not_called()
+        mock_icesat2.assert_called_once()
 
 
 # ============================================================================
@@ -477,7 +533,7 @@ def test_create_reservoirs_timeseries_orchestrates_steps(mock_project_reservoirs
 
     call_order = []
 
-    def track_extract(prj):
+    def track_extract(prj, **kwargs):
         call_order.append("extract")
 
     def track_clean(prj):
@@ -488,10 +544,10 @@ def test_create_reservoirs_timeseries_orchestrates_steps(mock_project_reservoirs
 
     with (
         patch.object(
-            flows, "_extract_reservoirs_timeseries", side_effect=track_extract
+            flows._reservoir_pipeline, "_extract_reservoirs_timeseries", side_effect=track_extract
         ),
-        patch.object(flows, "_clean_reservoirs_timeseries", side_effect=track_clean),
-        patch.object(flows, "_merge_reservoirs_timeseries", side_effect=track_merge),
+        patch.object(flows._reservoir_pipeline, "_clean_reservoirs_timeseries", side_effect=track_clean),
+        patch.object(flows._reservoir_pipeline, "_merge_reservoirs_timeseries", side_effect=track_merge),
     ):
         flows.create_reservoirs_timeseries(mock_project_reservoirs)
 
@@ -510,7 +566,7 @@ def test_create_reservoirs_timeseries_calls_export_when_toggled(
 
     call_order = []
 
-    def track_extract(prj):
+    def track_extract(prj, **kwargs):
         call_order.append("extract")
 
     def track_clean(prj):
@@ -524,11 +580,11 @@ def test_create_reservoirs_timeseries_calls_export_when_toggled(
 
     with (
         patch.object(
-            flows, "_extract_reservoirs_timeseries", side_effect=track_extract
+            flows._reservoir_pipeline, "_extract_reservoirs_timeseries", side_effect=track_extract
         ),
-        patch.object(flows, "_clean_reservoirs_timeseries", side_effect=track_clean),
-        patch.object(flows, "_export_cleaned_to_dfs0", side_effect=track_export),
-        patch.object(flows, "_merge_reservoirs_timeseries", side_effect=track_merge),
+        patch.object(flows._reservoir_pipeline, "_clean_reservoirs_timeseries", side_effect=track_clean),
+        patch.object(flows._reservoir_pipeline, "_export_cleaned_to_dfs0", side_effect=track_export),
+        patch.object(flows._reservoir_pipeline, "_merge_reservoirs_timeseries", side_effect=track_merge),
     ):
         flows.create_reservoirs_timeseries(mock_project_reservoirs)
 
@@ -546,10 +602,10 @@ def test_create_reservoirs_timeseries_skips_export_when_disabled(
     mock_project_reservoirs.reservoirs.export_to_dfs0 = False
 
     with (
-        patch.object(flows, "_extract_reservoirs_timeseries"),
-        patch.object(flows, "_clean_reservoirs_timeseries"),
-        patch.object(flows, "_export_cleaned_to_dfs0") as mock_export,
-        patch.object(flows, "_merge_reservoirs_timeseries"),
+        patch.object(flows._reservoir_pipeline, "_extract_reservoirs_timeseries"),
+        patch.object(flows._reservoir_pipeline, "_clean_reservoirs_timeseries"),
+        patch.object(flows._reservoir_pipeline, "_export_cleaned_to_dfs0") as mock_export,
+        patch.object(flows._reservoir_pipeline, "_merge_reservoirs_timeseries"),
     ):
         flows.create_reservoirs_timeseries(mock_project_reservoirs)
 
@@ -639,7 +695,7 @@ def test_generate_reservoirs_summaries_iterates_ids(mock_project_reservoirs):
     )
 
     with (
-        patch.object(flows, "_load_product_timeseries"),
+        patch.object(flows._summaries, "_load_product_timeseries"),
         patch("HydroEO.flows.plotting.plot_crossings") as mock_plot,
         patch("HydroEO.flows.plotting.plot_cleaning"),
         patch("HydroEO.flows.plotting.plot_merging"),
@@ -650,6 +706,122 @@ def test_generate_reservoirs_summaries_iterates_ids(mock_project_reservoirs):
 
         # Verify plotting functions were called
         assert mock_plot.call_count >= 2
+
+
+# ============================================================================
+# Rivers Timeseries Processing Tests
+# ============================================================================
+#
+# Mirrors the "Timeseries Processing Tests" section above, which covers the
+# reservoirs equivalents (create_reservoirs_timeseries,
+# generate_reservoirs_summaries). create_rivers_timeseries and
+# generate_rivers_summaries had no coverage at all prior to this section --
+# see tests/unit/test_timeseries.py for the corresponding
+# _extract_rivers_*/_clean_rivers_timeseries/_merge_rivers_timeseries tests.
+
+
+@pytest.mark.unit
+def test_create_rivers_timeseries_orchestrates_steps(mock_project_rivers):
+    """create_rivers_timeseries calls extract, clean, and merge in order."""
+    mock_project_rivers.to_process = ["swot"]
+    mock_project_rivers.processing_options = {}
+
+    call_order = []
+
+    def track_extract(prj, **kwargs):
+        call_order.append("extract")
+
+    def track_clean(prj):
+        call_order.append("clean")
+
+    def track_merge(prj):
+        call_order.append("merge")
+
+    with (
+        patch.object(flows._river_pipeline, "_extract_rivers_timeseries", side_effect=track_extract),
+        patch.object(flows._river_pipeline, "_clean_rivers_timeseries", side_effect=track_clean),
+        patch.object(flows._river_pipeline, "_merge_rivers_timeseries", side_effect=track_merge),
+    ):
+        flows.create_rivers_timeseries(mock_project_rivers)
+
+        # Unlike reservoirs, rivers has no dfs0 export step (see
+        # flows.create_rivers_timeseries's docstring).
+        assert call_order == ["extract", "clean", "merge"]
+
+
+@pytest.mark.unit
+def test_create_rivers_timeseries_noop_when_rivers_not_configured(
+    mock_project_reservoirs,
+):
+    """create_rivers_timeseries is a no-op for a reservoirs-only project."""
+    with (
+        patch.object(flows._river_pipeline, "_extract_rivers_timeseries") as mock_extract,
+        patch.object(flows._river_pipeline, "_clean_rivers_timeseries") as mock_clean,
+        patch.object(flows._river_pipeline, "_merge_rivers_timeseries") as mock_merge,
+    ):
+        flows.create_rivers_timeseries(mock_project_reservoirs)
+
+        mock_extract.assert_not_called()
+        mock_clean.assert_not_called()
+        mock_merge.assert_not_called()
+
+
+@pytest.mark.unit
+def test_generate_rivers_summaries_plots_plottable_targets(mock_project_rivers):
+    """generate_rivers_summaries plots each waterbody with enough observations,
+    passing the waterbody id and its plottable target ids through to each
+    plotting call."""
+    mock_project_rivers.rivers.target_features = None
+    mock_project_rivers.rivers.configured_id = "loire"
+    mock_project_rivers.rivers.target_ids = [101, 102]
+
+    with (
+        patch.object(flows._summaries, "_has_enough_observations_to_plot", return_value=True),
+        patch.object(flows._summaries, "_project_num_months", return_value=3),
+        patch.object(flows._summaries, "_river_target_corridor", return_value=None),
+        patch.object(flows._summaries, "_load_merged_timeseries", return_value=None),
+        patch("HydroEO.flows.plotting.plot_river_crossings") as mock_crossings,
+        patch("HydroEO.flows.plotting.plot_river_data") as mock_data,
+        patch("HydroEO.flows.plotting.plot_merging") as mock_merging,
+    ):
+        flows.generate_rivers_summaries(mock_project_rivers, show=False, save=False)
+
+        mock_crossings.assert_called_once()
+        call_args = mock_crossings.call_args
+        assert call_args[0][1] == "loire"
+        assert sorted(call_args[0][2]) == [101, 102]
+
+        mock_data.assert_called_once()
+        # plot_merging is called once per plottable target, not once per waterbody
+        assert mock_merging.call_count == 2
+
+
+@pytest.mark.unit
+def test_generate_rivers_summaries_skips_waterbody_without_plottable_targets(
+    mock_project_rivers, caplog
+):
+    """generate_rivers_summaries skips a waterbody entirely (all three plot
+    types) when none of its targets have enough observations."""
+    import logging
+
+    mock_project_rivers.rivers.target_features = None
+    mock_project_rivers.rivers.configured_id = "loire"
+    mock_project_rivers.rivers.target_ids = [101, 102]
+
+    with (
+        patch.object(flows._summaries, "_has_enough_observations_to_plot", return_value=False),
+        patch.object(flows._summaries, "_project_num_months", return_value=3),
+        patch("HydroEO.flows.plotting.plot_river_crossings") as mock_crossings,
+        patch("HydroEO.flows.plotting.plot_river_data") as mock_data,
+        patch("HydroEO.flows.plotting.plot_merging") as mock_merging,
+        caplog.at_level(logging.INFO),
+    ):
+        flows.generate_rivers_summaries(mock_project_rivers, show=False, save=False)
+
+        mock_crossings.assert_not_called()
+        mock_data.assert_not_called()
+        mock_merging.assert_not_called()
+        assert "Skipping plots for waterbody" in caplog.text
 
 
 # ============================================================================
@@ -788,28 +960,154 @@ def test_download_pld_downloads_when_missing(mock_project_reservoirs, caplog):
 
 
 @pytest.mark.unit
-def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
-    """_assign_pld_id joins PLD data and updates reservoirs gdf."""
-    # Mock PLD GeoDataFrame
+def test_assign_pld_id_updates_gdf(mock_project_reservoirs, tmp_path):
+    """_assign_pld_id joins PLD data and updates reservoirs gdf, preferring
+    the overlap-based match (not sjoin_nearest) when a PLD lake genuinely
+    overlaps the reservoir -- matching how real PLD lakes and reservoirs
+    are both areal (polygon) features, not points."""
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reservoirs fixture is box(0,0,1,1) and box(1,1,2,2) -- give each a PLD
+    # lake polygon genuinely (mostly) overlapping it.
     pld_gdf = gpd.GeoDataFrame(
-        {
-            "lake_id": [1001, 1002],
-            "res_id": [501, 502],
-            "geometry": [Point(0.5, 0.5), Point(1.5, 1.5)],
-        },
+        {"lake_id": [1001, 1002], "res_id": [501, 502]},
+        geometry=[box(0.1, 0.1, 0.9, 0.9), box(1.1, 1.1, 1.9, 1.9)],
         crs="EPSG:4326",
     )
+    pld_gdf.to_file(pld_path, driver="GPKG")
 
-    with (
-        patch("geopandas.read_file", return_value=pld_gdf),
-        patch("geopandas.sjoin_nearest") as mock_sjoin,
-    ):
-        # Mock the sjoin result
-        joined_gdf = mock_project_reservoirs.reservoirs.gdf.copy()
-        joined_gdf["prior_lake_id"] = [1001, 1002]
-        joined_gdf["prior_res_id"] = [501, 502]
-        mock_sjoin.return_value = joined_gdf
-
+    with patch.object(gpd, "sjoin_nearest") as mock_sjoin:
         flows._assign_pld_id(mock_project_reservoirs)
 
-        mock_sjoin.assert_called_once()
+        # both reservoirs have a genuine overlapping PLD lake, so the
+        # nearest-distance fallback should never be needed
+        mock_sjoin.assert_not_called()
+
+    result = mock_project_reservoirs.reservoirs.gdf.set_index("id")
+    assert result.loc[1, "prior_lake_id"] == 1001
+    assert result.loc[2, "prior_lake_id"] == 1002
+    assert (result["pld_match_method"] == "overlap").all()
+
+
+@pytest.mark.unit
+def test_assign_pld_id_prefers_largest_overlap_over_nearest(mock_project_reservoirs, tmp_path):
+    """Regression test: a small, unrelated PLD lake sitting close enough to
+    also touch the reservoir must not win over the true match just because
+    it happens to be nearer by centroid/boundary distance -- the one with
+    the larger actual overlap area should be chosen."""
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reservoir "id"=1 is box(0,0,1,1). Give it a true, mostly-overlapping
+    # match AND a tiny noise lake that only clips its corner.
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1001, 1002], "res_id": [501, None]},
+        geometry=[
+            box(0.05, 0.05, 0.95, 0.95),   # true match: ~0.81 overlap area
+            box(0.95, 0.95, 1.05, 1.05),   # noise: tiny corner clip with reservoir 1
+        ],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+
+    flows._assign_pld_id(mock_project_reservoirs)
+
+    result = mock_project_reservoirs.reservoirs.gdf.set_index("id")
+    assert result.loc[1, "prior_lake_id"] == 1001, (
+        "the small noise lake should not win over the true, larger-overlap match"
+    )
+    assert len(mock_project_reservoirs.reservoirs.gdf) == 2, (
+        "no duplicate rows should be introduced for reservoir 1"
+    )
+
+
+@pytest.mark.unit
+def test_assign_pld_id_warns_but_uses_low_overlap_match(mock_project_reservoirs, tmp_path, caplog):
+    """A match with overlap below pld_match_min_overlap_pct should still be used, 
+    but flagged with a warning naming the reservoir and its actual overlap percentage."""
+    import logging
+
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reservoir "id"=1 is box(0,0,1,1), area=1.0. Give it only a tiny
+    # corner-clip lake (area=0.01, i.e. 1% of the reservoir).
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1001, 1002]},
+        geometry=[box(0.9, 0.9, 1.0, 1.0), box(1.1, 1.1, 1.9, 1.9)],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+    mock_project_reservoirs.mission_options["swot"]["pld_match_min_overlap_pct"] = 10.0
+
+    with caplog.at_level(logging.WARNING):
+        flows._assign_pld_id(mock_project_reservoirs)
+
+        assert "1 reservoir(s) matched a PLD lake covering less than 10%" in caplog.text
+        assert "1 (1.0%)" in caplog.text
+
+    result = mock_project_reservoirs.reservoirs.gdf.set_index("id")
+    assert result.loc[1, "prior_lake_id"] == 1001, (
+        "the low-overlap match should still be used, not rejected"
+    )
+
+
+@pytest.mark.unit
+def test_assign_pld_id_drops_index_right_column(mock_project_reservoirs, tmp_path):
+    """_assign_pld_id must not leave sjoin_nearest's leftover index_right/
+    index_left columns in prj.reservoirs.gdf -- these persisted previously,
+    which broke any follow-up sjoin_nearest call on prj.reservoirs.gdf later
+    (ValueError: 'index_right' cannot be a column name in the frames being
+    joined) since sjoin_nearest wants to use that name itself."""
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1001, 1002]},
+        geometry=[Point(0.5, 0.5), Point(1.5, 1.5)],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+
+    flows._assign_pld_id(mock_project_reservoirs)
+
+    assert "index_right" not in mock_project_reservoirs.reservoirs.gdf.columns
+    assert "index_left" not in mock_project_reservoirs.reservoirs.gdf.columns
+
+    # confirm a follow-up sjoin_nearest (e.g. manual diagnostics) doesn't
+    # collide with a leftover column from this one
+    gpd.sjoin_nearest(
+        mock_project_reservoirs.reservoirs.gdf.to_crs("EPSG:3857"),
+        pld_gdf.to_crs("EPSG:3857"),
+        distance_col="dist_to_pld",
+    )
+
+
+@pytest.mark.unit
+def test_assign_pld_id_coerces_string_lake_id_to_numeric(mock_project_reservoirs, tmp_path):
+    """Regression test: some real PLD files (e.g. the '_light' product)
+    store lake_id as text rather than integer, which round-trips through
+    GPKG as a genuine Python str. Without coercion, prior_lake_id ends up
+    as an object-dtype column mixing strings (matched reservoirs) with the
+    integer -9999 sentinel (unmatched reservoirs) -- and _flag_missing_priors's
+    'prior_lake_id > 0' / '< 0' comparisons raise TypeError: '>' not
+    supported between instances of 'str' and 'int'.
+    """
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # lake_id stored as text, matching the confirmed round-trip behavior of
+    # some real PLD files
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": ["1001", "1002"]},
+        geometry=[Point(0.5, 0.5), Point(1.5, 1.5)],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+
+    flows._assign_pld_id(mock_project_reservoirs)
+
+    prior_lake_id = mock_project_reservoirs.reservoirs.gdf["prior_lake_id"]
+    assert pd.api.types.is_numeric_dtype(prior_lake_id), (
+        f"prior_lake_id should be numeric, got dtype {prior_lake_id.dtype}"
+    )
+    # this is exactly the comparison that raised TypeError before the fix
+    present = mock_project_reservoirs.reservoirs.gdf.loc[prior_lake_id > 0]
+    missing = mock_project_reservoirs.reservoirs.gdf.loc[prior_lake_id < 0]
+    assert len(present) + len(missing) == len(mock_project_reservoirs.reservoirs.gdf)

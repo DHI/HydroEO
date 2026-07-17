@@ -44,6 +44,8 @@ def extract_observations(
     features,
     id_key,
     exclude_obs_id_values=None,
+    processed_log_path=None,
+    overwrite=False,
 ):
     return _preprocess.extract_observations(
         src_dir=src_dir,
@@ -53,6 +55,8 @@ def extract_observations(
         id_key=id_key,
         exclude_obs_id_values=exclude_obs_id_values,
         product_name=SWOT_LAKE_SHORT_NAME,
+        processed_log_path=processed_log_path,
+        overwrite=overwrite,
     )
 
 
