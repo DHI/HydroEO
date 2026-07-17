@@ -402,28 +402,6 @@ def test_download_reservoirs_dispatches_swot(mock_project_reservoirs):
         mock_sent.assert_not_called()
 
 
-
-@pytest.mark.unit
-def test_download_reservoirs_dispatches_all_missions(mock_project_reservoirs):
-    """download_reservoirs dispatches all enabled satellite missions."""
-    mock_project_reservoirs.to_download = [
-        "swot",
-        "icesat2",
-        "sentinel3",
-        "sentinel6",
-    ]
-
-    with (
-        patch.object(flows._reservoir_download, "_download_reservoirs_swot") as mock_swot,
-        patch.object(flows._reservoir_download, "_download_reservoirs_icesat2") as mock_ice,
-        patch.object(flows._reservoir_download, "_download_reservoirs_sentinel") as mock_sent,
-    ):
-        flows.download_reservoirs(mock_project_reservoirs)
-
-        mock_swot.assert_called_once()
-        mock_ice.assert_called_once()
-        assert mock_sent.call_count == 2  # sentinel3 and sentinel6
-
 @pytest.mark.unit
 def test_download_reservoirs_swot_skips_when_none_matched_pld(
     mock_project_reservoirs, caplog
@@ -473,6 +451,27 @@ def test_download_reservoirs_swot_proceeds_when_some_matched_pld(
         mock_query.assert_called_once()
         mock_download.assert_called_once()
 
+
+@pytest.mark.unit
+def test_download_reservoirs_dispatches_all_missions(mock_project_reservoirs):
+    """download_reservoirs dispatches all enabled satellite missions."""
+    mock_project_reservoirs.to_download = [
+        "swot",
+        "icesat2",
+        "sentinel3",
+        "sentinel6",
+    ]
+
+    with (
+        patch.object(flows._reservoir_download, "_download_reservoirs_swot") as mock_swot,
+        patch.object(flows._reservoir_download, "_download_reservoirs_icesat2") as mock_ice,
+        patch.object(flows._reservoir_download, "_download_reservoirs_sentinel") as mock_sent,
+    ):
+        flows.download_reservoirs(mock_project_reservoirs)
+
+        mock_swot.assert_called_once()
+        mock_ice.assert_called_once()
+        assert mock_sent.call_count == 2  # sentinel3 and sentinel6
 
 
 @pytest.mark.unit
@@ -961,31 +960,94 @@ def test_download_pld_downloads_when_missing(mock_project_reservoirs, caplog):
 
 
 @pytest.mark.unit
-def test_assign_pld_id_updates_gdf(mock_project_reservoirs):
-    """_assign_pld_id joins PLD data and updates reservoirs gdf."""
-    # Mock PLD GeoDataFrame
+def test_assign_pld_id_updates_gdf(mock_project_reservoirs, tmp_path):
+    """_assign_pld_id joins PLD data and updates reservoirs gdf, preferring
+    the overlap-based match (not sjoin_nearest) when a PLD lake genuinely
+    overlaps the reservoir -- matching how real PLD lakes and reservoirs
+    are both areal (polygon) features, not points."""
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reservoirs fixture is box(0,0,1,1) and box(1,1,2,2) -- give each a PLD
+    # lake polygon genuinely (mostly) overlapping it.
     pld_gdf = gpd.GeoDataFrame(
-        {
-            "lake_id": [1001, 1002],
-            "res_id": [501, 502],
-            "geometry": [Point(0.5, 0.5), Point(1.5, 1.5)],
-        },
+        {"lake_id": [1001, 1002], "res_id": [501, 502]},
+        geometry=[box(0.1, 0.1, 0.9, 0.9), box(1.1, 1.1, 1.9, 1.9)],
         crs="EPSG:4326",
     )
+    pld_gdf.to_file(pld_path, driver="GPKG")
 
-    with (
-        patch("geopandas.read_file", return_value=pld_gdf),
-        patch("geopandas.sjoin_nearest") as mock_sjoin,
-    ):
-        # Mock the sjoin result
-        joined_gdf = mock_project_reservoirs.reservoirs.gdf.copy()
-        joined_gdf["prior_lake_id"] = [1001, 1002]
-        joined_gdf["prior_res_id"] = [501, 502]
-        mock_sjoin.return_value = joined_gdf
-
+    with patch.object(gpd, "sjoin_nearest") as mock_sjoin:
         flows._assign_pld_id(mock_project_reservoirs)
 
-        mock_sjoin.assert_called_once()
+        # both reservoirs have a genuine overlapping PLD lake, so the
+        # nearest-distance fallback should never be needed
+        mock_sjoin.assert_not_called()
+
+    result = mock_project_reservoirs.reservoirs.gdf.set_index("id")
+    assert result.loc[1, "prior_lake_id"] == 1001
+    assert result.loc[2, "prior_lake_id"] == 1002
+    assert (result["pld_match_method"] == "overlap").all()
+
+
+@pytest.mark.unit
+def test_assign_pld_id_prefers_largest_overlap_over_nearest(mock_project_reservoirs, tmp_path):
+    """Regression test: a small, unrelated PLD lake sitting close enough to
+    also touch the reservoir must not win over the true match just because
+    it happens to be nearer by centroid/boundary distance -- the one with
+    the larger actual overlap area should be chosen."""
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reservoir "id"=1 is box(0,0,1,1). Give it a true, mostly-overlapping
+    # match AND a tiny noise lake that only clips its corner.
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1001, 1002], "res_id": [501, None]},
+        geometry=[
+            box(0.05, 0.05, 0.95, 0.95),   # true match: ~0.81 overlap area
+            box(0.95, 0.95, 1.05, 1.05),   # noise: tiny corner clip with reservoir 1
+        ],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+
+    flows._assign_pld_id(mock_project_reservoirs)
+
+    result = mock_project_reservoirs.reservoirs.gdf.set_index("id")
+    assert result.loc[1, "prior_lake_id"] == 1001, (
+        "the small noise lake should not win over the true, larger-overlap match"
+    )
+    assert len(mock_project_reservoirs.reservoirs.gdf) == 2, (
+        "no duplicate rows should be introduced for reservoir 1"
+    )
+
+
+@pytest.mark.unit
+def test_assign_pld_id_warns_but_uses_low_overlap_match(mock_project_reservoirs, tmp_path, caplog):
+    """A match with overlap below pld_match_min_overlap_pct should still be used, 
+    but flagged with a warning naming the reservoir and its actual overlap percentage."""
+    import logging
+
+    pld_path = Path(mock_project_reservoirs.dirs["pld"])
+    pld_path.parent.mkdir(parents=True, exist_ok=True)
+    # Reservoir "id"=1 is box(0,0,1,1), area=1.0. Give it only a tiny
+    # corner-clip lake (area=0.01, i.e. 1% of the reservoir).
+    pld_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1001, 1002]},
+        geometry=[box(0.9, 0.9, 1.0, 1.0), box(1.1, 1.1, 1.9, 1.9)],
+        crs="EPSG:4326",
+    )
+    pld_gdf.to_file(pld_path, driver="GPKG")
+    mock_project_reservoirs.mission_options["swot"]["pld_match_min_overlap_pct"] = 10.0
+
+    with caplog.at_level(logging.WARNING):
+        flows._assign_pld_id(mock_project_reservoirs)
+
+        assert "1 reservoir(s) matched a PLD lake covering less than 10%" in caplog.text
+        assert "1 (1.0%)" in caplog.text
+
+    result = mock_project_reservoirs.reservoirs.gdf.set_index("id")
+    assert result.loc[1, "prior_lake_id"] == 1001, (
+        "the low-overlap match should still be used, not rejected"
+    )
 
 
 @pytest.mark.unit

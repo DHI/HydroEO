@@ -142,12 +142,16 @@ def extract_observations(
     excluded_obs_ids = set(exclude_obs_id_values or ["no_data"])
 
     empty_ids = []
+    missing_from_pld_ids = []
     # now loop through the ids in the features gdf to extract the observations from the main one
     for _, feat in tqdm(
         features.iterrows(), total=len(features), desc="Extracting SWOT Lake SP product"
     ):
         dl_id = str(feat[id_key])
-        if not np.isnan(feat["prior_lake_id"]):
+        # prior_lake_id is -9999 (not NaN) for reservoirs unmatched to the PLD --
+        # see _assign_pld_id, and _flag_missing_priors's own "> 0" convention for
+        # "present in PLD" that this mirrors.
+        if feat["prior_lake_id"] > 0:
             lake_id = str(int(feat["prior_lake_id"]))
 
             # filter observations to keep only the ones associated with this lake/reservoir
@@ -186,6 +190,18 @@ def extract_observations(
                     observations.to_file(dst_path)
             else:
                 empty_ids.append(dl_id)
+        else:
+            missing_from_pld_ids.append(dl_id)
+
+    if missing_from_pld_ids:
+        logger.warning(
+            "SWOT timeseries unavailable for: %s -- no geometrically "
+            "overlapping Prior Lake Database (PLD) lake (see "
+            "aux/PLD/missing_in_pld.gpkg). SWOT Lake SP cannot report "
+            "observations for a reservoir the PLD doesn't have a matching entry "
+            "for, regardless of date range or download success.",
+            ", ".join(missing_from_pld_ids),
+        )
 
     if processed_log_path:
         if overwrite:

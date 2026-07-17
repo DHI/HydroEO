@@ -95,7 +95,6 @@ DEFAULT_ELEVATION_MIN_M = 0.0
 DEFAULT_ELEVATION_MAX_M = 8000.0
 DEFAULT_MAD_THRESHOLD = 5.0
 
-
 # ============================================================================
 # Mission Defaults
 # ============================================================================
@@ -104,7 +103,10 @@ MISSION_DEFAULTS = {
     "swot": {
         "download": False,
         "process": False,
-        "pld_match_max_distance_m": 100.0,
+        # Minimum PLD-lake overlap as a percentage (0-100) of the
+        # reservoir's own area. Previously used pld_match_max_distance_m.
+        # NOTE: Note backward compatible.
+        "pld_match_min_overlap_pct": 10.0,
         "exclude_obs_id_values": ["no_data"],
         "hydrocron_fields": SWOT_DEFAULT_HYDROCRON_FIELDS,
         "quality_filters": SWOT_DEFAULT_QUALITY_FILTERS,

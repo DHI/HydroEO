@@ -178,6 +178,73 @@ def test_extract_swot_observations_skips_when_missing(mock_project_reservoirs, c
 
 
 @pytest.mark.unit
+def test_swot_extract_observations_distinguishes_missing_from_pld(tmp_path, caplog):
+    """swot.preprocess.extract_observations must treat prior_lake_id == -9999
+    (the sentinel _assign_pld_id uses for reservoirs unmatched to the PLD --
+    NOT NaN) as genuinely unavailable, with its own distinct warning -- not
+    silently fall through to the same generic 'no observations matched'
+    warning used for a reservoir that IS in the PLD but has zero real SWOT
+    crossings. Regression test for a real bug: the original code checked
+    `np.isnan(prior_lake_id)`, which is never true since _assign_pld_id
+    always overwrites nulls with -9999, so both cases were indistinguishable
+    from the log alone."""
+    import logging
+    from HydroEO.satellites.swot import preprocess as swot_preprocess
+
+    download_dir = tmp_path / "swot"
+    download_dir.mkdir()
+    gdf = gpd.GeoDataFrame(
+        {
+            "lake_id": [100],
+            "obs_id": ["ok"],
+            "time": ["2024-01-01T00:00:00Z"],
+            "time_str": ["2024-01-01"],
+            "wse": [10.0],
+        },
+        geometry=[Point(0, 0)],
+        crs="EPSG:4326",
+    )
+    gdf.to_file(download_dir / "sub_granule.shp")
+
+    # R1 is matched to PLD lake 100 (should extract fine); R2 is unmatched
+    # (prior_lake_id == -9999, the real sentinel value, not NaN); R3 is
+    # matched to a PLD lake but that lake has no real SWOT crossings.
+    features = gpd.GeoDataFrame(
+        {
+            "res_id": ["R1", "R2", "R3"],
+            "prior_lake_id": [100.0, -9999.0, 200.0],
+        },
+        geometry=[Point(0, 0), Point(1, 1), Point(2, 2)],
+        crs="EPSG:4326",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        empty_ids = swot_preprocess.extract_observations(
+            src_dir=str(download_dir),
+            dst_dir=str(tmp_path / "output"),
+            dst_file_name="swot.gpkg",
+            features=features,
+            id_key="res_id",
+        )
+
+    # R1: matched and has real data -> written to disk, not in empty_ids
+    r1_path = tmp_path / "output" / "R1" / "raw_observations" / "swot.gpkg"
+    assert r1_path.exists()
+
+    # R3: matched to the PLD but zero real crossings -> generic empty_ids path
+    assert empty_ids == ["R3"]
+    r3_path = tmp_path / "output" / "R3" / "raw_observations" / "swot.gpkg"
+    assert not r3_path.exists()
+
+    # R2: missing from PLD entirely -> distinct warning, NOT lumped into empty_ids
+    assert "R2" not in empty_ids
+    r2_path = tmp_path / "output" / "R2" / "raw_observations" / "swot.gpkg"
+    assert not r2_path.exists()
+    assert "no geometrically overlapping Prior Lake Database" in caplog.text
+    assert "R2" in caplog.text
+
+
+@pytest.mark.unit
 def test_extract_icesat2_observations_calls_icesat2_module(
     mock_project_reservoirs, tmp_path
 ):
@@ -1360,5 +1427,3 @@ def test_merge_baseline_dates_chronological(nuozhadu_baseline_path):
     is_sorted = merged["date"].is_monotonic_increasing
     assert is_sorted, "merged_timeseries.csv should be sorted by date"
 
-
-# (Old SWORD tests removed - replaced with new comprehensive test suite above)

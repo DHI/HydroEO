@@ -41,7 +41,7 @@ Start from [`configs/reservoirs.yaml`](reservoirs.yaml).
 | `download` | `false`* | Download SWOT Lake SP granules |
 | `process` | `false`* | Extract observations for each reservoir |
 | `startdate` / `enddate` | project dates | Per-satellite date override |
-| `pld_match_max_distance_m` | `100.0` | Max nearest-neighbour distance to match reservoirs to PLD lakes |
+| `pld_match_min_overlap_pct` | `10.0` | Minimum PLD-lake overlap as a percentage (0-100) of the reservoir's own area. Matching itself requires genuine geometric overlap with no distance-based fallback; a reservoir with zero overlap to any PLD lake is left unmatched (see `aux/PLD/missing_in_pld.gpkg`). Below this percentage, the best-available match is still used, but a warning names it as low-confidence so you can verify it isn't a small, unrelated lake clipping the reservoir's edge. |
 | `exclude_obs_id_values` | `["no_data"]` | SWOT `obs_id` values to drop during extraction |
 | `processing_filters` | `["elevation", "MAD"]` | Ordered list of cleaning filters (see [Cleaning filters](#cleaning-filters)) |
 | `elevation_min_m` | `0.0` | Lower bound for elevation filter (metres) |

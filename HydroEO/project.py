@@ -412,7 +412,7 @@ class Project:
                     "short_name",
                     "download_threads",
                     "exclude_obs_id_values",
-                    "pld_match_max_distance_m",
+                    "pld_match_min_overlap_pct",
                 ]
             }
 
