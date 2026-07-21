@@ -282,6 +282,10 @@ def fetch_swot_raster(
     startdate = _parse_date(start, "--start")
     enddate = _parse_date(end, "--end")
     u, p = _resolve_earthaccess_creds(username, password)
+    if u:
+        os.environ["EARTHDATA_USERNAME"] = u
+    if p:
+        os.environ["EARTHDATA_PASSWORD"] = p
 
     config = {
         "aoi": {
@@ -296,7 +300,7 @@ def fetch_swot_raster(
 
     from HydroEO.satellites.swot.raster import download_raster
 
-    download_raster(config=config, project_dir=output, credentials=(u, p))
+    download_raster(config=config, project_dir=output)
     typer.echo(f"SWOT raster download complete. Output: {output}")
 
 
@@ -363,6 +367,10 @@ def fetch_swot_pixc(
     startdate = _parse_date(start, "--start")
     enddate = _parse_date(end, "--end")
     u, p = _resolve_earthaccess_creds(username, password)
+    if u:
+        os.environ["EARTHDATA_USERNAME"] = u
+    if p:
+        os.environ["EARTHDATA_PASSWORD"] = p
 
     # Parse optional classes and fields
     classes_list = (
@@ -389,7 +397,7 @@ def fetch_swot_pixc(
 
     from HydroEO.satellites.swot.pixc import download_pixc
 
-    download_pixc(config=config, project_dir=output, credentials=(u, p))
+    download_pixc(config=config, project_dir=output)
     typer.echo(f"SWOT pixel cloud download complete. Output: {output}")
 
 
