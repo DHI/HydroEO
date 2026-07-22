@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 import xarray as xr
+import rioxarray  # noqa: F401 - required for xarray .rio accessor
 from pyproj import CRS
 from rasterio.transform import from_origin
 from scipy.stats import binned_statistic_2d
