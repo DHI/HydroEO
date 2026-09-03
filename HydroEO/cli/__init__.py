@@ -258,7 +258,7 @@ def fetch_swot_raster(
     end: str = typer.Option(..., "--end", help="End date (YYYY-MM-DD)."),
     aoi_name: str = typer.Option("aoi", "--aoi-name", help="Label for the AOI."),
     product: str = typer.Option(
-        "SWOT_L2_HR_PIXC_2.0", "--product", help="SWOT raster product short name."
+        "SWOT_L2_HR_Raster_D", "--product", help="SWOT raster product short name."
     ),
     output: str = typer.Option(
         "hydroeo_output", "--output", "-o", help="Output directory (created if absent)."

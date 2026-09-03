@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -136,12 +137,15 @@ def test_fetch_swot_raster_calls_download_raster(tmp_path):
     cfg = call_kwargs["config"]
     assert cfg["aoi"]["type"] == "bbox"
     assert cfg["aoi"]["bbox"] == [-10.0, 40.0, 10.0, 60.0]
+    assert cfg["product"] == "SWOT_L2_HR_Raster_D"
 
 
 @pytest.mark.unit
 def test_fetch_swot_raster_credentials_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("EARTHACCESS_USERNAME", "envuser")
     monkeypatch.setenv("EARTHACCESS_PASSWORD", "envpass")
+    monkeypatch.delenv("EARTHDATA_USERNAME", raising=False)
+    monkeypatch.delenv("EARTHDATA_PASSWORD", raising=False)
     with patch("HydroEO.satellites.swot.raster.download_raster") as mock_dl:
         result = runner.invoke(
             app,
@@ -154,12 +158,16 @@ def test_fetch_swot_raster_credentials_from_env(tmp_path, monkeypatch):
             ],
         )
     assert result.exit_code == 0, result.output
-    creds = mock_dl.call_args.kwargs["credentials"]
-    assert creds == ("envuser", "envpass")
+    mock_dl.assert_called_once()
+    assert "credentials" not in mock_dl.call_args.kwargs
+    assert os.environ["EARTHDATA_USERNAME"] == "envuser"
+    assert os.environ["EARTHDATA_PASSWORD"] == "envpass"
 
 
 @pytest.mark.unit
-def test_fetch_swot_raster_credentials_from_args(tmp_path):
+def test_fetch_swot_raster_credentials_from_args(tmp_path, monkeypatch):
+    monkeypatch.delenv("EARTHDATA_USERNAME", raising=False)
+    monkeypatch.delenv("EARTHDATA_PASSWORD", raising=False)
     with patch("HydroEO.satellites.swot.raster.download_raster") as mock_dl:
         result = runner.invoke(
             app,
@@ -176,8 +184,10 @@ def test_fetch_swot_raster_credentials_from_args(tmp_path):
             ],
         )
     assert result.exit_code == 0, result.output
-    creds = mock_dl.call_args.kwargs["credentials"]
-    assert creds == ("arguser", "argpass")
+    mock_dl.assert_called_once()
+    assert "credentials" not in mock_dl.call_args.kwargs
+    assert os.environ["EARTHDATA_USERNAME"] == "arguser"
+    assert os.environ["EARTHDATA_PASSWORD"] == "argpass"
 
 
 @pytest.mark.unit
