@@ -137,6 +137,7 @@ def test_fetch_swot_raster_calls_download_raster(tmp_path):
     cfg = call_kwargs["config"]
     assert cfg["aoi"]["type"] == "bbox"
     assert cfg["aoi"]["bbox"] == [-10.0, 40.0, 10.0, 60.0]
+    assert cfg["product"] == "SWOT_L2_HR_Raster_D"
 
 
 @pytest.mark.unit
