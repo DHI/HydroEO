@@ -62,9 +62,6 @@ def download_PLD(
     zipped_name = "PLD_temp.zip"
     downloaded_zip_path = os.path.join(download_dir, zipped_name)
     unzipped_dir = os.path.join(download_dir, "PLD_temp")
-    extracted_dir = os.path.join(
-        unzipped_dir, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
-    )
 
     # Track whether the zip was downloaded by HydroEO (vs user-provided)
     hydroweb_managed_zip = True
@@ -72,9 +69,30 @@ def download_PLD(
     def _dir_has_pld_files(d):
         return any(f.endswith((".sqlite", ".gpkg")) for f in os.listdir(d))
 
-     # Check if extracted files already exist
-    extracted_files_exist = os.path.isdir(extracted_dir) and _dir_has_pld_files(
-        extracted_dir)
+    def _resolve_pld_dir(base):
+        """Locate the directory holding the PLD .sqlite/.gpkg files under `base`.
+
+        hydroweb.next zip exports have been observed nesting the PLD files
+        directly under `base`, under one "SWOT_PRIOR_LAKE_DATABASE/" level,
+        or under two -- check all three and return the first match, or
+        None if no PLD files are found.
+        """
+        for candidate in (
+            base,
+            os.path.join(base, "SWOT_PRIOR_LAKE_DATABASE"),
+            os.path.join(base, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"),
+        ):
+            if os.path.isdir(candidate) and _dir_has_pld_files(candidate):
+                return candidate
+        return None
+
+    # Check if extracted files already exist
+    extracted_dir = _resolve_pld_dir(unzipped_dir)
+    extracted_files_exist = extracted_dir is not None
+    if extracted_dir is None:
+        extracted_dir = os.path.join(
+            unzipped_dir, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
+        )
 
     # Handle user-provided raw_pld_path
     if raw_pld_path is not None and os.path.exists(raw_pld_path):
@@ -86,26 +104,19 @@ def download_PLD(
         elif os.path.isdir(raw_pld_path):
             # User provided a directory
             logger.info("Using provided PLD directory: %s", raw_pld_path)
-            # Check if it contains PLD files (.sqlite or .gpkg) directly
-            if _dir_has_pld_files(raw_pld_path):
-                extracted_dir = raw_pld_path
+            resolved_dir = _resolve_pld_dir(raw_pld_path)
+            if resolved_dir is not None:
+                extracted_dir = resolved_dir
                 extracted_files_exist = True
+                # Keep `unzipped_dir` pointing at HydroEO's temp extraction dir;
+                # never repoint it to a user-provided directory (cleanup may delete it).
             else:
-                # Check for nested SWOT_PRIOR_LAKE_DATABASE structure
-                nested_path = os.path.join(
-                    raw_pld_path, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
+                logger.warning(
+                    "Provided directory does not contain .sqlite or "
+                    ".gpkg PLD files: %s",
+                    raw_pld_path,
                 )
-                if os.path.isdir(nested_path) and _dir_has_pld_files(nested_path):
-                    extracted_dir = nested_path
-                    extracted_files_exist = True
-                    unzipped_dir = raw_pld_path  # track parent for deletion logic
-                else:
-                    logger.warning(
-                        "Provided directory does not contain .sqlite or "
-                        ".gpkg PLD files: %s",
-                        raw_pld_path,
-                    )
-                    return
+                return
             hydroweb_managed_zip = False
     # Download only if zip file doesn't exist and extracted files don't exist
     elif os.path.isfile(downloaded_zip_path):
@@ -151,11 +162,16 @@ def download_PLD(
     else:
         logger.info("Extracted files already exist, skipping extraction")
 
-    # Ensure extracted_dir is set (in case raw_pld_path was a directory)
-    if not os.path.isdir(extracted_dir):
-        extracted_dir = os.path.join(
-            unzipped_dir, "SWOT_PRIOR_LAKE_DATABASE", "SWOT_PRIOR_LAKE_DATABASE"
-        )
+    # Re-resolve extracted_dir after a fresh extraction, since the zip's
+    # actual nesting depth is only known once its contents are on disk.
+    if not extracted_files_exist:
+        resolved_dir = _resolve_pld_dir(unzipped_dir)
+        if resolved_dir is None:
+            raise FileNotFoundError(
+                f"No PLD .sqlite/.gpkg files found under {unzipped_dir} "
+                "after extraction. The hydroweb.next zip layout may have changed."
+            )
+        extracted_dir = resolved_dir
 
     # Get list of downloaded files
     downloaded_files = os.listdir(extracted_dir)
