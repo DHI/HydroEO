@@ -1,6 +1,8 @@
 """Unit tests for HydroEO.downloaders.hydroweb.download_PLD."""
 
-from unittest.mock import patch
+import zipfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import geopandas as gpd
 import pandas as pd
@@ -59,6 +61,48 @@ def test_download_pld_keeps_lakes_that_extend_past_bbox_edge(tmp_path):
         "lake_edge (which pokes past the bbox edge) was incorrectly dropped -- "
         "the within()-vs-intersects() bug regressed"
     )
+
+
+@pytest.mark.unit
+def test_download_pld_handles_single_level_nested_zip_extraction(tmp_path):
+    """Regression test: download_PLD used to assume the hydroweb.next zip
+    always extracts to a doubly-nested
+    "SWOT_PRIOR_LAKE_DATABASE/SWOT_PRIOR_LAKE_DATABASE/" folder. In practice
+    the zip has been observed extracting to only a single
+    "SWOT_PRIOR_LAKE_DATABASE/" level, which made os.listdir() crash with a
+    FileNotFoundError on the (non-existent) doubly-nested path.
+    """
+    download_dir = tmp_path / "output"
+    download_dir.mkdir()
+    # Pre-existing zip skips the download branch; its content is irrelevant
+    # since extraction itself is mocked below.
+    (download_dir / "PLD_temp.zip").touch()
+
+    def fake_extractall(dest):
+        single_nested = Path(dest) / "SWOT_PRIOR_LAKE_DATABASE"
+        single_nested.mkdir(parents=True, exist_ok=True)
+        (single_nested / "SWOT_LakeDatabase_light.gpkg").touch()
+
+    mock_zip = MagicMock()
+    mock_zip.__enter__.return_value.extractall.side_effect = fake_extractall
+
+    bounds = [0, 0, 1, 1]
+    light_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1]}, geometry=[Point(0.5, 0.5)], crs="EPSG:4326"
+    )
+
+    with (
+        patch.object(zipfile, "ZipFile", return_value=mock_zip),
+        patch.object(gpd, "read_file", return_value=light_gdf),
+    ):
+        hydroweb.download_PLD(
+            download_dir=str(download_dir),
+            bounds=bounds,
+            keep_raw=True,
+        )
+
+    result = gpd.read_file(download_dir / "PLD_subset.gpkg")
+    assert list(result["lake_id"]) == [1]
 
 
 @pytest.mark.unit
