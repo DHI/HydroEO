@@ -160,16 +160,21 @@ def download_PLD(
     # Get list of downloaded files
     downloaded_files = os.listdir(extracted_dir)
 
-    def _read_pld_file(filepath, is_sqlite):
+    def _read_pld_file(filepath, is_sqlite, read_geometry=True):
         if is_sqlite:
             # SWOT PLD .sqlite tiles store lake_id as the feature ID
-            g = gpd.read_file(filepath, layer="lake", fid_as_index=True)
+            g = gpd.read_file(
+                filepath,
+                layer="lake",
+                fid_as_index=True,
+                ignore_geometry=not read_geometry,
+            )
             g.columns = [c.lower() for c in g.columns]
             g.index.name = "lake_id"
             g = g.reset_index()
         else:
             # .gpkg PLD files already carry lake_id as a normal column.
-            g = gpd.read_file(filepath)
+            g = gpd.read_file(filepath, ignore_geometry=not read_geometry)
             g.columns = [c.lower() for c in g.columns]
         return g
 
@@ -234,7 +239,11 @@ def download_PLD(
             for file in backfill_tile_files:
                 filepath = os.path.join(extracted_dir, file)
                 logger.info("found %s (for res_id backfill)", filepath)
-                tile_gdf = _read_pld_file(filepath, file.endswith(".sqlite"))
+                # Backfill only needs lake_id/res_id -- skip parsing geometry,
+                # which matters a lot for the multi-GB global full-schema file.
+                tile_gdf = _read_pld_file(
+                    filepath, file.endswith(".sqlite"), read_geometry=False
+                )
                 if "res_id" in tile_gdf.columns:
                     res_id_map.update(dict(zip(tile_gdf["lake_id"], tile_gdf["res_id"])))
             if res_id_map:
