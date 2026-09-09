@@ -108,8 +108,8 @@ def download_PLD(
             if resolved_dir is not None:
                 extracted_dir = resolved_dir
                 extracted_files_exist = True
-                if resolved_dir != raw_pld_path:
-                    unzipped_dir = raw_pld_path  # track parent for deletion logic
+                # Keep `unzipped_dir` pointing at HydroEO's temp extraction dir;
+                # never repoint it to a user-provided directory (cleanup may delete it).
             else:
                 logger.warning(
                     "Provided directory does not contain .sqlite or "
