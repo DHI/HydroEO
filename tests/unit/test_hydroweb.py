@@ -62,6 +62,56 @@ def test_download_pld_keeps_lakes_that_extend_past_bbox_edge(tmp_path):
 
 
 @pytest.mark.unit
+def test_download_pld_skips_geometry_when_backfilling_res_id(tmp_path):
+    """Regression test: res_id backfill only needs the lake_id/res_id columns
+    from each tile file, but used to read full geometry regardless. For the
+    small per-continent .sqlite tiles that's harmless, but the PLD download
+    also includes a global full-schema '..._geometries.gpkg' file that can be
+    several GB -- parsing its geometry just to build a lake_id->res_id
+    lookup was enough to OOM-kill the process on a real download. Backfill
+    reads should now pass ignore_geometry=True; coverage reads (the '_light'
+    file here) still need geometry and must not set it.
+    """
+    extracted_dir = tmp_path / "pld_extracted"
+    extracted_dir.mkdir()
+    (extracted_dir / "SWOT_LakeDatabase_light.gpkg").touch()
+    (extracted_dir / "SWOT_LakeDatabase_AS.gpkg").touch()
+
+    bounds = [0, 0, 3, 3]
+    light_gdf = gpd.GeoDataFrame(
+        {"lake_id": [1]}, geometry=[Point(1, 1)], crs="EPSG:4326"
+    )
+    as_tile_df = pd.DataFrame({"lake_id": [1], "res_id": [9001]})
+
+    def fake_read_file(filepath, *args, **kwargs):
+        return light_gdf if "light" in str(filepath).lower() else as_tile_df
+
+    with patch.object(gpd, "read_file", side_effect=fake_read_file) as mock_read:
+        hydroweb.download_PLD(
+            download_dir=str(tmp_path / "output"),
+            bounds=bounds,
+            raw_pld_path=str(extracted_dir),
+            keep_raw=True,
+        )
+
+    light_call = next(
+        c for c in mock_read.call_args_list if "light" in str(c.args[0]).lower()
+    )
+    backfill_call = next(
+        c for c in mock_read.call_args_list if "_as" in str(c.args[0]).lower()
+    )
+    assert not light_call.kwargs.get("ignore_geometry"), (
+        "coverage read (from the '_light' file) must still fetch geometry"
+    )
+    assert backfill_call.kwargs.get("ignore_geometry") is True, (
+        "res_id backfill read should skip geometry entirely"
+    )
+
+    result = gpd.read_file(tmp_path / "output" / "PLD_subset.gpkg").set_index("lake_id")
+    assert result.loc[1, "res_id"] == 9001.0
+
+
+@pytest.mark.unit
 def test_download_pld_backfills_res_id_from_tile_files(tmp_path, caplog):
     """When a '_light' file (lake_id + geometry only) is present alongside
     full-schema continent-tile files, coverage should come from '_light'
