@@ -109,23 +109,33 @@ def validate_config(
     has_rivers = "rivers" in cfg
     has_swot_raster = "swot_raster" in cfg
     has_swot_pixc = "swot_pixc" in cfg
+    has_river_profile = "river_profile" in cfg
 
     # Exclusivity and presence checks apply only to *enabled* sections
     active_reservoirs = has_reservoirs and _is_enabled(cfg.get("reservoirs", {}))
     active_rivers = has_rivers and _is_enabled(cfg.get("rivers", {}))
     active_swot_raster = has_swot_raster and _is_enabled(cfg.get("swot_raster", {}))
     active_swot_pixc = has_swot_pixc and _is_enabled(cfg.get("swot_pixc", {}))
+    active_river_profile = has_river_profile and _is_enabled(cfg.get("river_profile", {}))
     active_count = sum(
-        [active_reservoirs, active_rivers, active_swot_raster, active_swot_pixc]
+        [
+            active_reservoirs,
+            active_rivers,
+            active_swot_raster,
+            active_swot_pixc,
+            active_river_profile,
+        ]
     )
 
     if active_count > 1:
         issues.append(
-            "Sections 'reservoirs', 'rivers', 'swot_raster', and 'swot_pixc' are mutually exclusive. Configure only one."
+            "Sections 'reservoirs', 'rivers', 'swot_raster', 'swot_pixc', and "
+            "'river_profile' are mutually exclusive. Configure only one."
         )
     if active_count == 0:
         issues.append(
-            "Missing required section: provide one of 'reservoirs', 'rivers', 'swot_raster', or 'swot_pixc'."
+            "Missing required section: provide one of 'reservoirs', 'rivers', "
+            "'swot_raster', 'swot_pixc', or 'river_profile'."
         )
 
     if has_reservoirs:
@@ -343,16 +353,22 @@ def validate_config(
                     "'swot_raster.product' must be one of ['SWOT_L2_HR_Raster_D', 'SWOT_L2_LR_SSH_2.0', 'SWOT_L2_HR_RIVERSP_2.0']."
                 )
 
-            # Validate temporal range
+            # Validate temporal range (falls back to project-level dates, like
+            # the swot/icesat2/sentinel3/sentinel6 mission sections do)
             for date_field in ["startdate", "enddate"]:
-                if date_field not in swot_raster_cfg:
-                    issues.append(f"Missing required key 'swot_raster.{date_field}'.")
-                elif (
-                    not isinstance(swot_raster_cfg[date_field], (list, tuple))
-                    or len(swot_raster_cfg[date_field]) != 3
+                project_has_date = isinstance(
+                    cfg.get("project"), dict
+                ) and is_valid_date_tuple(cfg["project"].get(date_field))
+                if date_field not in swot_raster_cfg and not project_has_date:
+                    issues.append(
+                        f"Missing required key 'swot_raster.{date_field}' "
+                        f"(or 'project.{date_field}' as a fallback)."
+                    )
+                elif date_field in swot_raster_cfg and not is_valid_date_tuple(
+                    swot_raster_cfg[date_field]
                 ):
                     issues.append(
-                        f"'swot_raster.{date_field}' must be [year, month, day] format."
+                        f"'swot_raster.{date_field}' must be [year, month, day] with valid integer values."
                     )
 
     if has_swot_pixc:
@@ -425,16 +441,22 @@ def validate_config(
                     "'swot_pixc.product' must be one of ['SWOT_L2_HR_PIXC_D', 'SWOT_L2_HR_PIXC_2.0']."
                 )
 
-            # Validate temporal range
+            # Validate temporal range (falls back to project-level dates, like
+            # the swot/icesat2/sentinel3/sentinel6 mission sections do)
             for date_field in ["startdate", "enddate"]:
-                if date_field not in swot_pixc_cfg:
-                    issues.append(f"Missing required key 'swot_pixc.{date_field}'.")
-                elif (
-                    not isinstance(swot_pixc_cfg[date_field], (list, tuple))
-                    or len(swot_pixc_cfg[date_field]) != 3
+                project_has_date = isinstance(
+                    cfg.get("project"), dict
+                ) and is_valid_date_tuple(cfg["project"].get(date_field))
+                if date_field not in swot_pixc_cfg and not project_has_date:
+                    issues.append(
+                        f"Missing required key 'swot_pixc.{date_field}' "
+                        f"(or 'project.{date_field}' as a fallback)."
+                    )
+                elif date_field in swot_pixc_cfg and not is_valid_date_tuple(
+                    swot_pixc_cfg[date_field]
                 ):
                     issues.append(
-                        f"'swot_pixc.{date_field}' must be [year, month, day] format."
+                        f"'swot_pixc.{date_field}' must be [year, month, day] with valid integer values."
                     )
 
             # Validate PIXC-specific fields
@@ -469,6 +491,73 @@ def validate_config(
                     issues.append(
                         "'swot_pixc.stat_method' must be a string (e.g., 'median', 'mean')."
                     )
+
+    if has_river_profile:
+        if not isinstance(cfg["river_profile"], dict):
+            issues.append("Section 'river_profile' must be a mapping of key/value pairs.")
+        else:
+            rp_cfg = cfg["river_profile"]
+
+            path = rp_cfg.get("chainage_path")
+            if not path:
+                issues.append("Missing required key 'river_profile.chainage_path'.")
+            elif not os.path.exists(path):
+                issues.append(
+                    f"Path in 'river_profile.chainage_path' does not exist: {path}"
+                )
+            elif not str(path).lower().endswith((".shp", ".gpkg")):
+                issues.append(
+                    "'river_profile.chainage_path' must reference a '.shp' or '.gpkg' file."
+                )
+
+            for date_field in ["startdate", "enddate"]:
+                if date_field not in rp_cfg:
+                    issues.append(f"Missing required key 'river_profile.{date_field}'.")
+                elif (
+                    not isinstance(rp_cfg[date_field], (list, tuple))
+                    or len(rp_cfg[date_field]) != 3
+                ):
+                    issues.append(
+                        f"'river_profile.{date_field}' must be [year, month, day] format."
+                    )
+
+            if "aoi_buffer_meters" in rp_cfg:
+                buffer_m = rp_cfg["aoi_buffer_meters"]
+                if not isinstance(buffer_m, (int, float)) or buffer_m < 0:
+                    issues.append(
+                        "'river_profile.aoi_buffer_meters' must be a non-negative number."
+                    )
+
+            if "variables" in rp_cfg:
+                variables = rp_cfg["variables"]
+                if not isinstance(variables, list) or not all(
+                    isinstance(v, str) for v in variables
+                ):
+                    issues.append(
+                        "'river_profile.variables' must be a list of strings (e.g., ['wse', 'geoid'])."
+                    )
+
+            for bool_key in ["reverse_chainage", "keep_intermediates", "plot_enable"]:
+                if bool_key in rp_cfg and not isinstance(rp_cfg[bool_key], bool):
+                    issues.append(
+                        f"'river_profile.{bool_key}' must be a boolean value."
+                    )
+
+            if "orbit_exclusions" in rp_cfg:
+                exclusions = rp_cfg["orbit_exclusions"]
+                if not isinstance(exclusions, list) or not all(
+                    isinstance(e, dict) and "orbit" in e for e in exclusions
+                ):
+                    issues.append(
+                        "'river_profile.orbit_exclusions' must be a list of mappings, "
+                        "each with an 'orbit' key (e.g., [{orbit: '467', max_chainage_m: 50000}])."
+                    )
+
+            if "filters" in rp_cfg and not isinstance(rp_cfg["filters"], dict):
+                issues.append(
+                    "'river_profile.filters' must be a mapping of stage name to "
+                    "stage settings (see configs/river_profile.md)."
+                )
 
     for mission in ["swot", "icesat2", "sentinel3", "sentinel6"]:
         if mission not in cfg:

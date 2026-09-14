@@ -4,6 +4,8 @@ Centralized location for all constants, defaults, and configuration parameters
 organized by satellite mission and functional domain.
 """
 
+from typing import Any
+
 from HydroEO.satellites.icesat2 import ATL13_DEFAULT_FIELDS
 
 # ============================================================================
@@ -149,3 +151,71 @@ MISSION_DEFAULTS = {
         "mad_threshold": DEFAULT_MAD_THRESHOLD,
     },
 }
+
+# ============================================================================
+# River Profile (SWOT longitudinal WSE profile extraction)
+# ============================================================================
+
+RIVER_PROFILE_DEFAULT_AOI_BUFFER_M = 2_000.0
+
+RIVER_PROFILE_DEFAULT_FILTERS: dict[str, dict[str, Any]] = {
+    "preclip": {"enabled": True, "min": -5.0, "max": 10.0},
+    "soft_clamp": {
+        "enabled": True,
+        "bin_width_m": 18_000.0,
+        "y_bin_m": 0.25,
+        "fixed_halfw_m": 0.40,
+        "mad_factor": 1.8,
+        "min_count": 4,
+        "min_mode_count": 2,
+        "slope_gain": 0.35,
+        "huber_k": 1.5,
+    },
+    "hampel_1": {
+        "enabled": True,
+        "win_m": 20_000.0,
+        "sigma": 1.6,
+        "min_valid": 8,
+        "action": "mask",
+        "replace_mode": "trend",
+        "huber_k": 1.6,
+        "huber_iters": 2,
+    },
+    "rolling_quantile": {
+        "enabled": True,
+        "win_m": 12_000.0,
+        "q": 0.50,
+        "min_valid": 8,
+        "robust_iters": 2,
+        "huber_k": 1.5,
+    },
+    "density_cull": {
+        "enabled": True,
+        "total_win_m": 5_000.0,
+        "low_pct": 3.0,
+        "abs_min": 20,
+        "dilate": 0,
+    },
+    "hampel_2": {
+        "enabled": True,
+        "win_m": 20_000.0,
+        "sigma": 1.6,
+        "min_valid": 8,
+        "action": "mask",
+        "replace_mode": "trend",
+        "huber_k": 1.6,
+        "huber_iters": 2,
+    },
+    "spline_fill": {
+        "enabled": True,
+        "k": 3,
+        "inner_knots": None,
+        "target_spacing_m": 18_000.0,
+        "weight_scheme": "by_density",
+    },
+}
+"""Default parameters for each stage of the river-profile filtering pipeline.
+See configs/river_profile.md for what each stage does. Deep-merged with the
+user's `river_profile.filters` config in
+HydroEO.satellites.swot.river_profile._resolve_filters.
+"""

@@ -1,0 +1,118 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# HydroEO — River Profile Configuration (Use Case E)
+# ══════════════════════════════════════════════════════════════════════════════
+# Compute a longitudinal water-surface-elevation (WSE) profile along a river
+# from SWOT L2 HR Raster tiles, sampled at user-supplied chainage points.
+# HydroEO downloads the matching SWOT tiles itself. Requires NASA Earthdata
+# credentials.
+#
+# Quick-start:
+#   1. Set project.main_dir and project.startdate / project.enddate.
+#   2. Set river_profile.chainage_path to a point shapefile with an
+#      along-river distance column (see chainage_field below).
+#   3. Add Earthdata credentials (or set EARTHDATA_USERNAME / EARTHDATA_PASSWORD).
+#   4. Run project.initialize() then project.download().
+#
+# See configs/river_profile.md for a full configuration reference.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ─── PROJECT ──────────────────────────────────────────────────────────────────
+project:
+  main_dir: "/path/to/your/project"
+
+gis:
+  global_crs: 'EPSG:4326'
+
+
+# ─── CREDENTIALS ──────────────────────────────────────────────────────────────
+earthaccess:
+  username: null   # or set EARTHDATA_USERNAME
+  password: null   # or set EARTHDATA_PASSWORD
+
+
+# ─── RIVER PROFILE ─────────────────────────────────────────────────────────────
+river_profile:
+  enabled: true
+
+  name: "my_river"                    # identifier used as output filename/directory prefix
+  chainage_path: "/path/to/chainage.shp"   # or .gpkg
+  chainage_field: "cngmeters"         # column with along-river distance, in metres
+  reverse_chainage: false             # true -> flips distance so 0 becomes the upstream end
+
+  startdate: [2024, 1, 1]
+  enddate:   [2024, 12, 31]
+
+  aoi_buffer_meters: 2000             # buffer around chainage extent used for the SWOT search/clip
+
+  keep_intermediates: false           # false = only final profile shapefiles + final CSV
+  plot_enable: true                   # per-date + combined diagnostic plots
+
+
+# ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
+# All fields below have sensible defaults and can be omitted.
+# Uncomment and merge the keys you want into the river_profile section above.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# river_profile:
+#   product: "SWOT_L2_HR_Raster_D"    # only HR raster product is supported
+#   variables: ["wse"]                # add "geoid" to also extract/save geoid profiles
+#   granule_filter: "*100m*"          # optional glob filter; omit to download all matching granules
+#   zero_is_nodata: true              # SWOT rasters commonly use 0 as a secondary nodata value
+#
+#   # Manual exclusion of known-bad chainage ranges for a specific orbit
+#   # (matched against the SWOT granule filename). Leave empty unless you've
+#   # identified a systematic artifact for your river/orbit combination.
+#   orbit_exclusions: []
+#   # orbit_exclusions:
+#   #   - orbit: "467"
+#   #     max_chainage_m: 50000       # exclude points with chainage <= 50 km for this orbit
+#
+#   filters:
+#     preclip:            {enabled: true, min: -5.0, max: 10.0}
+#     soft_clamp:          # detrend + softly clamp outliers within along-river bins
+#       enabled: true
+#       bin_width_m: 18000
+#       y_bin_m: 0.25
+#       fixed_halfw_m: 0.40
+#       mad_factor: 1.8
+#       min_count: 4
+#       min_mode_count: 2
+#       slope_gain: 0.35
+#       huber_k: 1.5
+#     hampel_1:            # distance-windowed outlier detection
+#       enabled: true
+#       win_m: 20000
+#       sigma: 1.6
+#       min_valid: 8
+#       action: "mask"       # mask | replace
+#       replace_mode: "trend"
+#       huber_k: 1.6
+#       huber_iters: 2
+#     rolling_quantile:    # local robust-trend + rolling quantile smoothing
+#       enabled: true
+#       win_m: 12000
+#       q: 0.5
+#       min_valid: 8
+#       robust_iters: 2
+#       huber_k: 1.5
+#     density_cull:        # drop points from sparsely-observed stretches
+#       enabled: true
+#       total_win_m: 5000
+#       low_pct: 3.0
+#       abs_min: 20
+#       dilate: 0
+#     hampel_2:             # second, milder outlier pass after density cull
+#       enabled: true
+#       win_m: 20000
+#       sigma: 1.6
+#       min_valid: 8
+#       action: "mask"
+#       replace_mode: "trend"
+#       huber_k: 1.6
+#       huber_iters: 2
+#     spline_fill:          # LSQ spline fit, used only to fill remaining gaps
+#       enabled: true
+#       k: 3
+#       inner_knots: null
+#       target_spacing_m: 18000
+#       weight_scheme: "by_density"

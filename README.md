@@ -44,6 +44,7 @@ Or via CLI: `hydroeo run configs/reservoirs.yaml`
 | `rivers` | [configs/rivers.yaml](configs/rivers.yaml) | 🧪 test in progress | SWOT Hydrocron (public API), ICESat-2 ATL13, Sentinel-3/6 | River nodes/reaches from SWORD v17b. Download and diagnostic plots. Virtual station timeseries with cleaning filters → [Full docs](configs/rivers.md) |
 | `swot_raster` | [configs/swot_raster.yaml](configs/swot_raster.yaml) | ✅ | SWOT L2 HR/LR Raster | Arbitrary AOI. Downloads, clips, and merges raster tiles by date. → [Full docs](configs/swot_raster.md) |
 | `swot_pixc` | [configs/swot_pixc.yaml](configs/swot_pixc.yaml) | ✅ | SWOT L2 PIXC | Arbitrary AOI. Point cloud gridded to rasters via binned statistics. → [Full docs](configs/swot_pixc.md) |
+| `river_profile` | [configs/river_profile.yaml](configs/river_profile.yaml) | ✅ | SWOT L2 HR Raster | User-supplied chainage points. Downloads SWOT tiles, filters, and produces a longitudinal WSE profile per date. → [Full docs](configs/river_profile.md) |
 
 ## Project lifecycle
 

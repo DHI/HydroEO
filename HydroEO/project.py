@@ -15,6 +15,7 @@ from HydroEO.waterbody import Reservoirs, Rivers
 from HydroEO import flows
 from HydroEO.satellites.swot.raster import download_raster
 from HydroEO.satellites.swot.pixc import download_pixc
+from HydroEO.satellites.swot.river_profile import calculate_river_profile
 from HydroEO.utils import general
 from HydroEO.constants import (
     MISSION_DEFAULTS,
@@ -301,9 +302,14 @@ class Project:
             # pipeline 
             self.rivers.merging_options = rivers_cfg.get("merging_options", {})
 
+        project_cfg = self.config.get("project", {})
+
         if "swot_raster" in self.config.keys() and self.config["swot_raster"].get(
             "enabled", True
         ):
+            # Fall back to project-level dates when the section omits its own
+            self.config["swot_raster"].setdefault("startdate", project_cfg.get("startdate"))
+            self.config["swot_raster"].setdefault("enddate", project_cfg.get("enddate"))
             # Store the SWOT raster config for later use in download/preprocess
             # Will be instantiated in download() when needed
             self.swot_raster_config = self.config["swot_raster"]
@@ -311,8 +317,17 @@ class Project:
         if "swot_pixc" in self.config.keys() and self.config["swot_pixc"].get(
             "enabled", True
         ):
+            # Fall back to project-level dates when the section omits its own
+            self.config["swot_pixc"].setdefault("startdate", project_cfg.get("startdate"))
+            self.config["swot_pixc"].setdefault("enddate", project_cfg.get("enddate"))
             # Store the SWOT Pixel Cloud config for later use in download/preprocess
             self.swot_pixc_config = self.config["swot_pixc"]
+
+        if "river_profile" in self.config.keys() and self.config["river_profile"].get(
+            "enabled", True
+        ):
+            # Store the river profile config for later use in download/processing
+            self.river_profile_config = self.config["river_profile"]
 
         ### make sure we have a local crs (If we were not able to set it up from the config, grab it from one of the elements)
         if self.local_crs is None:
@@ -341,6 +356,10 @@ class Project:
                 self.local_crs = self.global_crs
             elif hasattr(self, "swot_pixc_config"):
                 # For swot_pixc, use global CRS as local if no local CRS specified
+                self.local_crs = self.global_crs
+            elif hasattr(self, "river_profile_config"):
+                # river_profile derives its own working CRS from the chainage
+                # shapefile geometry; global CRS is just a placeholder here.
                 self.local_crs = self.global_crs
             else:
                 raise UserWarning(
@@ -519,6 +538,12 @@ class Project:
                 config=self.swot_pixc_config,
                 project_dir=self.dirs["main"],
             )
+        if hasattr(self, "river_profile_config"):
+            calculate_river_profile(
+                config=self.river_profile_config,
+                project_dir=self.dirs["main"],
+                global_crs=self.global_crs,
+            )
 
     def update(self):
         """Extend existing downloads through today.
@@ -546,9 +571,9 @@ class Project:
         if not hasattr(self, "reservoirs") and not hasattr(self, "rivers"):
             logger.warning(
                 "update() has no effect: neither 'reservoirs' nor 'rivers' is "
-                "configured for this project. (swot_raster/swot_pixc are "
-                "one-off extraction pipelines, not incremental archives, and "
-                "are not affected by update().)"
+                "configured for this project. (swot_raster/swot_pixc/"
+                "river_profile are one-off extraction pipelines, not "
+                "incremental archives, and are not affected by update().)"
             )
             return
 

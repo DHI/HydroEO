@@ -6,12 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **HydroEO** is a Python package for accessing satellite altimetry EO data (SWOT, ICESat-2, Sentinel-3/6) for water resource applications — download, processing, and analysis over reservoirs, lakes, and rivers.
 
-Four scenarios, each driven by a config in `configs/` (see `configs/*.md` for details):
+Five scenarios, each driven by a config in `configs/` (see `configs/*.md` for details):
 
 1. **Reservoirs & lakes** (`reservoirs.yaml`) — multi-satellite download, PLD matching, full timeseries pipeline. Stable.
 2. **Rivers** (`rivers.yaml`) — SWOT Hydrocron + multi-satellite download, SWORD v17b matching. Timeseries cleaning **not yet implemented** (preprocessing only). Test in progress.
 3. **SWOT raster tiles** (`swot_raster.yaml`) — download SWOT L2 HR/LR SSH rasters, clip/merge to AOI mosaics.
 4. **SWOT pixel cloud** (`swot_pixc.yaml`) — download SWOT L2 PIXC, filter by water class, grid to raster.
+5. **River profile** (`river_profile.yaml`) — download SWOT L2 HR Raster tiles for a user-supplied chainage shapefile, sample WSE per date, run a configurable filter pipeline (see `satellites/swot/river_profile.py`) to produce a cleaned longitudinal profile + quality report.
 
 ## Development Setup
 
