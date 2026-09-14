@@ -153,8 +153,9 @@ def _download_granules(
         "short_name": product,
         "bounding_box": bounds,
         "temporal": (time_start, time_end),
-        "granule_name": granule_filter,
     }
+    if granule_filter:
+        search_params["granule_name"] = granule_filter
     swot_results = _search(**search_params)
     logger.debug("Found %d granules matching query", len(swot_results))
 

@@ -651,6 +651,11 @@ def _plot_per_profile(
     plt.close()
 
 
+_COMBINED_PLOT_MAX_LEGEND_ENTRIES = 20
+"""Above this many dates, a per-date legend stops being readable (one entry
+per line) and starts dominating/squashing the figure, so it's dropped."""
+
+
 def _plot_combined(
     x: np.ndarray, series_dict: dict[str, np.ndarray], title: str, out_path: Path, ylim, dpi: int
 ) -> None:
@@ -658,6 +663,7 @@ def _plot_combined(
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    n_dates = len(series_dict)
     plt.figure(figsize=(12, 6))
     if ylim is not None:
         plt.ylim(ylim)
@@ -666,8 +672,9 @@ def _plot_combined(
     plt.grid(True, alpha=0.3)
     plt.xlabel("Distance along the river [m]")
     plt.ylabel("WSE")
-    plt.title(title)
-    plt.legend()
+    plt.title(f"{title} ({n_dates} dates)")
+    if n_dates <= _COMBINED_PLOT_MAX_LEGEND_ENTRIES:
+        plt.legend(ncol=2, fontsize="small")
     plt.tight_layout()
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
     plt.close()

@@ -15,7 +15,9 @@ from HydroEO.satellites.swot.river_profile import (
     calculate_river_profile,
     _apply_orbit_exclusions,
     _load_chainage,
+    _plot_combined,
     _resolve_filters,
+    _COMBINED_PLOT_MAX_LEGEND_ENTRIES,
 )
 
 pytestmark = pytest.mark.unit
@@ -187,3 +189,29 @@ def test_resolve_filters_merges_user_overrides_over_defaults():
     assert resolved["hampel_1"]["win_m"] == 20_000.0  # untouched default preserved
     assert resolved["soft_clamp"]["enabled"] is True
     assert "unknown_stage" not in resolved
+
+
+def test_plot_combined_drops_legend_above_threshold(tmp_path):
+    x = np.linspace(0, 1000, 10)
+    n_dates = _COMBINED_PLOT_MAX_LEGEND_ENTRIES + 5
+    series = {f"date_{i}": x for i in range(n_dates)}
+    out_path = tmp_path / "combined.png"
+
+    with patch("matplotlib.pyplot.legend") as mock_legend:
+        _plot_combined(x, series, "title", out_path, ylim=None, dpi=72)
+
+    mock_legend.assert_not_called()
+    assert out_path.exists()
+
+
+def test_plot_combined_keeps_legend_below_threshold(tmp_path):
+    x = np.linspace(0, 1000, 10)
+    n_dates = _COMBINED_PLOT_MAX_LEGEND_ENTRIES - 5
+    series = {f"date_{i}": x for i in range(n_dates)}
+    out_path = tmp_path / "combined.png"
+
+    with patch("matplotlib.pyplot.legend") as mock_legend:
+        _plot_combined(x, series, "title", out_path, ylim=None, dpi=72)
+
+    mock_legend.assert_called_once()
+    assert out_path.exists()

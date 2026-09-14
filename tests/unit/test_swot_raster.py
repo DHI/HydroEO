@@ -260,6 +260,33 @@ def test_download_granules_skips_already_processed(bbox_config, tmp_path):
     assert result == []
 
 
+@pytest.mark.unit
+def test_download_granules_omits_granule_name_when_no_filter(bbox_config):
+    """Regression test: earthaccess.search_data() rejects granule_name=None
+    outright ('must be of type string or Iterable of strings'), so the
+    kwarg must be omitted entirely rather than passed as None when
+    'granule_filter' isn't set in config."""
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
+        mock_ea.login.return_value = None
+        mock_ea.search_data.return_value = []
+
+        _download_granules(bbox_config, Path("/tmp/raw"), set())
+
+    assert "granule_name" not in mock_ea.search_data.call_args.kwargs
+
+
+@pytest.mark.unit
+def test_download_granules_passes_granule_name_when_filter_set(bbox_config):
+    config = {**bbox_config, "granule_filter": "*100m*"}
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
+        mock_ea.login.return_value = None
+        mock_ea.search_data.return_value = []
+
+        _download_granules(config, Path("/tmp/raw"), set())
+
+    assert mock_ea.search_data.call_args.kwargs["granule_name"] == "*100m*"
+
+
 # ============================================================================
 # TESTS: Preprocessing Phase
 # ============================================================================
