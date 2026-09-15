@@ -510,16 +510,27 @@ def validate_config(
                     "'river_profile.chainage_path' must reference a '.shp' or '.gpkg' file."
                 )
 
+            # Validate temporal range (falls back to project-level dates, like
+            # the swot_raster/swot_pixc/mission sections do)
             for date_field in ["startdate", "enddate"]:
-                if date_field not in rp_cfg:
-                    issues.append(f"Missing required key 'river_profile.{date_field}'.")
-                elif (
-                    not isinstance(rp_cfg[date_field], (list, tuple))
-                    or len(rp_cfg[date_field]) != 3
-                ):
+                project_has_date = isinstance(
+                    cfg.get("project"), dict
+                ) and is_valid_date_tuple(cfg["project"].get(date_field))
+                if date_field not in rp_cfg and not project_has_date:
                     issues.append(
-                        f"'river_profile.{date_field}' must be [year, month, day] format."
+                        f"Missing required key 'river_profile.{date_field}' "
+                        f"(or 'project.{date_field}' as a fallback)."
                     )
+                elif date_field in rp_cfg and not is_valid_date_tuple(rp_cfg[date_field]):
+                    issues.append(
+                        f"'river_profile.{date_field}' must be [year, month, day] with valid integer values."
+                    )
+
+            if "product" in rp_cfg and rp_cfg["product"] != "SWOT_L2_HR_Raster_D":
+                issues.append(
+                    "'river_profile.product' must be 'SWOT_L2_HR_Raster_D' "
+                    "(the only product the profile sampler supports)."
+                )
 
             if "aoi_buffer_meters" in rp_cfg:
                 buffer_m = rp_cfg["aoi_buffer_meters"]
@@ -552,6 +563,28 @@ def validate_config(
                         "'river_profile.orbit_exclusions' must be a list of mappings, "
                         "each with an 'orbit' key (e.g., [{orbit: '467', max_chainage_m: 50000}])."
                     )
+                else:
+                    for e in exclusions:
+                        lo = e.get("min_chainage_m")
+                        hi = e.get("max_chainage_m")
+                        for bound_name, bound in (
+                            ("min_chainage_m", lo),
+                            ("max_chainage_m", hi),
+                        ):
+                            if bound is not None and not isinstance(bound, (int, float)):
+                                issues.append(
+                                    f"'river_profile.orbit_exclusions[].{bound_name}' "
+                                    "must be a number when set."
+                                )
+                        if (
+                            isinstance(lo, (int, float))
+                            and isinstance(hi, (int, float))
+                            and lo > hi
+                        ):
+                            issues.append(
+                                "'river_profile.orbit_exclusions[].min_chainage_m' cannot "
+                                "be greater than 'max_chainage_m'."
+                            )
 
             if "filters" in rp_cfg and not isinstance(rp_cfg["filters"], dict):
                 issues.append(

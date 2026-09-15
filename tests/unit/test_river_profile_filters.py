@@ -158,3 +158,31 @@ def test_vertical_density_soft_clamp_pulls_in_layover_return():
     )
 
     assert abs(out[30] - y[30]) < abs(y_in[30] - y[30])
+
+
+def test_vertical_density_soft_clamp_processes_point_at_exact_range_boundary():
+    """Regression test: when (x.max() - x.min()) is an exact multiple of
+    bin_width, half-open binning used to drop the single point sitting
+    exactly at x.max() from every bin, so it was silently never
+    soft-clamped."""
+    bin_width = 1_000.0
+    # second bin spans [1000, 2000]; x=2000 is exactly x.max() and exactly
+    # a bin-width past the first bin's start (an exact-multiple range)
+    x = np.concatenate([np.linspace(0, 999, 10), np.linspace(1000, 1999, 10), [2000.0]])
+    y = np.full(x.shape, 10.0, dtype=np.float32)
+    y_in = y.copy()
+    y_in[-1] += 5.0  # outlier exactly at x.max()
+
+    out = rpf.vertical_density_soft_clamp(
+        x,
+        y_in,
+        bin_width=bin_width,
+        y_bin=0.1,
+        fixed_halfw=0.2,
+        mad_factor=1.8,
+        min_count=4,
+        min_mode_count=2,
+        slope_gain=0.35,
+    )
+
+    assert out[-1] != y_in[-1]

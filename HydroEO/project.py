@@ -326,6 +326,9 @@ class Project:
         if "river_profile" in self.config.keys() and self.config["river_profile"].get(
             "enabled", True
         ):
+            # Fall back to project-level dates when the section omits its own
+            self.config["river_profile"].setdefault("startdate", project_cfg.get("startdate"))
+            self.config["river_profile"].setdefault("enddate", project_cfg.get("enddate"))
             # Store the river profile config for later use in download/processing
             self.river_profile_config = self.config["river_profile"]
 

@@ -92,7 +92,9 @@ def vertical_density_soft_clamp(
     for b in range(n_bins):
         lo = x0 + b * bin_width
         hi = lo + bin_width
-        sel = (xs_all >= lo) & (xs_all < hi)
+        # last bin is closed on the right so a point exactly at x1 isn't
+        # dropped when (x1 - x0) is an exact multiple of bin_width
+        sel = (xs_all >= lo) & (xs_all < hi if b < n_bins - 1 else xs_all <= hi)
         if sel.sum() < min_count:
             continue
         xs = xs_all[sel]

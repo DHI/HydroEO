@@ -68,7 +68,8 @@ river_profile:
 #   #     max_chainage_m: 50000       # exclude points with chainage <= 50 km for this orbit
 #
 #   filters:
-#     preclip:            {enabled: true, min: -5.0, max: 10.0}
+#     preclip:            {enabled: true, min: -10.0, max: 8000.0}  # narrow this to your river's plausible WSE range
+
 #     soft_clamp:          # detrend + softly clamp outliers within along-river bins
 #       enabled: true
 #       bin_width_m: 18000

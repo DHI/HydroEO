@@ -159,7 +159,14 @@ MISSION_DEFAULTS = {
 RIVER_PROFILE_DEFAULT_AOI_BUFFER_M = 2_000.0
 
 RIVER_PROFILE_DEFAULT_FILTERS: dict[str, dict[str, Any]] = {
-    "preclip": {"enabled": True, "min": -5.0, "max": 10.0},
+    # Broad generic bounds (matching DEFAULT_ELEVATION_MIN_M/MAX_M) rather
+    # than the tidal-delta-specific [-5, 10] m the source script used -
+    # narrow that down per-river via 'river_profile.filters.preclip'.
+    "preclip": {
+        "enabled": True,
+        "min": DEFAULT_ELEVATION_MIN_M - 10.0,
+        "max": DEFAULT_ELEVATION_MAX_M,
+    },
     "soft_clamp": {
         "enabled": True,
         "bin_width_m": 18_000.0,

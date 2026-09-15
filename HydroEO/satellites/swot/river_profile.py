@@ -109,6 +109,7 @@ def calculate_river_profile(
     labels: list[str] = []
     raw_cols, pref_cols, h1_cols, final_cols = {}, {}, {}, {}
     quality_rows: list[dict[str, Any]] = []
+    seen_labels: dict[str, int] = {}
 
     for i, wse_path in enumerate(wse_files, 1):
         try:
@@ -133,16 +134,17 @@ def calculate_river_profile(
             )
             continue
 
-        label = record["label"]
+        label = _unique_label(record["label"], seen_labels)
         labels.append(label)
         raw_cols[label] = record["y_raw"]
         pref_cols[label] = record["y_pref"]
         h1_cols[label] = record["y_h1"]
-        final_cols[label] = record["y_spline"]
+        final_cols[label] = record["y_final"]
+        record["quality"]["label"] = label
         quality_rows.append(record["quality"])
 
         _save_profile_shp(
-            gdf, record["y_spline"], out_dirs["final"], name, label, suffix="profile"
+            gdf, record["y_final"], out_dirs["final"], name, label, suffix="profile"
         )
         if keep_intermediates:
             _save_profile_shp(
@@ -209,7 +211,7 @@ def calculate_river_profile(
     _write_quality_report(quality_rows, results_dir / "quality_report.csv")
 
     if geoid_files:
-        _process_geoid(geoid_files, gdf, results_dir, name, zero_is_nodata, keep_intermediates)
+        _process_geoid(geoid_files, gdf, results_dir, name, zero_is_nodata)
 
     logger.info("River profile '%s': done. %d dates processed.", name, len(labels))
 
@@ -233,8 +235,13 @@ def _build_swot_raster_config(
     """Derive an internal swot_raster-shaped config from the chainage AOI."""
     buffer_m = config.get("aoi_buffer_meters", RIVER_PROFILE_DEFAULT_AOI_BUFFER_M)
     gdf_4326 = gdf.to_crs("EPSG:4326")
-    utm_crs = gdf_4326.estimate_utm_crs()
-    bbox = gdf_4326.to_crs(utm_crs).buffer(buffer_m).to_crs("EPSG:4326").total_bounds
+    if buffer_m:
+        utm_crs = gdf_4326.estimate_utm_crs()
+        bbox = gdf_4326.to_crs(utm_crs).buffer(buffer_m).to_crs("EPSG:4326").total_bounds
+    else:
+        # buffering point geometries by 0 produces empty geometries (NaN
+        # bounds), so fall back to the raw, unbuffered extent
+        bbox = gdf_4326.total_bounds
 
     variables = list(config.get("variables", ["wse"]))
     if "wse" not in variables:
@@ -279,6 +286,9 @@ def _load_chainage(config: dict[str, Any]) -> tuple[gpd.GeoDataFrame, np.ndarray
     order = np.argsort(x)
     gdf = gdf.iloc[order].reset_index(drop=True)
     x = x[order]
+    # keep the chainage column consistent with the (possibly reversed)
+    # working distance array, so output shapefiles aren't self-contradictory
+    gdf[field] = x
     logger.info(
         "Chainage '%s': %d points, range %.1f - %.1f m", field, len(gdf), x.min(), x.max()
     )
@@ -297,6 +307,15 @@ def _label_from_name(path: Path) -> str:
     if m2:
         return m2.group(0)
     return path.stem
+
+
+def _unique_label(label: str, seen_labels: dict[str, int]) -> str:
+    """Disambiguate labels that collide (e.g. two tiles from the same pass,
+    split across a UTM zone boundary, sharing the same start timestamp) so
+    one doesn't silently overwrite the other's CSV column/shapefile."""
+    count = seen_labels.get(label, 0)
+    seen_labels[label] = count + 1
+    return label if count == 0 else f"{label}_{count}"
 
 
 def _read_wse_raster(path: Path, zero_is_nodata: bool):
@@ -516,10 +535,10 @@ def _process_geoid(
     results_dir: Path,
     name: str,
     zero_is_nodata: bool,
-    keep_intermediates: bool,
 ) -> None:
-    if not keep_intermediates:
-        return
+    """Save per-date geoid profiles. Independent of ``keep_intermediates``:
+    geoid is an explicitly requested output variable (via
+    ``river_profile.variables``), not an intermediate filtering stage."""
     out_dir = results_dir / "profiles_geoid"
     for f in geoid_files:
         try:

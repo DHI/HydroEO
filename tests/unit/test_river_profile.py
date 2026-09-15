@@ -14,9 +14,11 @@ from shapely.geometry import Point
 from HydroEO.satellites.swot.river_profile import (
     calculate_river_profile,
     _apply_orbit_exclusions,
+    _build_swot_raster_config,
     _load_chainage,
     _plot_combined,
     _resolve_filters,
+    _unique_label,
     _COMBINED_PLOT_MAX_LEGEND_ENTRIES,
 )
 
@@ -155,8 +157,12 @@ def test_load_chainage_reverses_when_requested(tmp_path):
     gdf, x = _load_chainage(config)
 
     assert x.min() == pytest.approx(0.0)
-    # the point originally at distance 0 should now carry the max distance
-    assert gdf.iloc[-1]["cngmeters"] == pytest.approx(0.0)
+    # the gdf's chainage column must be kept consistent with the reversed
+    # working distance array, not left holding the pre-reversal values
+    np.testing.assert_allclose(gdf["cngmeters"].to_numpy(), x)
+    # the point originally at distance 0 (now sorted last) carries the max
+    # reversed distance, not its original raw value
+    assert gdf.iloc[-1]["cngmeters"] == pytest.approx(x.max())
 
 
 def test_apply_orbit_exclusions_masks_matching_range():
@@ -215,3 +221,133 @@ def test_plot_combined_keeps_legend_below_threshold(tmp_path):
 
     mock_legend.assert_called_once()
     assert out_path.exists()
+
+
+def test_calculate_river_profile_final_output_uses_y_final_not_y_spline(
+    project_with_wse_tile,
+):
+    """Regression test: the emitted final CSV/shapefile must contain
+    y_final (measured values, gaps spline-filled) not y_spline (the smooth
+    curve evaluated everywhere, which silently overwrites real
+    observations) - see docs/river_profile.md's 'never overwrites real
+    data' contract for spline_fill."""
+    project_dir, chainage_path = project_with_wse_tile
+    config = _base_config(project_dir, chainage_path)
+    label = "20240115T000000"
+    n = 25
+    fake_record = {
+        "label": label,
+        "y_raw": np.zeros(n, dtype=np.float32),
+        "y_pref": np.zeros(n, dtype=np.float32),
+        "y_h1": np.zeros(n, dtype=np.float32),
+        "y_rq": np.zeros(n, dtype=np.float32),
+        "y_after_density": np.zeros(n, dtype=np.float32),
+        "y_h2": np.zeros(n, dtype=np.float32),
+        "y_final": np.full(n, 1.0, dtype=np.float32),
+        "y_spline": np.full(n, 999.0, dtype=np.float32),
+        "quality": {
+            "label": label,
+            "file": "fake_wse.tif",
+            "n_finite_raw": n,
+            "n_orbit_excluded": 0,
+            "n_soft_clamp_changed": 0,
+            "n_hampel1_flagged": 0,
+            "n_density_dropped": 0,
+            "n_hampel2_flagged": 0,
+            "n_finite_final": n,
+        },
+    }
+
+    with (
+        patch("HydroEO.satellites.swot.river_profile.download_raster"),
+        patch(
+            "HydroEO.satellites.swot.river_profile._process_one_date",
+            return_value=fake_record,
+        ),
+    ):
+        calculate_river_profile(config, project_dir=str(project_dir), global_crs="EPSG:4326")
+
+    results_dir = project_dir / "results" / NAME
+    df = pd.read_csv(results_dir / f"{NAME}_profiles_final.csv")
+    values = df[label].to_numpy()
+    assert np.allclose(values, 1.0)
+    assert not np.allclose(values, 999.0)
+
+
+def test_unique_label_disambiguates_collisions():
+    seen: dict[str, int] = {}
+    assert _unique_label("20240101T000000", seen) == "20240101T000000"
+    assert _unique_label("20240101T000000", seen) == "20240101T000000_1"
+    assert _unique_label("20240101T000000", seen) == "20240101T000000_2"
+    assert _unique_label("other", seen) == "other"
+
+
+def test_calculate_river_profile_disambiguates_same_timestamp_tiles(project_with_wse_tile):
+    """Two granules that share the same extracted timestamp label (e.g. two
+    tiles from the same pass split across a UTM zone boundary) must not
+    silently overwrite each other's output."""
+    project_dir, chainage_path = project_with_wse_tile
+    processed_dir = project_dir / "processed" / "swot_raster" / NAME / PRODUCT
+    second_path = (
+        processed_dir
+        / "SWOT_L2_HR_Raster_100m_UTM46N_x_x_x_001_002_20240115T000000_20240115T000020_PGD0_02_wse.tif"
+    )
+    _make_wse_tif(second_path)
+    config = _base_config(project_dir, chainage_path)
+
+    with patch("HydroEO.satellites.swot.river_profile.download_raster"):
+        calculate_river_profile(config, project_dir=str(project_dir), global_crs="EPSG:4326")
+
+    results_dir = project_dir / "results" / NAME
+    final_shps = list((results_dir / "profiles_final").glob("*.shp"))
+    assert len(final_shps) == 2
+
+    df = pd.read_csv(results_dir / f"{NAME}_profiles_final.csv")
+    assert "20240115T000000" in df.columns
+    assert "20240115T000000_1" in df.columns
+
+    # the quality report's 'label' column must match the disambiguated
+    # labels used for the CSV columns/shapefiles above, not the raw
+    # (colliding) timestamp extracted from the filename
+    quality_df = pd.read_csv(results_dir / "quality_report.csv")
+    assert sorted(quality_df["label"]) == ["20240115T000000", "20240115T000000_1"]
+
+
+def test_calculate_river_profile_saves_geoid_regardless_of_keep_intermediates(
+    project_with_wse_tile,
+):
+    """geoid is an explicitly requested output variable, not an
+    intermediate filtering stage - it must be saved even with the default
+    keep_intermediates: false."""
+    project_dir, chainage_path = project_with_wse_tile
+    processed_dir = project_dir / "processed" / "swot_raster" / NAME / PRODUCT
+    geoid_path = processed_dir / (
+        "SWOT_L2_HR_Raster_100m_UTM45N_x_x_x_001_001_"
+        "20240115T000000_20240115T000020_PGC0_01_geoid.tif"
+    )
+    _make_wse_tif(geoid_path)
+    config = _base_config(project_dir, chainage_path, variables=["wse", "geoid"])
+    assert "keep_intermediates" not in config  # defaults to False
+
+    with patch("HydroEO.satellites.swot.river_profile.download_raster"):
+        calculate_river_profile(config, project_dir=str(project_dir), global_crs="EPSG:4326")
+
+    results_dir = project_dir / "results" / NAME
+    assert list((results_dir / "profiles_geoid").glob("*.shp"))
+
+
+def test_build_swot_raster_config_handles_zero_buffer(tmp_path):
+    """Regression test: buffering point geometries by 0 produces empty
+    geometries with NaN bounds; a zero buffer must fall back to the raw
+    extent instead of producing a NaN bbox."""
+    chainage_path = _make_chainage_shp(tmp_path)
+    gdf, _ = _load_chainage({"chainage_path": str(chainage_path), "chainage_field": "cngmeters"})
+    config = {
+        "startdate": [2024, 1, 1],
+        "enddate": [2024, 1, 31],
+        "aoi_buffer_meters": 0,
+    }
+
+    swot_cfg = _build_swot_raster_config(config, NAME, gdf, "EPSG:4326")
+
+    assert not any(np.isnan(v) for v in swot_cfg["aoi"]["bbox"])

@@ -33,7 +33,7 @@ Start from [`configs/river_profile.yaml`](river_profile.yaml).
 | `chainage_path` | — | Path to the chainage point shapefile/geopackage |
 | `chainage_field` | `cngmeters` | Column with along-river distance (metres) |
 | `reverse_chainage` | `false` | Flip chainage direction |
-| `startdate` / `enddate` | — | Temporal range for the SWOT search (required) |
+| `startdate` / `enddate` | project dates | Temporal range for the SWOT search |
 | `aoi_buffer_meters` | `2000` | Buffer around the chainage extent used for the SWOT granule search/clip |
 | `product` | `SWOT_L2_HR_Raster_D` | Only the HR raster product is supported |
 | `variables` | `["wse"]` | Add `"geoid"` to also extract/save per-date geoid profiles |
@@ -66,11 +66,12 @@ empty unless you've identified a systematic artifact for your data.
 ## Filtering pipeline
 
 Six stages run in order, each individually toggleable via
-`filters.<stage>.enabled` and all defaults below matching field-tested values:
+`filters.<stage>.enabled`. All defaults below (other than `preclip`) match
+field-tested values from the reference implementation.
 
 | Stage | Purpose |
 | --- | --- |
-| `preclip` | Hard clip to a plausible elevation range (`min`/`max`, metres) before any statistical filtering |
+| `preclip` | Hard clip to a plausible elevation range (`min`/`max`, metres) before any statistical filtering. Defaults are intentionally broad (`-10` to `8000` m) — narrow this to your river's actual WSE range for better outlier rejection |
 | `soft_clamp` | Detrend within along-river bins (`bin_width_m`) and softly clamp points away from the bin's dominant vertical mode — handles layover/multi-return without hard-masking |
 | `hampel_1` | Distance-windowed (`win_m`) Hampel outlier filter around a robust local trend; `action: mask` drops flagged points, `action: replace` snaps them to the trend/window median |
 | `rolling_quantile` | Local robust-trend regression + rolling quantile (`q`) of the residual, per window — a smoothed reference used for density culling |
