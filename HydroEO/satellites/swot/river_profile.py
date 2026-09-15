@@ -34,6 +34,7 @@ import numpy as np
 import pandas as pd
 import rasterio
 from rasterio.transform import rowcol
+from tqdm import tqdm
 
 from HydroEO.constants import (
     RIVER_PROFILE_DEFAULT_AOI_BUFFER_M,
@@ -105,11 +106,8 @@ def calculate_river_profile(
     plot_dpi = config.get("plot_dpi", 150)
     plot_ylim = config.get("plot_ylim")
 
-    # results/<name> is a regenerated report, not an accumulating archive
-    # (unlike raw/processed, which are left alone above to preserve SWOT
-    # download dedup) - clear it now that we know this run has tiles to
-    # process, so a rerun with a narrower date range or a toggled
-    # keep_intermediates/plot_enable doesn't leave stale files behind.
+    # results/<name> is regenerated fresh each run (raw/processed are left
+    # alone above to preserve SWOT download dedup).
     if results_dir.exists():
         shutil.rmtree(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +119,13 @@ def calculate_river_profile(
     quality_rows: list[dict[str, Any]] = []
     seen_labels: dict[str, int] = {}
 
-    for i, wse_path in enumerate(wse_files, 1):
+    # deferred so interleaved logging doesn't garble the tqdm bar below
+    deferred_messages: list[tuple[int, str]] = []
+
+    def _defer(level, message, *args):
+        deferred_messages.append((level, message % args if args else message))
+
+    for i, wse_path in enumerate(tqdm(wse_files, desc="Processing WSE tiles"), 1):
         try:
             record = _process_one_date(
                 wse_path=wse_path,
@@ -132,11 +136,14 @@ def calculate_river_profile(
                 zero_is_nodata=zero_is_nodata,
             )
         except Exception as e:
-            logger.warning("[WSE %d/%d] ERROR on %s: %s", i, len(wse_files), wse_path.name, e)
+            _defer(
+                logging.WARNING, "[WSE %d/%d] ERROR on %s: %s", i, len(wse_files), wse_path.name, e
+            )
             continue
 
         if record is None:
-            logger.info(
+            _defer(
+                logging.INFO,
                 "[WSE %d/%d] %s | no overlap with chainage -> skipped",
                 i,
                 len(wse_files),
@@ -178,7 +185,8 @@ def calculate_river_profile(
                 river_name=name,
             )
 
-        logger.info(
+        _defer(
+            logging.INFO,
             "[WSE %d/%d] %s | finite raw=%d, final=%d | stage changes: "
             "soft-clamp=%d, hampel1=%d, density-cull=%d, hampel2=%d, "
             "orbit-excluded=%d",
@@ -193,6 +201,9 @@ def calculate_river_profile(
             record["quality"]["n_hampel2_flagged"],
             record["quality"]["n_orbit_excluded"],
         )
+
+    for level, message in deferred_messages:
+        logger.log(level, message)
 
     if not labels:
         logger.warning("River profile '%s': no dates processed, no outputs written", name)
@@ -226,9 +237,6 @@ def calculate_river_profile(
     logger.info("River profile '%s': done. %d dates processed.", name, len(labels))
 
 
-# ---------------------------------------------------------------------------
-# Config resolution
-# ---------------------------------------------------------------------------
 def _resolve_filters(user_filters: dict | None) -> dict[str, dict[str, Any]]:
     """Deep-merge user ``filters`` config over the stage defaults."""
     resolved: dict[str, dict[str, Any]] = copy.deepcopy(RIVER_PROFILE_DEFAULT_FILTERS)
@@ -249,8 +257,7 @@ def _build_swot_raster_config(
         utm_crs = gdf_4326.estimate_utm_crs()
         bbox = gdf_4326.to_crs(utm_crs).buffer(buffer_m).to_crs("EPSG:4326").total_bounds
     else:
-        # buffering point geometries by 0 produces empty geometries (NaN
-        # bounds), so fall back to the raw, unbuffered extent
+        # buffering by 0 produces empty (NaN-bounds) geometries
         bbox = gdf_4326.total_bounds
 
     variables = list(config.get("variables", ["wse"]))
@@ -304,18 +311,13 @@ def _load_chainage(config: dict[str, Any]) -> tuple[gpd.GeoDataFrame, np.ndarray
     order = np.argsort(x)
     gdf = gdf.iloc[order].reset_index(drop=True)
     x = x[order]
-    # keep the chainage column consistent with the (possibly reversed)
-    # working distance array, so output shapefiles aren't self-contradictory
-    gdf[field] = x
+    gdf[field] = x  # keep in sync with x (may have been reversed above)
     logger.info(
         "Chainage '%s': %d points, range %.1f - %.1f m", field, len(gdf), x.min(), x.max()
     )
     return gdf, x
 
 
-# ---------------------------------------------------------------------------
-# Per-date processing
-# ---------------------------------------------------------------------------
 def _label_from_name(path: Path) -> str:
     """Extract a timestamp label from a SWOT granule filename."""
     m = re.search(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}", path.name)
@@ -411,11 +413,8 @@ def _process_one_date(
 
     label = _label_from_name(wse_path)
 
-    # Note: even if orbit_exclusions masks every remaining point, the
-    # pipeline below is left to run through to a (correctly) all-NaN
-    # result rather than returning None here, so this date still gets a
-    # quality_report row recording the full exclusion instead of vanishing
-    # from the report entirely.
+    # left to run through to an all-NaN result rather than returning None,
+    # so a fully-excluded date still gets a quality_report row
     y_raw, n_excluded = _apply_orbit_exclusions(wse_path.name, x, y_raw, orbit_exclusions)
 
     y = y_raw.copy()
@@ -483,8 +482,7 @@ def _process_one_date(
         usable = np.isfinite(y_rq)
         dens_vals = counts[usable]
         thr = np.percentile(dens_vals, dc["low_pct"]) if dens_vals.size else np.inf
-        # strictly-below (not <=) so a degenerate uniform-density profile
-        # (every point at the same percentile value) isn't entirely culled
+        # strict < avoids culling everything when density is uniform
         low_density = (counts < thr) | (counts < float(dc["abs_min"]))
         low_density = rpf.dilate_mask(low_density, k=int(dc["dilate"]))
         y_after_density = y_rq.copy()
@@ -565,8 +563,7 @@ def _process_geoid(
     seen_labels: dict[str, int] = {}
     for f in geoid_files:
         try:
-            # geoid height is legitimately 0 at some locations, unlike WSE;
-            # only the raster's own declared nodata value should be masked
+            # geoid can legitimately be 0, unlike WSE
             arr, transform, raster_crs = _read_wse_raster(f, zero_is_nodata=False)
             points = gdf.to_crs(raster_crs)
             vals = _sample_profile(
@@ -582,9 +579,6 @@ def _process_geoid(
             logger.warning("Failed to process geoid tile %s: %s", f.name, e)
 
 
-# ---------------------------------------------------------------------------
-# Output helpers
-# ---------------------------------------------------------------------------
 def _make_output_dirs(results_dir: Path, keep_intermediates: bool, plot_enable: bool) -> dict:
     dirs = {"final": results_dir / "profiles_final"}
     dirs["final"].mkdir(parents=True, exist_ok=True)
@@ -658,9 +652,6 @@ def _write_quality_report(quality_rows: list[dict[str, Any]], out_path: Path) ->
     )
 
 
-# ---------------------------------------------------------------------------
-# Plotting
-# ---------------------------------------------------------------------------
 def _plot_per_profile(
     x: np.ndarray,
     record: dict[str, Any],
@@ -672,10 +663,7 @@ def _plot_per_profile(
 ) -> None:
     import matplotlib.pyplot as plt
 
-    # these plots are always saved straight to disk, never shown
-    # interactively - force a headless backend so this doesn't depend on a
-    # GUI toolkit (e.g. Tk) being installed/working on the host
-    plt.switch_backend("Agg")
+    plt.switch_backend("Agg")  # always saved to disk, never shown interactively
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
