@@ -160,3 +160,6 @@ notebooks/SWOT_Download.ipynb
 notebooks/swot_examples/*
 notebooks/swot_pixel_examples/*
 test_notebook.ipynb
+
+# uv lockfile (library project: consumers pin their own deps)
+uv.lock
