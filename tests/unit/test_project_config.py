@@ -177,7 +177,7 @@ def test_validate_config_rejects_missing_waterbody_branch():
 
     with pytest.raises(
         ValueError,
-        match="provide one of 'reservoirs', 'rivers', 'swot_raster', or 'swot_pixc'",
+        match="provide one of 'reservoirs', 'rivers', 'swot_raster', 'swot_pixc', or 'river_profile'",
     ):
         proj.validate_config()
 
@@ -560,3 +560,285 @@ def test_project_enabled_false_skips_mode(tmp_path):
     proj = Project(name="enabled-flag", config=str(cfg_path))
     assert not hasattr(proj, "rivers")
     assert hasattr(proj, "swot_raster_config")
+
+
+@pytest.mark.unit
+def test_swot_raster_falls_back_to_project_dates(tmp_path):
+    """swot_raster may omit its own startdate/enddate and rely on
+    project-level dates (as documented in configs/swot_raster.md); the
+    resolved config passed to download_raster() must still carry concrete
+    dates."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {
+                "main_dir": str(tmp_path / "out"),
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 12, 31],
+            },
+            "swot_raster": {
+                "aoi": {"name": "test", "type": "bbox", "bbox": [0.0, 0.0, 1.0, 1.0]},
+                "product": "SWOT_L2_HR_Raster_D",
+            },
+        },
+    )
+
+    proj = Project(name="date-fallback", config=str(cfg_path))
+    assert proj.swot_raster_config["startdate"] == [2024, 1, 1]
+    assert proj.swot_raster_config["enddate"] == [2024, 12, 31]
+
+
+@pytest.mark.unit
+def test_swot_pixc_falls_back_to_project_dates(tmp_path):
+    """Same fallback as swot_raster, exercised for swot_pixc (documented in
+    configs/swot_pixc.md) since the two sections are mutually exclusive and
+    validated/backfilled by separate code paths."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {
+                "main_dir": str(tmp_path / "out"),
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 12, 31],
+            },
+            "swot_pixc": {
+                "aoi": {"name": "test", "type": "bbox", "bbox": [0.0, 0.0, 1.0, 1.0]},
+                "product": "SWOT_L2_HR_PIXC_D",
+            },
+        },
+    )
+
+    proj = Project(name="pixc-date-fallback", config=str(cfg_path))
+    assert proj.swot_pixc_config["startdate"] == [2024, 1, 1]
+    assert proj.swot_pixc_config["enddate"] == [2024, 12, 31]
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_swot_raster_without_any_dates():
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "swot_raster": {
+            "aoi": {"name": "test", "type": "bbox", "bbox": [0.0, 0.0, 1.0, 1.0]},
+            "product": "SWOT_L2_HR_Raster_D",
+        },
+    }
+
+    with pytest.raises(ValueError, match="swot_raster.startdate"):
+        proj.validate_config()
+
+
+@pytest.fixture
+def _mock_chainage_shp(tmp_path):
+    from shapely.geometry import Point
+
+    path = tmp_path / "chainage.shp"
+    gdf = gpd.GeoDataFrame(
+        {"cngmeters": [0.0, 100.0], "geometry": [Point(0, 0), Point(0, 100)]},
+        crs="EPSG:32645",
+    )
+    gdf.to_file(path)
+    return path
+
+
+@pytest.mark.unit
+def test_project_accepts_river_profile_branch(tmp_path, _mock_chainage_shp):
+    """A valid, enabled river_profile section should populate
+    river_profile_config and be picked up by download()."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {"main_dir": str(tmp_path / "out")},
+            "river_profile": {
+                "name": "test_river",
+                "chainage_path": str(_mock_chainage_shp),
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 2, 1],
+            },
+        },
+    )
+
+    proj = Project(name="river-profile", config=str(cfg_path))
+    assert hasattr(proj, "river_profile_config")
+    assert not hasattr(proj, "reservoirs")
+    assert not hasattr(proj, "rivers")
+
+
+@pytest.mark.unit
+def test_river_profile_falls_back_to_project_dates(tmp_path, _mock_chainage_shp):
+    """river_profile may omit its own startdate/enddate and rely on
+    project-level dates, matching the swot_raster/swot_pixc fallback."""
+    from HydroEO.project import Project
+
+    cfg_path = tmp_path / "config.yaml"
+    _write_config(
+        cfg_path,
+        {
+            "project": {
+                "main_dir": str(tmp_path / "out"),
+                "startdate": [2024, 1, 1],
+                "enddate": [2024, 12, 31],
+            },
+            "river_profile": {
+                "name": "test_river",
+                "chainage_path": str(_mock_chainage_shp),
+            },
+        },
+    )
+
+    proj = Project(name="river-profile-date-fallback", config=str(cfg_path))
+    assert proj.river_profile_config["startdate"] == [2024, 1, 1]
+    assert proj.river_profile_config["enddate"] == [2024, 12, 31]
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_river_profile_invalid_calendar_date(_mock_chainage_shp):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 13, 40],  # not a real calendar date
+            "enddate": [2024, 2, 1],
+        },
+    }
+
+    with pytest.raises(ValueError, match="river_profile.startdate"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_river_profile_unsupported_product(_mock_chainage_shp):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 1, 1],
+            "enddate": [2024, 2, 1],
+            "product": "SWOT_L2_LR_SSH_2.0",
+        },
+    }
+
+    with pytest.raises(ValueError, match="river_profile.product"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_river_profile_non_numeric_orbit_exclusion_bound(
+    _mock_chainage_shp,
+):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 1, 1],
+            "enddate": [2024, 2, 1],
+            "orbit_exclusions": [{"orbit": "467", "max_chainage_m": "50000"}],
+        },
+    }
+
+    with pytest.raises(ValueError, match="orbit_exclusions.*max_chainage_m"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_river_profile_reversed_date_range(_mock_chainage_shp):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 12, 31],
+            "enddate": [2024, 1, 1],
+        },
+    }
+
+    with pytest.raises(ValueError, match="river_profile.startdate.*cannot be after"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "filters_override,expected_match",
+    [
+        ({"soft_clamp": {"bin_width_m": 0}}, "soft_clamp.bin_width_m"),
+        ({"hampel_1": {"action": "delete"}}, "hampel_1.action"),
+        ({"hampel_1": {"win_m": -5}}, "hampel_1.win_m"),
+        ({"rolling_quantile": {"q": 1.5}}, "rolling_quantile.q"),
+        ({"density_cull": {"low_pct": -1}}, "density_cull.low_pct"),
+        ({"spline_fill": {"k": 0}}, "spline_fill.k"),
+        ({"not_a_real_stage": {"enabled": True}}, "not_a_real_stage"),
+    ],
+)
+def test_validate_config_rejects_bad_river_profile_filter_values(
+    _mock_chainage_shp, filters_override, expected_match
+):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 1, 1],
+            "enddate": [2024, 2, 1],
+            "filters": filters_override,
+        },
+    }
+
+    with pytest.raises(ValueError, match=expected_match):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_river_profile_missing_chainage_path():
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {"startdate": [2024, 1, 1], "enddate": [2024, 2, 1]},
+    }
+
+    with pytest.raises(ValueError, match="river_profile.chainage_path"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+def test_validate_config_rejects_river_profile_and_reservoirs_together(_mock_chainage_shp):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "reservoirs": {"path": "/tmp/res.shp", "id_key": "id"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 1, 1],
+            "enddate": [2024, 2, 1],
+        },
+    }
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        proj.validate_config()
