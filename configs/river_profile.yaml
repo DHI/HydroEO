@@ -37,7 +37,7 @@ river_profile:
   name: "my_river"                    # identifier used as output filename/directory prefix
   chainage_path: "/path/to/chainage.shp"   # or .gpkg
   chainage_field: "cngmeters"         # column with along-river distance, in metres
-  reverse_chainage: false             # true -> flips distance so 0 becomes the upstream end
+  reverse_chainage: false             # true -> swaps which end of the river is chainage 0
 
   startdate: [2024, 1, 1]
   enddate:   [2024, 12, 31]
@@ -49,11 +49,12 @@ river_profile:
 
 
 # ─── ADVANCED OPTIONS ─────────────────────────────────────────────────────────
-# All fields below have sensible defaults and can be omitted.
-# Uncomment and merge the keys you want into the river_profile section above.
+# All keys below have sensible defaults and can be omitted. To use one,
+# copy just that key (NOT a second "river_profile:" header - this would
+# create a duplicate top-level mapping key and silently drop everything
+# above it) into the river_profile: block above, indented under it.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# river_profile:
 #   product: "SWOT_L2_HR_Raster_D"    # only HR raster product is supported
 #   variables: ["wse"]                # add "geoid" to also extract/save geoid profiles
 #   granule_filter: "*100m*"          # optional glob filter; omit to download all matching granules
@@ -69,7 +70,6 @@ river_profile:
 #
 #   filters:
 #     preclip:            {enabled: true, min: -10.0, max: 8000.0}  # narrow this to your river's plausible WSE range
-
 #     soft_clamp:          # detrend + softly clamp outliers within along-river bins
 #       enabled: true
 #       bin_width_m: 18000

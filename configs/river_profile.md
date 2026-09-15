@@ -19,9 +19,11 @@ with:
   compute this for you — it must already exist in the file (e.g. from a
   "generate points along line" + chainage-measurement GIS workflow).
 
-Set `reverse_chainage: true` if the column increases downstream but you want
-distance 0 to be the upstream end (or vice versa) — HydroEO flips it via
-`max(chainage) - chainage`.
+`reverse_chainage: true` swaps which end of the river is distance 0 — HydroEO
+computes `new_chainage = max(chainage) - chainage`, so whichever end
+currently holds the maximum value becomes 0 and vice versa. Set it if your
+file's 0 point is at the wrong end (e.g. at the downstream end when you want
+0 to mark the upstream end).
 
 ## Config reference
 
@@ -65,7 +67,7 @@ empty unless you've identified a systematic artifact for your data.
 
 ## Filtering pipeline
 
-Six stages run in order, each individually toggleable via
+Seven stages run in order, each individually toggleable via
 `filters.<stage>.enabled`. All defaults below (other than `preclip`) match
 field-tested values from the reference implementation.
 
@@ -74,13 +76,16 @@ field-tested values from the reference implementation.
 | `preclip` | Hard clip to a plausible elevation range (`min`/`max`, metres) before any statistical filtering. Defaults are intentionally broad (`-10` to `8000` m) — narrow this to your river's actual WSE range for better outlier rejection |
 | `soft_clamp` | Detrend within along-river bins (`bin_width_m`) and softly clamp points away from the bin's dominant vertical mode — handles layover/multi-return without hard-masking |
 | `hampel_1` | Distance-windowed (`win_m`) Hampel outlier filter around a robust local trend; `action: mask` drops flagged points, `action: replace` snaps them to the trend/window median |
-| `rolling_quantile` | Local robust-trend regression + rolling quantile (`q`) of the residual, per window — a smoothed reference used for density culling |
-| `density_cull` | Drops points from stretches with too few nearby valid observations (`total_win_m` window; below the `low_pct` percentile or `abs_min` absolute count) |
+| `rolling_quantile` | Local robust-trend regression + rolling quantile (`q`) of the residual, per window. **Its output becomes the working profile value carried into the remaining stages** (not merely a side reference) — this is what turns noisy per-point samples into a locally-smoothed profile; `density_cull` below decides which of these values to keep |
+| `density_cull` | Drops points from stretches with too few nearby valid observations (`total_win_m` window; strictly below the `low_pct` percentile, or below the `abs_min` absolute count) |
 | `hampel_2` | A second, typically milder Hampel pass after density culling |
-| `spline_fill` | Fits an LSQ spline (degree `k`) to remaining valid points and pastes it **only** into remaining NaN gaps — never overwrites real data |
+| `spline_fill` | Fits an LSQ spline (degree `k`) to whatever values survived the stages above and pastes it **only** into remaining NaN gaps — never overwrites a value already produced by an earlier stage |
 
 Disabling a stage passes its input straight through to the next stage
-unchanged.
+unchanged. Note that with `rolling_quantile` enabled (the default), disabling
+`spline_fill` still yields a smoothed profile, not raw per-point
+observations — to keep raw values, disable `rolling_quantile` too (and
+inspect `profiles_raw`/`profiles_hampel1` via `keep_intermediates: true`).
 
 ## Quality report
 
@@ -105,7 +110,8 @@ are also logged.
       quality_report.csv                         # always
       plots/per_profile/*.png                    # if plot_enable
       plots/combined/*.png                       # if plot_enable
+      profiles_geoid/                            # if "geoid" in variables (independent of keep_intermediates)
       profiles_raw/, profiles_prefilter/,        # only if keep_intermediates: true
-      profiles_hampel1/, profiles_geoid/
+      profiles_hampel1/
       <name>_profiles_raw.csv, _prefilter.csv, _hampel1.csv   # only if keep_intermediates
 ```

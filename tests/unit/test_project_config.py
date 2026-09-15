@@ -761,6 +761,57 @@ def test_validate_config_rejects_river_profile_non_numeric_orbit_exclusion_bound
 
 
 @pytest.mark.unit
+def test_validate_config_rejects_river_profile_reversed_date_range(_mock_chainage_shp):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 12, 31],
+            "enddate": [2024, 1, 1],
+        },
+    }
+
+    with pytest.raises(ValueError, match="river_profile.startdate.*cannot be after"):
+        proj.validate_config()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "filters_override,expected_match",
+    [
+        ({"soft_clamp": {"bin_width_m": 0}}, "soft_clamp.bin_width_m"),
+        ({"hampel_1": {"action": "delete"}}, "hampel_1.action"),
+        ({"hampel_1": {"win_m": -5}}, "hampel_1.win_m"),
+        ({"rolling_quantile": {"q": 1.5}}, "rolling_quantile.q"),
+        ({"density_cull": {"low_pct": -1}}, "density_cull.low_pct"),
+        ({"spline_fill": {"k": 0}}, "spline_fill.k"),
+        ({"not_a_real_stage": {"enabled": True}}, "not_a_real_stage"),
+    ],
+)
+def test_validate_config_rejects_bad_river_profile_filter_values(
+    _mock_chainage_shp, filters_override, expected_match
+):
+    from HydroEO.project import Project
+
+    proj = Project.__new__(Project)
+    proj.config = {
+        "project": {"main_dir": "/tmp/hydroeo"},
+        "river_profile": {
+            "chainage_path": str(_mock_chainage_shp),
+            "startdate": [2024, 1, 1],
+            "enddate": [2024, 2, 1],
+            "filters": filters_override,
+        },
+    }
+
+    with pytest.raises(ValueError, match=expected_match):
+        proj.validate_config()
+
+
+@pytest.mark.unit
 def test_validate_config_rejects_river_profile_missing_chainage_path():
     from HydroEO.project import Project
 

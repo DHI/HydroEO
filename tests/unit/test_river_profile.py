@@ -17,6 +17,7 @@ from HydroEO.satellites.swot.river_profile import (
     _build_swot_raster_config,
     _load_chainage,
     _plot_combined,
+    _process_one_date,
     _resolve_filters,
     _unique_label,
     _COMBINED_PLOT_MAX_LEGEND_ENTRIES,
@@ -148,6 +149,21 @@ def test_load_chainage_requires_configured_field(tmp_path):
 
     with pytest.raises(ValueError, match="not_a_column"):
         _load_chainage(config)
+
+
+def test_load_chainage_rejects_non_finite_values(tmp_path):
+    xs = np.full(5, 500_000.0)
+    ys = 2_600_000.0 + np.arange(5) * 200.0
+    dist = np.array([0.0, 200.0, np.nan, 600.0, 800.0])
+    gdf = gpd.GeoDataFrame(
+        {"cngmeters": dist, "geometry": [Point(x, y) for x, y in zip(xs, ys)]},
+        crs=UTM_CRS,
+    )
+    path = tmp_path / "chainage_with_nan.shp"
+    gdf.to_file(path)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        _load_chainage({"chainage_path": str(path), "chainage_field": "cngmeters"})
 
 
 def test_load_chainage_reverses_when_requested(tmp_path):
@@ -351,3 +367,78 @@ def test_build_swot_raster_config_handles_zero_buffer(tmp_path):
     swot_cfg = _build_swot_raster_config(config, NAME, gdf, "EPSG:4326")
 
     assert not any(np.isnan(v) for v in swot_cfg["aoi"]["bbox"])
+
+
+def test_calculate_river_profile_records_fully_orbit_excluded_date(project_with_wse_tile):
+    """Regression test: if orbit_exclusions masks every sampled point for a
+    date, that date must still get a quality_report row (recording the
+    exclusion) instead of silently vanishing from the report."""
+    project_dir, chainage_path = project_with_wse_tile
+    config = _base_config(
+        project_dir,
+        chainage_path,
+        orbit_exclusions=[{"orbit": "PGC0", "max_chainage_m": 100_000.0}],
+    )
+
+    with patch("HydroEO.satellites.swot.river_profile.download_raster"):
+        calculate_river_profile(config, project_dir=str(project_dir), global_crs="EPSG:4326")
+
+    results_dir = project_dir / "results" / NAME
+    quality_df = pd.read_csv(results_dir / "quality_report.csv")
+    assert len(quality_df) == 1
+    row = quality_df.iloc[0]
+    assert row["n_orbit_excluded"] == row["n_finite_raw"]
+    assert row["n_finite_final"] == 0
+
+
+def test_calculate_river_profile_clears_stale_output_between_runs(project_with_wse_tile):
+    """results/<name> is a regenerated report - a rerun with
+    keep_intermediates toggled off must not leave the previous run's
+    intermediate directories behind."""
+    project_dir, chainage_path = project_with_wse_tile
+    results_dir = project_dir / "results" / NAME
+
+    with patch("HydroEO.satellites.swot.river_profile.download_raster"):
+        calculate_river_profile(
+            _base_config(project_dir, chainage_path, keep_intermediates=True),
+            project_dir=str(project_dir),
+            global_crs="EPSG:4326",
+        )
+    assert (results_dir / "profiles_raw").exists()
+
+    with patch("HydroEO.satellites.swot.river_profile.download_raster"):
+        calculate_river_profile(
+            _base_config(project_dir, chainage_path),
+            project_dir=str(project_dir),
+            global_crs="EPSG:4326",
+        )
+
+    assert not (results_dir / "profiles_raw").exists()
+    assert list((results_dir / "profiles_final").glob("*.shp"))
+
+
+def test_density_cull_does_not_drop_uniform_density_profile(project_with_wse_tile):
+    """Regression test: when every point has identical local density (e.g. a
+    small/short profile whose density_cull window is narrower than the point
+    spacing), the percentile threshold equals every count, and a non-strict
+    <= comparison used to mark the entire profile as low-density."""
+    project_dir, chainage_path = project_with_wse_tile
+    gdf, x = _load_chainage({"chainage_path": str(chainage_path), "chainage_field": "cngmeters"})
+    wse_path = next(
+        (project_dir / "processed" / "swot_raster" / NAME / PRODUCT).glob("*_wse.tif")
+    )
+    filters = _resolve_filters(
+        {"density_cull": {"total_win_m": 50.0, "abs_min": 0}}  # narrower than 200m spacing
+    )
+
+    record = _process_one_date(
+        wse_path=wse_path,
+        gdf=gdf,
+        x=x,
+        filters=filters,
+        orbit_exclusions=[],
+        zero_is_nodata=True,
+    )
+
+    assert record is not None
+    assert np.isfinite(record["y_after_density"]).any()

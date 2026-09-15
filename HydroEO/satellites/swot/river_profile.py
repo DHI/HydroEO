@@ -25,6 +25,7 @@ from __future__ import annotations
 import copy
 import logging
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +104,15 @@ def calculate_river_profile(
     plot_enable = config.get("plot_enable", True)
     plot_dpi = config.get("plot_dpi", 150)
     plot_ylim = config.get("plot_ylim")
+
+    # results/<name> is a regenerated report, not an accumulating archive
+    # (unlike raw/processed, which are left alone above to preserve SWOT
+    # download dedup) - clear it now that we know this run has tiles to
+    # process, so a rerun with a narrower date range or a toggled
+    # keep_intermediates/plot_enable doesn't leave stale files behind.
+    if results_dir.exists():
+        shutil.rmtree(results_dir)
+    results_dir.mkdir(parents=True, exist_ok=True)
 
     out_dirs = _make_output_dirs(results_dir, keep_intermediates, plot_enable)
 
@@ -211,7 +221,7 @@ def calculate_river_profile(
     _write_quality_report(quality_rows, results_dir / "quality_report.csv")
 
     if geoid_files:
-        _process_geoid(geoid_files, gdf, results_dir, name, zero_is_nodata)
+        _process_geoid(geoid_files, gdf, results_dir, name)
 
     logger.info("River profile '%s': done. %d dates processed.", name, len(labels))
 
@@ -278,6 +288,14 @@ def _load_chainage(config: dict[str, Any]) -> tuple[gpd.GeoDataFrame, np.ndarray
         )
 
     x_raw = gdf[field].to_numpy(dtype=float)
+    n_non_finite = int(np.count_nonzero(~np.isfinite(x_raw)))
+    if n_non_finite:
+        raise ValueError(
+            f"Chainage field '{field}' in '{path}' has {n_non_finite} non-finite "
+            "(NaN/inf) value(s). Every point needs a valid along-river distance; "
+            "fix or drop those rows before using this file with HydroEO."
+        )
+
     if config.get("reverse_chainage", False):
         x = float(np.nanmax(x_raw)) - x_raw
     else:
@@ -391,11 +409,14 @@ def _process_one_date(
     if n_finite_raw == 0:
         return None
 
-    y_raw, n_excluded = _apply_orbit_exclusions(wse_path.name, x, y_raw, orbit_exclusions)
-    if np.count_nonzero(np.isfinite(y_raw)) == 0:
-        return None
-
     label = _label_from_name(wse_path)
+
+    # Note: even if orbit_exclusions masks every remaining point, the
+    # pipeline below is left to run through to a (correctly) all-NaN
+    # result rather than returning None here, so this date still gets a
+    # quality_report row recording the full exclusion instead of vanishing
+    # from the report entirely.
+    y_raw, n_excluded = _apply_orbit_exclusions(wse_path.name, x, y_raw, orbit_exclusions)
 
     y = y_raw.copy()
     pc = filters["preclip"]
@@ -462,7 +483,9 @@ def _process_one_date(
         usable = np.isfinite(y_rq)
         dens_vals = counts[usable]
         thr = np.percentile(dens_vals, dc["low_pct"]) if dens_vals.size else np.inf
-        low_density = (counts <= thr) | (counts < float(dc["abs_min"]))
+        # strictly-below (not <=) so a degenerate uniform-density profile
+        # (every point at the same percentile value) isn't entirely culled
+        low_density = (counts < thr) | (counts < float(dc["abs_min"]))
         low_density = rpf.dilate_mask(low_density, k=int(dc["dilate"]))
         y_after_density = y_rq.copy()
         y_after_density[low_density] = np.nan
@@ -534,22 +557,24 @@ def _process_geoid(
     gdf: gpd.GeoDataFrame,
     results_dir: Path,
     name: str,
-    zero_is_nodata: bool,
 ) -> None:
     """Save per-date geoid profiles. Independent of ``keep_intermediates``:
     geoid is an explicitly requested output variable (via
     ``river_profile.variables``), not an intermediate filtering stage."""
     out_dir = results_dir / "profiles_geoid"
+    seen_labels: dict[str, int] = {}
     for f in geoid_files:
         try:
-            arr, transform, raster_crs = _read_wse_raster(f, zero_is_nodata)
+            # geoid height is legitimately 0 at some locations, unlike WSE;
+            # only the raster's own declared nodata value should be masked
+            arr, transform, raster_crs = _read_wse_raster(f, zero_is_nodata=False)
             points = gdf.to_crs(raster_crs)
             vals = _sample_profile(
                 arr, transform, points.geometry.x.to_numpy(), points.geometry.y.to_numpy()
             )
             if np.count_nonzero(np.isfinite(vals)) == 0:
                 continue
-            label = _label_from_name(f)
+            label = _unique_label(_label_from_name(f), seen_labels)
             _save_profile_shp(
                 gdf, vals, out_dir, name, label, suffix="profile_geoid", field_name="GEOID"
             )
@@ -647,6 +672,11 @@ def _plot_per_profile(
 ) -> None:
     import matplotlib.pyplot as plt
 
+    # these plots are always saved straight to disk, never shown
+    # interactively - force a headless backend so this doesn't depend on a
+    # GUI toolkit (e.g. Tk) being installed/working on the host
+    plt.switch_backend("Agg")
+
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     plt.figure(figsize=(12, 6))
@@ -679,6 +709,8 @@ def _plot_combined(
     x: np.ndarray, series_dict: dict[str, np.ndarray], title: str, out_path: Path, ylim, dpi: int
 ) -> None:
     import matplotlib.pyplot as plt
+
+    plt.switch_backend("Agg")
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
