@@ -1,12 +1,22 @@
 # River Profile — Configuration Reference
 
 Compute a cleaned, longitudinal water-surface-elevation (WSE) profile along a
-river from SWOT L2 HR Raster tiles, sampled at chainage points you supply.
-HydroEO downloads the matching SWOT tiles for you (reusing the same
-download/preprocess pipeline as [`swot_raster`](swot_raster.md), with
-`merge_tiles` forced off so each acquisition date stays its own tile) and
-runs a configurable multi-stage filter over the sampled values. Requires
-NASA Earthdata credentials.
+river extending into the coastal zone of deltaic systems, from SWOT L2 HR
+Raster tiles sampled at chainage points you supply. HydroEO downloads the
+matching SWOT tiles for you (reusing the same download/preprocess pipeline as
+[`swot_raster`](swot_raster.md), with `merge_tiles` forced off so each
+acquisition date stays its own tile) and runs a configurable multi-stage
+filter over the sampled values. Requires NASA Earthdata credentials.
+
+## Limitations
+
+The WSE interpolation/processing step assumes a continuous water-surface
+profile along the river reach. It is therefore not valid across hydraulic
+structures such as dams, weirs, and gates, where the water surface is
+discontinuous.
+
+**Workaround:** split the river network at hydraulic structures and process
+each reach separately.
 
 ## Chainage input
 
@@ -115,3 +125,30 @@ are also logged.
       profiles_hampel1/
       <name>_profiles_raw.csv, _prefilter.csv, _hampel1.csv   # only if keep_intermediates
 ```
+
+## Reference
+
+For details on the processing workflow, see:
+
+> Coppo Frias, M., Kittel, C. M. M., Nielsen, K., Shamsudduha, M., Hossain, S.,
+> Musaeus, A. F., Toettrup, C., & Bauer-Gottwein, P. (2026). Resolving
+> River-Coastal Water Surface Elevation Profiles with SWOT: Insights into
+> Tide-Discharge Interactions in Large Deltas. *ESS Open Archive* (preprint).
+> https://doi.org/10.22541/essoar.177170504.44018148/v2
+
+If you use this workflow, please cite this publication:
+
+```bibtex
+@article{coppofrias2026swot,
+  author    = {Coppo Frias, Monica and Kittel, Cécile M. M. and Nielsen, Karina and Shamsudduha, Mohammad and Hossain, Sazzad and Musaeus, Aske Folkmann and Toettrup, Christian and Bauer-Gottwein, Peter},
+  title     = {Resolving River-Coastal Water Surface Elevation Profiles with SWOT: Insights into Tide-Discharge Interactions in Large Deltas},
+  journal   = {ESS Open Archive},
+  year      = {2026},
+  publisher = {Wiley},
+  note      = {Preprint},
+  doi       = {10.22541/essoar.177170504.44018148/v2}
+}
+```
+
+*Note: this reference points to a preprint and will be updated once the
+peer-reviewed version is published.*
