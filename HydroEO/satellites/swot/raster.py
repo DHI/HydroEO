@@ -259,12 +259,7 @@ def _preprocess_granules(
             continue
 
         try:
-            qf = config.get("quality_filters") or {}
-            max_wse_uncert = qf.get("max_wse_uncert", 0.3)
-            max_layover_impact = qf.get("max_layover_impact", 0.3)
-            mask = (ds["wse_uncert"] < max_wse_uncert) & (
-                ds["layover_impact"] < max_layover_impact
-            )
+            mask = _quality_mask(ds, config.get("quality_filters"))
         except (KeyError, TypeError):
             _defer_warning(
                 "Missing required quality fields in %s, skipping", nc_path.name
@@ -291,6 +286,8 @@ def _preprocess_granules(
             try:
                 da = ds[var].where(mask)
                 da.rio.write_crs(native_crs.to_wkt(), inplace=True)
+                if np.issubdtype(da.dtype, np.floating):
+                    da = da.rio.write_nodata(np.nan, encoded=False)
 
                 if aoi_gdf is not None:
                     try:
@@ -332,6 +329,32 @@ def _preprocess_granules(
 
     for warning in deferred_warnings:
         logger.debug(warning)
+
+
+def _quality_mask(ds: xr.Dataset, quality_filters: dict | None) -> xr.DataArray:
+    """Build a pixel mask of valid ``wse``, plus any configured quality filters.
+
+    Quality filtering is opt-in: thresholds are applied only when set in
+    ``quality_filters``.
+    """
+    qf = quality_filters or {}
+    thresholds = {
+        "wse_uncert": qf.get("max_wse_uncert"),
+        "layover_impact": qf.get("max_layover_impact"),
+    }
+    mask = ds["wse"].notnull()
+    for var, threshold in thresholds.items():
+        if threshold is not None:
+            mask = mask & (ds[var] < threshold)
+    return mask
+
+
+def _variable_from_stem(stem: str) -> str:
+    """Extract the SWOT variable name suffix from a processed TIF stem."""
+    for var in sorted(DEFAULT_VARIABLES, key=len, reverse=True):
+        if stem.endswith(f"_{var}"):
+            return var
+    return stem.split("_")[-1]
 
 
 def _detect_crs(ds: xr.Dataset, nc_path: Path) -> CRS | None:
@@ -415,7 +438,7 @@ def _merge_and_reproject_granules(
             continue
 
         date_str = match.group(1)
-        var_name = tif_path.stem.split("_")[-1]
+        var_name = _variable_from_stem(tif_path.stem)
         key = (var_name, date_str)
         file_groups.setdefault(key, []).append(tif_path)
 
@@ -451,7 +474,11 @@ def _reproject_raster(src_path: Path, dst_path: Path, epsg: int, var_name: str) 
                     "height": height,
                 }
             )
-            nodata = profile.get("nodata", src.nodata)
+            # Tiles written without nodata metadata use NaN for gaps; declare it
+            # so reprojection initialises uncovered areas as nodata, not 0.
+            nodata = src.nodata
+            if nodata is None and np.issubdtype(np.dtype(src.dtypes[0]), np.floating):
+                nodata = np.nan
             profile["nodata"] = nodata
 
             with rasterio.open(dst_path, "w", **profile) as dst:
@@ -461,6 +488,8 @@ def _reproject_raster(src_path: Path, dst_path: Path, epsg: int, var_name: str) 
                         destination=rasterio.band(dst, b),
                         src_transform=src.transform,
                         src_crs=src.crs,
+                        src_nodata=nodata,
+                        dst_nodata=nodata,
                         dst_transform=transform,
                         dst_crs=dst_crs,
                         resampling=_resampling_for(var_name),
@@ -497,8 +526,12 @@ def _merge_rasters(
                     "nodata": FLOAT32_NODATA_VALUE,
                 }
             )
-            mosaic[mosaic == 0] = FLOAT32_NODATA_VALUE
-            mosaic[mosaic == np.nan] = FLOAT32_NODATA_VALUE
+            # Don't treat 0 as nodata: it is a valid value (e.g. wse_qual=0 is "good")
+            nodata = datasets[0].nodata
+            if nodata is not None and np.isnan(nodata):
+                mosaic[np.isnan(mosaic)] = FLOAT32_NODATA_VALUE
+            elif nodata is not None:
+                mosaic[mosaic == nodata] = FLOAT32_NODATA_VALUE
             with rasterio.open(dst_path, "w", **out_meta) as dest:
                 dest.write(mosaic)
         finally:
