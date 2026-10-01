@@ -68,9 +68,9 @@ def _extract_rivers_icesat2_observations(prj: "Project", overwrite: bool = False
     Parameters
     ----------
     overwrite : bool, optional
-        Skip extraction if the target's output .gpkg already exists
-        (False, default) or re-extract anyway (True). This is the same
-        semantics as _extract_reservoirs_timeseries.
+        Skip extraction if the target's output .gpkg already exists and is
+        newer than the Hydrocron CSV (False, default) or re-extract anyway
+        (True).
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     explicit_buffer = getattr(prj.rivers, "extraction_buffer_meters", None)
@@ -172,9 +172,9 @@ def _extract_rivers_sentinel_observations(
     product : str
         "S3" or "S6" (used for output file naming)
     overwrite : bool, optional
-        Skip extraction if the target's output .gpkg already exists
-        (False, default) or re-extract anyway (True). This is the same
-        semantics as _extract_reservoirs_timeseries.
+        Skip extraction if the target's output .gpkg already exists and is
+        newer than the Hydrocron CSV (False, default) or re-extract anyway
+        (True).
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     explicit_buffer = getattr(prj.rivers, "extraction_buffer_meters", None)
@@ -288,9 +288,9 @@ def _extract_rivers_swot_observations(prj: "Project", overwrite: bool = False) -
     Parameters
     ----------
     overwrite : bool, optional
-        Skip extraction if the target's output .gpkg already exists
-        (False, default) or re-extract anyway (True). This is the same
-        semantics as _extract_reservoirs_timeseries.
+        Skip extraction if the target's output .gpkg already exists and is
+        newer than the Hydrocron CSV (False, default) or re-extract anyway
+        (True).
     """
     waterbody_groups = _group_river_targets_by_waterbody(prj)
     id_label = "nodes" if prj.rivers.target_id_col == "node_id" else "reaches"
@@ -303,15 +303,16 @@ def _extract_rivers_swot_observations(prj: "Project", overwrite: bool = False) -
             continue
 
         if not overwrite:
-            remaining = [
-                t
-                for t in target_ids
-                if not os.path.exists(
-                    os.path.join(
-                        prj.dirs["output"], f"{t}", "raw_observations", "swot.gpkg"
-                    )
+            # Re-extract targets whose gpkg is older than the Hydrocron CSV,
+            # since incremental downloads append new observations to it.
+            src_mtime = os.path.getmtime(src_path)
+            remaining = []
+            for t in target_ids:
+                dst = os.path.join(
+                    prj.dirs["output"], f"{t}", "raw_observations", "swot.gpkg"
                 )
-            ]
+                if not os.path.exists(dst) or os.path.getmtime(dst) < src_mtime:
+                    remaining.append(t)
             if not remaining:
                 continue
             target_ids = remaining

@@ -226,6 +226,14 @@ def _download_swot_hydrocron_timeseries(prj: "Project", startdate, enddate) -> N
 
         if frames:
             combined = pd.concat(frames, ignore_index=True)
+            # Incremental runs only fetch from the latest stored date onward,
+            # so merge with the existing file rather than overwrite it.
+            if latest_obs is not None:
+                existing = pd.read_csv(output_path)
+                combined = pd.concat([existing, combined], ignore_index=True)
+                combined = combined.drop_duplicates(
+                    subset=[prj.rivers.target_id_col, "time_str"], keep="last"
+                )
             combined.to_csv(output_path, index=False)
 
         for warning in deferred_warnings:
