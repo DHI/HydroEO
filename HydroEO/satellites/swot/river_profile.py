@@ -16,8 +16,9 @@ precomputed along-river distance field) and a date range, this:
    longitudinal profile per date.
 3. Writes final profile shapefiles + a combined CSV (and, if
    ``keep_intermediates`` is set, every intermediate stage too), optional
-   diagnostic plots, and a quality report summarizing how many points each
-   stage touched.
+   diagnostic plots, a quality report summarizing how many points each
+   stage touched, and an interactive HTML nodes map (see
+   :mod:`HydroEO.satellites.swot.river_profile_map`).
 """
 
 from __future__ import annotations
@@ -41,6 +42,7 @@ from HydroEO.constants import (
     RIVER_PROFILE_DEFAULT_FILTERS,
 )
 from HydroEO.satellites.swot.raster import download_raster
+from HydroEO.satellites.swot.river_profile_map import write_nodes_map
 from HydroEO.utils.filters import river_profile_filters as rpf
 
 logger = logging.getLogger(__name__)
@@ -209,15 +211,24 @@ def calculate_river_profile(
         logger.warning("River profile '%s': no dates processed, no outputs written", name)
         return
 
-    _save_combined_csv(x, labels, final_cols, results_dir / f"{name}_profiles_final.csv")
+    node_ids = gdf["node_id"].to_numpy()
+    _save_combined_csv(
+        node_ids, x, labels, final_cols, results_dir / f"{name}_profiles_final.csv"
+    )
     if keep_intermediates:
-        _save_combined_csv(x, labels, raw_cols, results_dir / f"{name}_profiles_raw.csv")
         _save_combined_csv(
-            x, labels, pref_cols, results_dir / f"{name}_profiles_prefilter.csv"
+            node_ids, x, labels, raw_cols, results_dir / f"{name}_profiles_raw.csv"
         )
         _save_combined_csv(
-            x, labels, h1_cols, results_dir / f"{name}_profiles_hampel1.csv"
+            node_ids, x, labels, pref_cols, results_dir / f"{name}_profiles_prefilter.csv"
         )
+        _save_combined_csv(
+            node_ids, x, labels, h1_cols, results_dir / f"{name}_profiles_hampel1.csv"
+        )
+
+    nodes_map_path = write_nodes_map(
+        gdf, x, labels, final_cols, results_dir / f"{name}_nodes_map.html", river_name=name
+    )
 
     if plot_enable:
         _plot_combined(
@@ -234,7 +245,12 @@ def calculate_river_profile(
     if geoid_files:
         _process_geoid(geoid_files, gdf, results_dir, name)
 
-    logger.info("River profile '%s': done. %d dates processed.", name, len(labels))
+    logger.info(
+        "River profile '%s': done. %d dates processed. Interactive nodes map: %s",
+        name,
+        len(labels),
+        nodes_map_path.as_uri(),
+    )
 
 
 def _resolve_filters(user_filters: dict | None) -> dict[str, dict[str, Any]]:
@@ -312,6 +328,15 @@ def _load_chainage(config: dict[str, Any]) -> tuple[gpd.GeoDataFrame, np.ndarray
     gdf = gdf.iloc[order].reset_index(drop=True)
     x = x[order]
     gdf[field] = x  # keep in sync with x (may have been reversed above)
+    if "node_id" in gdf.columns:
+        logger.warning(
+            "Chainage file '%s' already has a 'node_id' column; it is replaced by "
+            "HydroEO's own node IDs (0..N-1 in chainage order).",
+            path,
+        )
+        gdf = gdf.drop(columns="node_id")
+    # stable per-point key shared by the CSVs, shapefiles and nodes map
+    gdf.insert(0, "node_id", np.arange(len(gdf), dtype=int))
     logger.info(
         "Chainage '%s': %d points, range %.1f - %.1f m", field, len(gdf), x.min(), x.max()
     )
@@ -614,9 +639,13 @@ def _save_profile_shp(
 
 
 def _save_combined_csv(
-    x: np.ndarray, labels: list[str], columns_dict: dict[str, np.ndarray], out_path: Path
+    node_ids: np.ndarray,
+    x: np.ndarray,
+    labels: list[str],
+    columns_dict: dict[str, np.ndarray],
+    out_path: Path,
 ) -> None:
-    df = pd.DataFrame({"distance_along_river_m": x})
+    df = pd.DataFrame({"node_id": node_ids, "distance_along_river_m": x})
     for lab in labels:
         df[lab] = columns_dict[lab]
     out_path = Path(out_path)
