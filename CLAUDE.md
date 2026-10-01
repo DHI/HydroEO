@@ -12,7 +12,7 @@ Five scenarios, each driven by a config in `configs/` (see `configs/*.md` for de
 2. **Rivers** (`rivers.yaml`) — SWOT Hydrocron + multi-satellite download, SWORD v17b matching. Timeseries cleaning **not yet implemented** (preprocessing only). Test in progress.
 3. **SWOT raster tiles** (`swot_raster.yaml`) — download SWOT L2 HR/LR SSH rasters, clip/merge to AOI mosaics.
 4. **SWOT pixel cloud** (`swot_pixc.yaml`) — download SWOT L2 PIXC, filter by water class, grid to raster.
-5. **River profile** (`river_profile.yaml`) — download SWOT L2 HR Raster tiles for a user-supplied chainage shapefile, sample WSE per date, run a configurable filter pipeline (see `satellites/swot/river_profile.py`) to produce a cleaned longitudinal profile + quality report.
+5. **River profile** (`river_profile.yaml`) — download SWOT L2 HR Raster tiles for a user-supplied chainage shapefile, sample WSE per date, run a configurable filter pipeline (see `satellites/swot/river_profile.py`) to produce a cleaned longitudinal profile + quality report + interactive nodes map HTML (`satellites/swot/river_profile_map.py`; click a node → its final WSE timeseries).
 
 ## Development Setup
 
