@@ -63,6 +63,6 @@ swot_raster:
 #   merge_tiles: true           # merge tiles by date/variable and reproject; false = keep individual tiles
 #   target_crs: "EPSG:32645"   # output CRS for merge phase; defaults to gis.global_crs
 #   variables: [wse, wse_uncert, wse_qual]   # omit to extract all available variables
-#   quality_filters:
+#   quality_filters:            # opt-in; no filtering unless thresholds are set
 #     max_wse_uncert: 0.3       # mask pixels with wse_uncert >= this value (metres)
 #     max_layover_impact: 0.3   # mask pixels with layover_impact >= this value (metres)

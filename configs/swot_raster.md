@@ -1,6 +1,6 @@
 # SWOT Raster — Configuration Reference
 
-Download and process SWOT L2 HR/LR raster products for an arbitrary area of interest. Tiles are extracted, quality-filtered, clipped to the AOI, and merged by date/variable. Requires NASA Earthdata credentials.
+Download and process SWOT L2 HR/LR raster products for an arbitrary area of interest. Tiles are extracted, optionally quality-filtered, clipped to the AOI, and merged by date/variable. Requires NASA Earthdata credentials.
 
 ## Products
 
@@ -35,17 +35,17 @@ Start from [`configs/swot_raster.yaml`](swot_raster.yaml).
 | `merge_tiles` | `true` | Merge tiles by date/variable and reproject; `false` = keep individual clipped tiles |
 | `target_crs` | `gis.global_crs` | Output CRS for the merge phase (e.g. `"EPSG:32645"` for UTM 45N) |
 | `variables` | all 8 | List of variables to extract; omit to extract all available |
-| `quality_filters.max_wse_uncert` | `0.3` | Mask pixels with `wse_uncert ≥` this value (metres) |
-| `quality_filters.max_layover_impact` | `0.3` | Mask pixels with `layover_impact ≥` this value (metres) |
+| `quality_filters.max_wse_uncert` | — (off) | Opt-in: mask pixels with `wse_uncert ≥` this value (metres) |
+| `quality_filters.max_layover_impact` | — (off) | Opt-in: mask pixels with `layover_impact ≥` this value (metres) |
 
 **Available variables:** `wse`, `wse_uncert`, `wse_qual`, `height_cor_xover`, `geoid`, `n_wse_pix`, `n_other_pix`, `layover_impact`.
 
-> `wse`, `wse_uncert`, and `layover_impact` are always extracted regardless of the `variables` list — they are required for quality masking.
+> `wse`, `wse_uncert`, and `layover_impact` are always extracted regardless of the `variables` list — they are needed for optional quality masking. No quality filter is applied unless `quality_filters` thresholds are set; only pixels without a valid `wse` are masked.
 
 ## Processing pipeline
 
 1. **Download** — queries Earthdata for granules within bbox and date range; tracks already-downloaded granules in `raw/<product>/downloaded.log` to avoid re-fetching.
-2. **Preprocess** — extracts configured variables, applies quality filters, clips each tile to the AOI; outputs GeoTIFFs. Out-of-area tiles are discarded. Raw netCDF files are deleted after preprocessing.
+2. **Preprocess** — extracts configured variables, applies any configured quality filters, clips each tile to the AOI; outputs GeoTIFFs. Out-of-area tiles are discarded. Raw netCDF files are deleted after preprocessing.
 3. **Merge** — groups clipped tiles by date and variable, merges multiple passes, reprojects to target CRS; outputs mosaics.
 
 ## Output structure

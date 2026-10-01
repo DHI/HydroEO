@@ -260,6 +260,33 @@ def test_download_granules_skips_already_processed(bbox_config, tmp_path):
     assert result == []
 
 
+@pytest.mark.unit
+def test_download_granules_omits_granule_name_when_no_filter(bbox_config):
+    """Regression test: earthaccess.search_data() rejects granule_name=None
+    outright ('must be of type string or Iterable of strings'), so the
+    kwarg must be omitted entirely rather than passed as None when
+    'granule_filter' isn't set in config."""
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
+        mock_ea.login.return_value = None
+        mock_ea.search_data.return_value = []
+
+        _download_granules(bbox_config, Path("/tmp/raw"), set())
+
+    assert "granule_name" not in mock_ea.search_data.call_args.kwargs
+
+
+@pytest.mark.unit
+def test_download_granules_passes_granule_name_when_filter_set(bbox_config):
+    config = {**bbox_config, "granule_filter": "*100m*"}
+    with patch("HydroEO.satellites.swot._download.earthaccess") as mock_ea:
+        mock_ea.login.return_value = None
+        mock_ea.search_data.return_value = []
+
+        _download_granules(config, Path("/tmp/raw"), set())
+
+    assert mock_ea.search_data.call_args.kwargs["granule_name"] == "*100m*"
+
+
 # ============================================================================
 # TESTS: Preprocessing Phase
 # ============================================================================
@@ -386,6 +413,84 @@ def test_preprocess_granules_handles_missing_quality_fields(tmp_path):
 
     # No TIFFs should be created
     assert len(list(processed_dir.glob("*.tif"))) == 0
+
+
+def _valid_wse_count(processed_dir):
+    [wse_tif] = [t for t in processed_dir.glob("*.tif") if t.stem.endswith("_wse")]
+    with rasterio.open(wse_tif) as src:
+        return int(np.isfinite(src.read(1)).sum())
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("quality_filters", [None, {}])
+def test_preprocess_granules_no_quality_filter_by_default(
+    bbox_config, synthetic_swot_netcdf, tmp_path, quality_filters
+):
+    """Without configured thresholds, no wse pixels are masked."""
+    raw_dir = tmp_path / "raw"
+    processed_dir = tmp_path / "processed"
+    raw_dir.mkdir()
+    processed_dir.mkdir()
+    shutil.copy(synthetic_swot_netcdf, raw_dir / synthetic_swot_netcdf.name)
+
+    config = {k: v for k, v in bbox_config.items() if k != "quality_filters"}
+    if quality_filters is not None:
+        config["quality_filters"] = quality_filters
+
+    _preprocess_granules(config, raw_dir, processed_dir, raw_dir / "downloaded.log")
+
+    assert _valid_wse_count(processed_dir) == 100 * 100
+
+
+@pytest.mark.unit
+def test_preprocess_granules_applies_only_configured_thresholds(
+    bbox_config, synthetic_swot_netcdf, tmp_path
+):
+    """Setting one threshold does not implicitly apply the other."""
+    raw_dir = tmp_path / "raw"
+    processed_dir = tmp_path / "processed"
+    raw_dir.mkdir()
+    processed_dir.mkdir()
+    shutil.copy(synthetic_swot_netcdf, raw_dir / synthetic_swot_netcdf.name)
+
+    config = {**bbox_config, "quality_filters": {"max_wse_uncert": 0.3}}
+    _preprocess_granules(config, raw_dir, processed_dir, raw_dir / "downloaded.log")
+
+    with xr.open_dataset(synthetic_swot_netcdf) as ds:
+        expected = int((ds["wse_uncert"] < 0.3).sum())
+    assert _valid_wse_count(processed_dir) == expected
+
+
+@pytest.mark.unit
+def test_merge_preserves_zero_values(tmp_path):
+    """Zero is a valid value (e.g. wse_qual=0 is 'good') and must survive merging."""
+    processed_dir = tmp_path / "processed"
+    processed_dir.mkdir()
+
+    for i, x0 in enumerate([500000, 500500]):
+        data = np.zeros((50, 50), dtype=np.float32)
+        data[0, 0] = np.nan
+        with rasterio.open(
+            processed_dir / f"SWOT_tile{i}_20250601T000000_wse_qual.tif",
+            "w",
+            driver="GTiff",
+            height=50,
+            width=50,
+            count=1,
+            dtype=np.float32,
+            crs=CRS.from_epsg(32644),
+            transform=from_bounds(x0, 6200000, x0 + 500, 6200500, 50, 50),
+        ) as dst:
+            dst.write(data, 1)
+
+    _merge_and_reproject_granules({}, processed_dir, "EPSG:32644")
+
+    merged = processed_dir.parent / "merged" / "20250601_wse_qual_merged.tif"
+    with rasterio.open(merged) as src:
+        arr = src.read(1)
+        valid = arr != src.nodata
+    assert (arr[valid] == 0).all()
+    assert valid.sum() >= 2 * 50 * 50 - 2 - 50  # allow edge loss from resampling
 
 
 @pytest.mark.unit
