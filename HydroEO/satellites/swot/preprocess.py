@@ -37,7 +37,7 @@ def subset_by_id(files: list, ids: list):
             gdf = gdf.loc[gdf.obs_id != "no_data"].reset_index(drop=True)
 
             # extract entries that are in id list
-            gdf = gdf.loc[np.in1d(gdf.lake_id.astype(int).values, ids)]
+            gdf = gdf.loc[np.isin(gdf.lake_id.astype(int).values, ids)]
 
             if len(gdf) > 0:
                 # save file
