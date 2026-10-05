@@ -797,11 +797,12 @@ def test_generate_rivers_summaries_plots_plottable_targets(mock_project_rivers):
 
 
 @pytest.mark.unit
-def test_generate_rivers_summaries_skips_waterbody_without_plottable_targets(
+def test_generate_rivers_summaries_maps_waterbody_without_plottable_targets(
     mock_project_rivers, caplog
 ):
-    """generate_rivers_summaries skips a waterbody entirely (all three plot
-    types) when none of its targets have enough observations."""
+    """generate_rivers_summaries still draws the map but skips the
+    timeseries plots when none of a waterbody's targets have enough
+    observations."""
     import logging
 
     mock_project_rivers.rivers.target_features = None
@@ -811,6 +812,7 @@ def test_generate_rivers_summaries_skips_waterbody_without_plottable_targets(
     with (
         patch.object(flows._summaries, "_has_enough_observations_to_plot", return_value=False),
         patch.object(flows._summaries, "_project_num_months", return_value=3),
+        patch.object(flows._summaries, "_river_target_corridor", return_value=None),
         patch("HydroEO.flows.plotting.plot_river_crossings") as mock_crossings,
         patch("HydroEO.flows.plotting.plot_river_data") as mock_data,
         patch("HydroEO.flows.plotting.plot_merging") as mock_merging,
@@ -818,10 +820,11 @@ def test_generate_rivers_summaries_skips_waterbody_without_plottable_targets(
     ):
         flows.generate_rivers_summaries(mock_project_rivers, show=False, save=False)
 
-        mock_crossings.assert_not_called()
+        mock_crossings.assert_called_once()
+        assert sorted(mock_crossings.call_args[0][2]) == [101, 102]
         mock_data.assert_not_called()
         mock_merging.assert_not_called()
-        assert "Skipping plots for waterbody" in caplog.text
+        assert "Skipping timeseries plots for waterbody" in caplog.text
 
 
 # ============================================================================
@@ -897,6 +900,59 @@ def test_get_latest_hydrocron_obs_date_parses_existing_csv(tmp_path):
     result = flows._get_latest_hydrocron_obs_date(str(csv_path))
 
     assert result == datetime.date(2024, 1, 5)
+
+
+@pytest.mark.unit
+def test_download_hydrocron_incremental_run_merges_existing(tmp_path):
+    """An incremental Hydrocron run appends to the existing CSV instead of
+    overwriting it with only the newly fetched observations."""
+    import json
+
+    swot_dir = tmp_path / "swot"
+    output_path = swot_dir / "wb1" / "nodes_timeseries.csv"
+    output_path.parent.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "node_id": [1, 1],
+            "time_str": ["2024-01-01T00:00:00Z", "2024-01-05T00:00:00Z"],
+            "wse": [1.0, 2.0],
+            "node_q": [0, 0],
+        }
+    ).to_csv(output_path, index=False)
+
+    new_csv = (
+        "node_id,time_str,wse,node_q\n"
+        "1,2024-01-05T00:00:00Z,2.0,0\n"
+        "1,2024-01-09T00:00:00Z,3.0,0\n"
+    )
+    response = mock.MagicMock()
+    response.status = 200
+    response.read.return_value = json.dumps({"results": {"csv": new_csv}}).encode()
+    response.__enter__.return_value = response
+
+    prj = SimpleNamespace(
+        rivers=SimpleNamespace(target_id_col="node_id"),
+        mission_options={},
+        dirs={"swot": str(swot_dir)},
+    )
+    with (
+        patch.object(
+            flows._river_download,
+            "_group_river_targets_by_waterbody",
+            return_value={"wb1": [1]},
+        ),
+        patch("urllib.request.urlopen", return_value=response),
+    ):
+        flows._download_swot_hydrocron_timeseries(
+            prj, datetime.date(2024, 1, 1), datetime.date(2024, 2, 1)
+        )
+
+    result = pd.read_csv(output_path)
+    assert result["time_str"].tolist() == [
+        "2024-01-01T00:00:00Z",
+        "2024-01-05T00:00:00Z",
+        "2024-01-09T00:00:00Z",
+    ]
 
 
 @pytest.mark.unit

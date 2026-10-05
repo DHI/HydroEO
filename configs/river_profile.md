@@ -105,6 +105,27 @@ excluded by `orbit_exclusions`, how many were changed/flagged/dropped by
 each filter stage, and the finite-point count before/after. Aggregate totals
 are also logged.
 
+## Nodes map
+
+Every run writes `results/<name>/<name>_nodes_map.html`, a self-contained
+interactive page (open it in a browser; needs internet for the map tiles and
+the Leaflet/Plotly libraries):
+
+- **Top** — every date's final profile along the river.
+- **Bottom left** — the chainage points ("nodes") on a basemap, coloured by
+  chainage, with node IDs drawn as you zoom in. Gray canvas and imagery
+  basemaps are available.
+- **Bottom right** — the final WSE timeseries of the selected node. Select a
+  node by clicking it on the map, clicking a point on the profile, or typing
+  its ID in the "Node" box. Use the chart toolbar's camera icon to save it as
+  PNG.
+
+Node IDs are `0..N-1` in chainage order (after `reverse_chainage`), and match
+the `node_id` column of `<name>_profiles_final.csv` and of the
+`profiles_final/*.shp` files. Any existing `node_id` column in the chainage
+file is replaced. The timeseries shows final (spline-filled) values, so gaps
+on a given date may be interpolated rather than observed.
+
 ## Output structure
 
 ```
@@ -116,7 +137,8 @@ are also logged.
   results/
     <name>/
       profiles_final/<name>_<date>_profile.shp   # always
-      <name>_profiles_final.csv                  # always
+      <name>_profiles_final.csv                  # always (node_id, distance, one column per date)
+      <name>_nodes_map.html                      # always (interactive profile + nodes map + node timeseries)
       quality_report.csv                         # always
       plots/per_profile/*.png                    # if plot_enable
       plots/combined/*.png                       # if plot_enable

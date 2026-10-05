@@ -172,6 +172,7 @@ def plot_crossings(
         )
     if show:
         plt.show()
+    plt.close(fig)
 
     return None
 
@@ -348,6 +349,7 @@ def plot_cleaning(
             )
         if show:
             plt.show()
+        plt.close(fig)
 
 
 def plot_merging(
@@ -449,6 +451,7 @@ def plot_merging(
             )
         if show:
             plt.show()
+        plt.close(fig)
 
     return
 
@@ -572,7 +575,7 @@ def plot_river_crossings(
         ax,
         crs=features.crs,
         zoom=zoom,
-        source=ctx.providers.CartoDB.Positron,  # ctx.providers.OpenStreetMap.Mapnik
+        source=ctx.providers.Esri.WorldGrayCanvas,  # CartoDB now requires an API key
         zorder=0,
     )
 
@@ -591,6 +594,7 @@ def plot_river_crossings(
         )
     if show:
         plt.show()
+    plt.close(fig)
 
 
 def plot_river_data(
@@ -680,5 +684,6 @@ def plot_river_data(
         )
     if show:
         plt.show()
+    plt.close(fig)
 
     return

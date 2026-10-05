@@ -249,31 +249,31 @@ def generate_rivers_summaries(
     min_months = _project_num_months(prj)
 
     for wb_id, target_ids in waterbody_groups.items():
-        # Exclude target if fewer than .5 observation per month  
-        plottable_ids = [
-            t for t in target_ids
-            if _has_enough_observations_to_plot(prj, t, min_months)
-        ]
-        if not plottable_ids:
-            logger.info(
-                "Skipping plots for waterbody %s -- no targets with more "
-                "than %d observations.", wb_id, max(min_months, 2),
-            )
-            continue
-
-        # Compute the actual extraction corridor (same buffer resolution
-        # used for real extraction, see _river_target_corridor) for visual assessment
+        # The map only needs SWORD geometry, so it's drawn for every target
+        # regardless of how many observations it has.
         corridor_gdf = _river_target_corridor(
-            prj, plottable_ids,
+            prj, target_ids,
             buffer_meters=getattr(prj.rivers, "extraction_buffer_meters", None),
             width_buffer_factor=getattr(prj.rivers, "width_buffer_factor", 1.05),
         )
         corridor_geometry = corridor_gdf.geometry.iloc[0] if corridor_gdf is not None else None
 
         plotting.plot_river_crossings(
-            prj, wb_id, plottable_ids, prj.dirs["output"], show=show, save=save,
+            prj, wb_id, target_ids, prj.dirs["output"], show=show, save=save,
             corridor_geometry=corridor_geometry,
         )
+
+        # Exclude target if fewer than .5 observation per month
+        plottable_ids = [
+            t for t in target_ids
+            if _has_enough_observations_to_plot(prj, t, min_months)
+        ]
+        if not plottable_ids:
+            logger.info(
+                "Skipping timeseries plots for waterbody %s -- no targets with "
+                "more than %g observations.", wb_id, max(min_months / 2, 2),
+            )
+            continue
 
         plotting.plot_river_data(
             prj, wb_id, plottable_ids, prj.dirs["output"],

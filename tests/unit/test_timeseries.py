@@ -427,6 +427,44 @@ def test_extract_rivers_swot_observations_splits_hydrocron_csv_by_target(
 
 
 @pytest.mark.unit
+def test_extract_rivers_swot_observations_reextracts_when_csv_newer(
+    mock_project_rivers,
+):
+    """A target's swot.gpkg is re-extracted when the Hydrocron CSV has been
+    updated since it was written."""
+    import os
+
+    swot_dir = Path(mock_project_rivers.dirs["swot"]) / "loire"
+    swot_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = swot_dir / "nodes_timeseries.csv"
+
+    pd.DataFrame(
+        {"node_id": [101], "node_q": [0], "time_str": ["2024-01-01T00:00:00Z"], "wse": [10.0]}
+    ).to_csv(csv_path, index=False)
+    flows._extract_rivers_swot_observations(mock_project_rivers)
+
+    out_101 = (
+        Path(mock_project_rivers.dirs["output"]) / "101" / "raw_observations" / "swot.gpkg"
+    )
+    assert len(gpd.read_file(out_101)) == 1
+
+    pd.DataFrame(
+        {
+            "node_id": [101, 101],
+            "node_q": [0, 0],
+            "time_str": ["2024-01-01T00:00:00Z", "2024-01-05T00:00:00Z"],
+            "wse": [10.0, 10.5],
+        }
+    ).to_csv(csv_path, index=False)
+    gpkg_mtime = os.path.getmtime(out_101)
+    os.utime(csv_path, (gpkg_mtime + 10, gpkg_mtime + 10))
+
+    flows._extract_rivers_swot_observations(mock_project_rivers)
+
+    assert len(gpd.read_file(out_101)) == 2
+
+
+@pytest.mark.unit
 def test_extract_rivers_swot_observations_skips_missing_csv(mock_project_rivers):
     """_extract_rivers_swot_observations skips a waterbody with no Hydrocron CSV."""
     flows._extract_rivers_swot_observations(mock_project_rivers)
