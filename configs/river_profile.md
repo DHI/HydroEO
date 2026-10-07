@@ -117,8 +117,9 @@ the Leaflet/Plotly libraries):
   basemaps are available.
 - **Bottom right** — the final WSE timeseries of the selected node. Select a
   node by clicking it on the map, clicking a point on the profile, or typing
-  its ID in the "Node" box. Use the chart toolbar's camera icon to save it as
-  PNG.
+  its ID in the "Node" box. In the chart toolbar, the camera icon saves it as
+  PNG and the disk icon downloads its data as CSV (`datetime_utc`, `label`,
+  `node_id`, `distance_along_river_m`, `wse_m`).
 
 Node IDs are `0..N-1` in chainage order (after `reverse_chainage`), and match
 the `node_id` column of `<name>_profiles_final.csv` and of the

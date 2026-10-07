@@ -9,7 +9,7 @@ loaded from a CDN) with the final profile data embedded as JSON:
 - bottom-left: the chainage nodes on a basemap, coloured by chainage, with
   node IDs drawn once zoomed in far enough;
 - bottom-right: the final WSE timeseries of the clicked node. Plotly's
-  toolbar "download as PNG" button saves it.
+  toolbar buttons save it as PNG or its data as CSV.
 
 Clicking a node on the map or a point on the profile selects that node.
 """
@@ -248,14 +248,27 @@ _TEMPLATE = r"""<!doctype html>
   const baseLayout = () => ({
     paper_bgcolor: color("--panel"), plot_bgcolor: color("--panel"),
     font: { color: color("--text"), size: 12 },
-    margin: { l: 60, r: 20, t: 40, b: 60 },
+    margin: { l: 60, r: 20, t: 64, b: 60 },
     xaxis: { gridcolor: color("--border"), zeroline: false },
     yaxis: { gridcolor: color("--border"), zeroline: false, title: "WSE [m]" },
   });
-  const plotConfig = (file) => ({
+  // anchored just above the plot area, below the modebar, so they don't overlap
+  const chartTitle = (text) => ({
+    text: text, font: { size: 14 }, yref: "paper", y: 1, yanchor: "bottom", pad: { b: 10 },
+  });
+  const plotConfig = (file, extraButtons) => ({
     responsive: true, displaylogo: false,
     toImageButtonOptions: { format: "png", filename: file, scale: 2 },
+    modeBarButtonsToAdd: extraButtons || [],
   });
+
+  function downloadText(text, filename, mime) {
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
 
   // ── profile chart ──────────────────────────────────────────────────────
   const profileTraces = D.labels.map((lab, j) => ({
@@ -266,7 +279,7 @@ _TEMPLATE = r"""<!doctype html>
     customdata: D.node_id,
   }));
   const profileLayout = Object.assign(baseLayout(), {
-    title: { text: D.name + " — final profile, all dates", font: { size: 14 } },
+    title: chartTitle(D.name + " — final profile, all dates"),
     showlegend: D.labels.length <= LEGEND_MAX_DATES,
     hovermode: "closest",
     shapes: [],
@@ -341,6 +354,12 @@ _TEMPLATE = r"""<!doctype html>
 
   // ── selection + timeseries ─────────────────────────────────────────────
   let selected = null;
+  let tsCsv = null;  // { text, filename } for the plotted node, same rows as the chart
+  const csvButton = {
+    name: "Download data as CSV",
+    icon: Plotly.Icons.disk,
+    click: () => { if (tsCsv) downloadText(tsCsv.text, tsCsv.filename, "text/csv"); },
+  };
   function select(i, pan) {
     if (selected !== null) {
       markers[selected].setStyle({ radius: 4, stroke: false });
@@ -361,9 +380,16 @@ _TEMPLATE = r"""<!doctype html>
       if (D.dates[j] === null || v === null) continue;
       xs.push(D.dates[j]); ys.push(v); txt.push(D.labels[j]);
     }
+    const chainageM = (D.km[i] * 1000).toFixed(1);
+    const rows = ["datetime_utc,label,node_id,distance_along_river_m,wse_m"];
+    for (let k = 0; k < xs.length; k++) {
+      rows.push([xs[k], txt[k], D.node_id[i], chainageM, ys[k]].join(","));
+    }
+    const fileBase = D.name + "_node_" + D.node_id[i];
+    tsCsv = { text: rows.join("\n") + "\n", filename: fileBase + ".csv" };
     const title = D.name + " — node " + D.node_id[i] + " (" + D.km[i].toFixed(2) + " km)";
     const layout = Object.assign(baseLayout(), {
-      title: { text: title, font: { size: 14 } }, showlegend: false, hovermode: "closest",
+      title: chartTitle(title), showlegend: false, hovermode: "closest",
     });
     layout.xaxis.title = "Date";
     document.getElementById("ts-empty").style.display = xs.length ? "none" : "flex";
@@ -375,7 +401,7 @@ _TEMPLATE = r"""<!doctype html>
       type: "scatter", mode: "lines+markers", x: xs, y: ys, text: txt,
       line: { color: color("--accent"), width: 1.5 }, marker: { size: 6 },
       hovertemplate: "%{x|%Y-%m-%d %H:%M}<br>%{y:.3f} m<extra>%{text}</extra>",
-    }], layout, plotConfig(D.name + "_node_" + D.node_id[i]));
+    }], layout, plotConfig(fileBase, [csvButton]));
   }
 
   document.getElementById("goto").addEventListener("submit", (ev) => {

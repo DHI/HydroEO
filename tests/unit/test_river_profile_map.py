@@ -69,6 +69,7 @@ def test_write_nodes_map_embeds_data_in_chronological_order(tmp_path):
     assert data["dates"] == ["2024-01-15T00:00:00", "2024-03-01T00:00:00"]
     assert data["wse"][1] == [10.0, 10.123, None, 10.3]
     assert data["name"] == "r</script>x"
+    assert "Download data as CSV" in out.read_text(encoding="utf-8")
     assert all(-90 <= v <= 90 for v in data["lat"])
 
 
