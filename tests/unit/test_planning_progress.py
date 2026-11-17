@@ -82,13 +82,13 @@ def test_plan_river_profile_warns_when_nothing_found(tmp_path):
     assert "No SWOT raster granules" in plan.warnings[0]
 
 
-def test_plan_reservoirs_counts_swot_and_lists_others():
+def test_plan_reservoirs_counts_swot_and_icesat2():
     gdf = gpd.GeoDataFrame({"id": [1, 2]}, geometry=[box(0, 0, 1, 1), box(2, 2, 3, 3)], crs="EPSG:4326")
     prj = SimpleNamespace(
         reservoirs=SimpleNamespace(gdf=gdf),
         to_download=["swot", "icesat2"],
-        startdates={"swot": [2024, 1, 1]},
-        enddates={"swot": datetime.date(2024, 2, 1)},
+        startdates={"swot": [2024, 1, 1], "icesat2": [2024, 1, 1]},
+        enddates={"swot": datetime.date(2024, 2, 1), "icesat2": datetime.date(2024, 2, 1)},
     )
     with (
         patch("HydroEO.planning._login"),
@@ -97,7 +97,7 @@ def test_plan_reservoirs_counts_swot_and_lists_others():
         plan = planning.plan_reservoirs(prj)
     assert plan.targets == 2
     assert plan.bbox == [0.0, 0.0, 3.0, 3.0]
-    assert [(i.label, i.granules) for i in plan.items] == [("SWOT_L2_HR_LakeSP_D", 2), ("icesat2", None)]
+    assert [(i.label, i.granules) for i in plan.items] == [("SWOT_L2_HR_LakeSP_D", 2), ("ATL13", 2)]
     assert search.call_args.kwargs["temporal"] == ("2024-01-01 00:00:00", "2024-02-01 23:59:59")
 
 

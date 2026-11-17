@@ -9,6 +9,14 @@ import shapely
 from shapely.geometry import Point, box
 
 
+@pytest.fixture(autouse=True)
+def _no_cmr(monkeypatch):
+    """The CMR granule search needs the network; tests that care replace this."""
+    from HydroEO.satellites.icesat2 import download
+
+    monkeypatch.setattr(download, "list_atl13_resources", lambda *a, **k: ["ATL13_x.h5"])
+
+
 @pytest.mark.unit
 def test_query_parms_construction(monkeypatch):
     """sliderule.run must receive correct atl13.coord, poly, t0, t1, atl13_fields."""
@@ -76,6 +84,7 @@ def test_query_parms_construction(monkeypatch):
     assert parms["t0"] == "2019-01-01T00:00:00Z"
     assert parms["t1"] == "2019-12-31T00:00:00Z"
     assert parms.get("atl13_fields") == fields
+    assert parms["resources"] == ["ATL13_x.h5"]
 
 
 @pytest.mark.unit
@@ -225,3 +234,43 @@ def test_invalid_atl13_field_name_raises_descriptive_error(tmp_path):
 
     with pytest.raises(ValueError, match="Invalid ATL13 fields"):
         Project(name="test", config=str(cfg_path))
+
+
+@pytest.mark.unit
+def test_no_granules_in_period_raises_without_calling_sliderule(monkeypatch):
+    from HydroEO.satellites import icesat2
+    from HydroEO.satellites.icesat2 import download
+    from HydroEO.waterbody import HydroEODownloadError
+
+    monkeypatch.setattr(download, "list_atl13_resources", lambda *a, **k: [])
+    monkeypatch.setattr(icesat2.sliderule, "run", lambda *a, **k: pytest.fail("must not run"))
+    aoi = [(36.28, -0.87), (36.43, -0.87), (36.43, -0.72), (36.28, -0.72), (36.28, -0.87)]
+    with pytest.raises(HydroEODownloadError, match="No ICESat-2 ATL13 granules"):
+        icesat2.query(aoi=aoi, startdate=datetime.date(2019, 1, 1), enddate=datetime.date(2019, 1, 15),
+                      download_directory=None)
+
+
+@pytest.mark.unit
+def test_cmr_failure_falls_back_to_unrestricted_request(monkeypatch, caplog):
+    from HydroEO.satellites import icesat2
+    from HydroEO.satellites.icesat2 import download
+
+    def broken(*a, **k):
+        raise RuntimeError("CMR down")
+
+    seen = {}
+
+    def fake_run(endpoint, parms):
+        seen.update(parms)
+        return gpd.GeoDataFrame(
+            {"ht_ortho": [1.0], "cycle": [1], "gt": ["gt1l"], "rgt": [1]},
+            geometry=[Point(36.35, -0.79)], crs="EPSG:4326",
+            index=pd.DatetimeIndex(["2019-01-05T00:00:00Z"]),
+        )
+
+    monkeypatch.setattr(download, "list_atl13_resources", broken)
+    monkeypatch.setattr(icesat2.sliderule, "run", fake_run)
+    aoi = [(36.28, -0.87), (36.43, -0.87), (36.43, -0.72), (36.28, -0.72), (36.28, -0.87)]
+    icesat2.query(aoi=aoi, startdate=datetime.date(2019, 1, 1), enddate=datetime.date(2019, 1, 15),
+                  download_directory=None)
+    assert "resources" not in seen and "CMR granule search failed" in caplog.text

@@ -11,6 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from HydroEO.satellites.icesat2.download import ATL13_SHORT_NAME
 from HydroEO.satellites.swot._download import SWOT_LAKE_SHORT_NAME, _login, _search
 
 if TYPE_CHECKING:
@@ -115,9 +116,9 @@ def plan_river_profile(config: dict[str, Any], global_crs: str = "EPSG:4326") ->
 def plan_reservoirs(prj: "Project") -> Plan:
     """Plan a reservoirs run for an already constructed ``Project``.
 
-    SWOT is counted with one CMR search over the targets' envelope (before the
-    prior-lake filter, so an upper bound). ICESat-2 and Sentinel are queried per
-    reservoir during the download and are listed without a count.
+    SWOT and ICESat-2 are counted with one CMR search each over the targets'
+    envelope (SWOT before the prior-lake filter), so both are upper bounds.
+    Sentinel is queried per reservoir during the download and listed without a count.
     """
     gdf = prj.reservoirs.gdf.to_crs("EPSG:4326")
     bbox = [float(v) for v in gdf.total_bounds]
@@ -133,6 +134,14 @@ def plan_reservoirs(prj: "Project") -> Plan:
             plan.items.append(PlanItem(SWOT_LAKE_SHORT_NAME, count, size, "upper bound; prior lakes only are kept"))
             if count == 0:
                 plan.warnings.append("No SWOT Lake granules found for this area and period.")
+        elif mission == "icesat2":
+            count, size = _count_swot(
+                ATL13_SHORT_NAME, tuple(bbox), _as_list(prj.startdates[mission]),
+                _as_list(prj.enddates[mission]),
+            )
+            plan.items.append(PlanItem(ATL13_SHORT_NAME, count, size, "upper bound: the envelope of all reservoirs"))
+            if count == 0:
+                plan.warnings.append("No ICESat-2 ATL13 granules found for this area and period.")
         else:
             plan.items.append(PlanItem(mission, None, None, "queried per reservoir during the download"))
     return _finish(plan)

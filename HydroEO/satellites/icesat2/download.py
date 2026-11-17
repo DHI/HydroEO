@@ -42,6 +42,29 @@ ATL13_DEFAULT_FIELDS: list[str] = []
 
 ATL13_CORE_FIELDS = ["height", "lat", "lon", "date"]
 
+ATL13_SHORT_NAME = "ATL13"
+
+
+def list_atl13_resources(
+    bounds: tuple[float, float, float, float],
+    startdate: datetime.date,
+    enddate: datetime.date,
+) -> list[str]:
+    """Names of the ATL13 granules over ``bounds`` (lon/lat) in the period, from NASA CMR.
+
+    SlideRule's atl13x applies ``t0``/``t1`` only to the rows it returns, not to
+    the granules it processes: without an explicit list it works through every
+    granule since 2018 that crosses the water body, which takes hours.
+    """
+    import earthaccess
+
+    results = earthaccess.search_data(
+        short_name=ATL13_SHORT_NAME,
+        bounding_box=tuple(bounds),
+        temporal=(f"{startdate} 00:00:00", f"{enddate} 23:59:59"),
+    )
+    return [r["meta"]["native-id"] for r in results]
+
 
 def query(
     aoi: list,
@@ -72,6 +95,23 @@ def query(
 
     if atl13_fields:
         parms["atl13_fields"] = atl13_fields
+
+    try:
+        resources = list_atl13_resources(poly.bounds, startdate, enddate)
+    except Exception as exc:  # noqa: BLE001 - CMR trouble must not stop the download
+        logger.warning(
+            "NASA CMR granule search failed (%s); SlideRule will go through every "
+            "ATL13 granule since 2018, which can take hours.",
+            exc,
+        )
+        resources = None
+    if resources is not None:
+        if not resources:
+            raise HydroEODownloadError(
+                f"No ICESat-2 ATL13 granules over this area from {startdate} to {enddate}."
+            )
+        logger.info("%d ATL13 granule(s) in the period", len(resources))
+        parms["resources"] = resources
 
     try:
         logger.info(
