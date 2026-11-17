@@ -41,6 +41,7 @@ from HydroEO.constants import (
     RIVER_PROFILE_DEFAULT_AOI_BUFFER_M,
     RIVER_PROFILE_DEFAULT_FILTERS,
 )
+from HydroEO import progress
 from HydroEO.satellites.swot.raster import download_raster
 from HydroEO.satellites.swot.river_profile_map import write_nodes_map
 from HydroEO.utils.filters import river_profile_filters as rpf
@@ -81,7 +82,9 @@ def calculate_river_profile(
     gdf, x = _load_chainage(config)
 
     swot_raster_cfg = _build_swot_raster_config(config, name, gdf, global_crs)
+    progress.report("download", 0, 1, name)
     download_raster(config=swot_raster_cfg, project_dir=project_dir, global_crs=global_crs)
+    progress.report("download", 1, 1, name)
 
     processed_dir = (
         Path(project_dir)
@@ -128,6 +131,7 @@ def calculate_river_profile(
         deferred_messages.append((level, message % args if args else message))
 
     for i, wse_path in enumerate(tqdm(wse_files, desc="Processing WSE tiles"), 1):
+        progress.report("process", i - 1, len(wse_files), wse_path.name)
         try:
             record = _process_one_date(
                 wse_path=wse_path,
@@ -204,6 +208,7 @@ def calculate_river_profile(
             record["quality"]["n_orbit_excluded"],
         )
 
+    progress.report("process", len(wse_files), len(wse_files))
     for level, message in deferred_messages:
         logger.log(level, message)
 
