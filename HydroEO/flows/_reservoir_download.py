@@ -6,6 +6,7 @@ import logging
 import os
 import datetime
 
+from HydroEO import progress
 from HydroEO.satellites import swot, icesat2
 from HydroEO.utils import general
 from ._river_common import _simplify_to_one_polygon
@@ -28,6 +29,7 @@ def download_reservoirs(prj: "Project") -> None:
         Project instance with download configuration
     """
     for mission in prj.to_download:
+        progress.report("download", 0, 1, mission)
         if mission == "swot":
             _download_reservoirs_swot(prj)
         elif mission == "icesat2":
@@ -36,6 +38,7 @@ def download_reservoirs(prj: "Project") -> None:
             _download_reservoirs_sentinel(prj, mission)
         else:
             logger.warning("Skipping unsupported mission in download: %s", mission)
+        progress.report("download", 1, 1, mission)
 
 
 def _download_reservoirs_swot(prj: "Project") -> None:
@@ -99,8 +102,10 @@ def _download_reservoirs_swot(prj: "Project") -> None:
 
 def _download_reservoirs_icesat2(prj: "Project") -> None:
     """Download ICESat-2 ATL13 data for reservoirs."""
-    for i in prj.reservoirs.download_gdf.index:
+    targets = list(prj.reservoirs.download_gdf.index)
+    for n, i in enumerate(targets):
         id = prj.reservoirs.download_gdf.loc[i, prj.reservoirs.id_key]
+        progress.report("download_targets", n, len(targets), str(id))
         logger.info("Downloading data for id %s", id)
 
         geom = _simplify_to_one_polygon(prj.reservoirs.download_gdf.loc[i, "geometry"])
@@ -149,8 +154,10 @@ def _download_reservoirs_sentinel(prj: "Project", mission: str) -> None:
     else:
         sentinel_creds = prj._require_creodias_credentials()
 
-    for i in prj.reservoirs.download_gdf.index:
+    targets = list(prj.reservoirs.download_gdf.index)
+    for n, i in enumerate(targets):
         id = prj.reservoirs.download_gdf.loc[i, prj.reservoirs.id_key]
+        progress.report("download_targets", n, len(targets), str(id))
         logger.info("Downloading data for id %s", id)
 
         coords = [

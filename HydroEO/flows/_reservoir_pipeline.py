@@ -9,6 +9,7 @@ import mikeio
 import pandas as pd
 from tqdm import tqdm
 
+from HydroEO import progress
 from HydroEO.satellites import swot, icesat2, sentinel
 from HydroEO.utils import general
 from ._clean_engine import _clean_timeseries
@@ -33,11 +34,13 @@ def create_reservoirs_timeseries(prj: "Project") -> None:
     if not hasattr(prj, "reservoirs"):
         return
 
+    progress.report("timeseries", 0, 4, "extract")
     _extract_reservoirs_timeseries(
         prj, overwrite=getattr(prj.reservoirs, "overwrite_extraction", False)
     )
 
     # Clean observations with filters
+    progress.report("timeseries", 1, 4, "clean")
     _clean_reservoirs_timeseries(prj)
 
     # Export to dfs0 if enabled
@@ -45,7 +48,9 @@ def create_reservoirs_timeseries(prj: "Project") -> None:
         _export_cleaned_to_dfs0(prj)
 
     # Merge multi-mission timeseries
+    progress.report("timeseries", 3, 4, "merge")
     _merge_reservoirs_timeseries(prj)
+    progress.report("timeseries", 4, 4)
 
 
 def _extract_reservoirs_timeseries(prj: "Project", overwrite: bool = False) -> None:
