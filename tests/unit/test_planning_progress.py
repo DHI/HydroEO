@@ -104,3 +104,11 @@ def test_plan_reservoirs_counts_swot_and_lists_others():
 def test_large_plan_gets_warning():
     plan = planning.Plan("x", items=[planning.PlanItem("p", planning.LARGE_GRANULE_COUNT + 1)])
     assert planning._finish(plan).warnings
+
+
+def test_granule_size_supports_attribute_and_method():
+    class AsAttribute:
+        size = 4.0
+
+    assert planning._granule_size_mb([AsAttribute(), _Granule()]) == 14.0
+    assert planning._granule_size_mb([object()]) is None
