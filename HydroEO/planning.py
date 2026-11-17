@@ -54,7 +54,9 @@ class Plan:
 def _granule_size_mb(results: list) -> float | None:
     """Total size of CMR results in MB; ``None`` if CMR does not report sizes."""
     try:
-        return float(sum(r.size() for r in results))
+        # earthaccess >= 1.0 makes ``size`` an attribute; older versions a method.
+        sizes = [r.size() if callable(r.size) else r.size for r in results]
+        return float(sum(sizes))
     except Exception:
         return None
 
